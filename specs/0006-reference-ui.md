@@ -15,6 +15,7 @@ This document covers:
 - Backend URL configuration.
 - Conversation reset behavior.
 - Streaming response rendering.
+- Waiting indicator while the assistant response has not produced tokens yet.
 - Markdown rendering for assistant responses.
 - Light and dark visual themes.
 - Local Docker Compose deployment.
@@ -133,6 +134,13 @@ The UI must handle:
 
 The UI must not show backend protocol details to users.
 
+While a request is in flight and the assistant message has not received any
+streamed text yet, the UI must show a compact loading spinner inside the
+assistant message bubble.
+
+The spinner must be accessible through a text label for screen readers and must
+not resize or shift the surrounding chat layout when tokens start arriving.
+
 ## Theme Behavior
 
 The UI must support both light and dark themes.
@@ -171,6 +179,7 @@ The `rag-ui` service must:
 - The UI displays user and assistant messages in chatbot style.
 - The UI renders assistant Markdown responses correctly.
 - The UI sends streaming requests to the backend.
+- The UI shows a loading spinner while waiting for the first assistant token.
 - The UI renders streamed assistant tokens as they arrive.
 - The UI stores and reuses the active backend `conversation_id`.
 - The UI can clear the current conversation and start a new one.

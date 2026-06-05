@@ -40,6 +40,26 @@ function parseSseFrame(frame) {
   };
 }
 
+function AssistantMessageContent({ message }) {
+  const isWaitingForFirstToken =
+    message.status === "streaming" && message.content.length === 0;
+
+  if (isWaitingForFirstToken) {
+    return (
+      <div className="waitingIndicator" role="status" aria-live="polite">
+        <span className="spinner" aria-hidden="true" />
+        <span>Waiting for response</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+    </div>
+  );
+}
+
 export default function Home() {
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
   const [conversationId, setConversationId] = useState("");
@@ -287,11 +307,7 @@ export default function Home() {
                 <div className="avatar">{message.role === "user" ? "You" : "AI"}</div>
                 <div className="bubble">
                   {message.role === "assistant" ? (
-                    <div className="markdown">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {message.content || (message.status === "streaming" ? "..." : "")}
-                      </ReactMarkdown>
-                    </div>
+                    <AssistantMessageContent message={message} />
                   ) : (
                     <p>{message.content}</p>
                   )}
