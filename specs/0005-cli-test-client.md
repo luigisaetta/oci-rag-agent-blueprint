@@ -13,6 +13,7 @@ This document covers:
 - Command-line arguments.
 - Request payload construction.
 - Streaming response handling.
+- Non-streaming JSON response handling.
 - Console output behavior.
 
 This document does not define the Next.js reference UI or production client behavior.
@@ -27,6 +28,9 @@ This document does not define the Next.js reference UI or production client beha
 The client must accept the user request from the command line.
 
 The client must accept a `--create-conversation` argument with explicit `true` or `false` values.
+
+The client must accept a `--stream` argument with explicit `true` or `false`
+values. The default value must be `true`.
 
 When `--create-conversation false` is used, the client must require `--conversation-id`.
 
@@ -48,7 +52,10 @@ http://localhost:8080/responses
 
 The client must map the command-line `--create-conversation` value to the agent request payload field `new_conversation`.
 
-The client must always request streaming by setting:
+The client must map the command-line `--stream` value to the agent request
+payload field `stream`.
+
+When streaming is requested, the client must set:
 
 ```json
 {
@@ -77,11 +84,15 @@ When attaching to an existing conversation, the client must send:
 }
 ```
 
-## Streaming Response Handling
+When non-streaming is requested, the client must send the same payload shape with
+`stream=false`.
+
+## Response Handling
 
 The client must call the agent endpoint with `POST /responses`.
 
-The client must consume the `text/event-stream` response returned by the agent.
+When `--stream true` is used, the client must consume the `text/event-stream`
+response returned by the agent.
 
 The client must handle the following Server-Sent Events:
 
@@ -89,6 +100,10 @@ The client must handle the following Server-Sent Events:
 - `token`, used to print response text incrementally.
 - `done`, used to close the response output cleanly.
 - `error`, used to display a readable error message.
+
+When `--stream false` is used, the client must consume the JSON response returned
+by the agent and print the active conversation identifier, agent response text,
+references count, and error message when present.
 
 ## Console Output
 
@@ -99,17 +114,22 @@ The output must show:
 - Target endpoint.
 - Whether a new conversation is being created.
 - Existing conversation identifier, when provided.
+- Whether streaming is enabled.
 - Active conversation identifier returned by the stream metadata.
-- Response text streamed token by token.
+- Response text, either streamed token by token or printed from the JSON response.
 - Errors, when returned by the agent.
 
 ## Acceptance Criteria
 
 - The client can create a streaming request for a new conversation.
 - The client can create a streaming request for an existing conversation.
+- The client can create a non-streaming request for a new conversation.
+- The client can create a non-streaming request for an existing conversation.
 - The client can be launched from the repository root with `python -m clients.agent_cli`.
 - The client rejects `--create-conversation false` when `--conversation-id` is missing.
 - The client maps `--create-conversation` to `new_conversation`.
-- The client always sends `stream=true`.
+- The client maps `--stream` to `stream`.
 - The client consumes Server-Sent Events from the agent endpoint.
-- Unit tests cover payload construction, argument validation, and SSE parsing.
+- The client consumes JSON responses from the agent endpoint.
+- Unit tests cover payload construction, argument validation, SSE parsing, and
+  JSON response handling.

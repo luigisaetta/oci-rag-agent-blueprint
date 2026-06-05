@@ -120,9 +120,16 @@ When `stream=true`, `POST /responses` must return a `text/event-stream` response
 The streaming MVP must emit:
 
 - A `metadata` event containing the active `conversation_id`.
-- One or more `token` events containing generated text deltas.
+- One or more `token` events containing generated final-answer text deltas.
 - A final `done` event when streaming completes.
 - An `error` event when the Responses API fails during streaming.
+
+The agent must forward only Responses API stream events with type
+`response.output_text.delta` as client-visible `token` events.
+
+The agent must ignore stream deltas that are not final answer text, including
+reasoning, reasoning summaries, tool-call arguments, file-search status, and
+other operational events.
 
 Streaming errors must not include secrets or complete request payloads.
 
@@ -314,6 +321,8 @@ The MVP test suite must cover:
 - Responses API response creation.
 - Streaming Responses API creation.
 - Agent instructions passed to Responses API calls.
+- Filtering of streaming events so that only final output text is shown to the
+  client.
 - SDK stream parser failures after partial token delivery.
 - Responses API failures.
 - Structured JSON error responses.
@@ -338,6 +347,8 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The agent creates Responses API responses using `file_search`.
 - The agent creates streaming Responses API responses with `stream=True` when requested.
 - The agent passes behavior instructions to Responses API calls.
+- The agent forwards only `response.output_text.delta` stream events to clients
+  as response tokens.
 - The agent passes `OCI_VECTOR_STORE_ID` to the file search configuration.
 - The agent passes `OCI_PROJECT_ID` to the OpenAI-compatible client as the project identifier.
 - The agent authenticates the `openai` client with `OPENAI_API_KEY`.

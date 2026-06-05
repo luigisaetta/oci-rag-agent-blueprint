@@ -16,6 +16,7 @@ from agent.config import AgentSettings
 
 LOGGER = logging.getLogger(__name__)
 RESPONSES_TIMEOUT_SECONDS = 60
+OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta"
 AGENT_INSTRUCTIONS = """
 You are an OCI Enterprise AI RAG agent.
 Answer the user directly and concisely using the available knowledge base.
@@ -189,26 +190,27 @@ def _extract_response_text(response: Any) -> str:
 
 
 def _extract_stream_token(event: Any) -> str:
-    """Extract a text delta from a Responses API stream event.
+    """Extract a final-answer text delta from a Responses API stream event.
 
     Args:
         event: Stream event object or dictionary.
 
     Returns:
-        str: Text delta, or an empty string when the event does not contain one.
+        str: Final-answer text delta, or an empty string for non-output events.
     """
 
     if isinstance(event, dict):
+        event_type = event.get("type")
         delta = event.get("delta")
-        text = event.get("text")
     else:
+        event_type = getattr(event, "type", None)
         delta = getattr(event, "delta", None)
-        text = getattr(event, "text", None)
+
+    if event_type != OUTPUT_TEXT_DELTA_EVENT_TYPE:
+        return ""
 
     if isinstance(delta, str):
         return delta
-    if isinstance(text, str):
-        return text
 
     return ""
 

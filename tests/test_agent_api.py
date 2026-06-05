@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from agent.agent import AGENT_INSTRUCTIONS
+from agent.agent import AGENT_INSTRUCTIONS, OUTPUT_TEXT_DELTA_EVENT_TYPE
 from agent.main import app
 
 REQUIRED_ENV = {
@@ -120,7 +120,14 @@ class FakeResponses:
             return _stream_with_json_decode_error()
 
         if kwargs.get("stream"):
-            return [{"delta": "Agent "}, {"delta": "answer"}]
+            return [
+                {
+                    "type": "response.reasoning_text.delta",
+                    "delta": "I should plan this.",
+                },
+                {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "Agent "},
+                {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "answer"},
+            ]
 
         return FakeResponse(id="resp-123", output_text="Agent answer")
 
@@ -311,6 +318,7 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: metadata\ndata: {"conversation_id": "conv-new"}' in response.text
     assert 'event: token\ndata: {"text": "Agent "}' in response.text
     assert 'event: token\ndata: {"text": "answer"}' in response.text
+    assert "I should plan this." not in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
     assert fake_client.responses.create_calls[0]["instructions"] == AGENT_INSTRUCTIONS
@@ -392,7 +400,7 @@ def _stream_with_json_decode_error() -> Iterator[dict[str, str]]:
         JSONDecodeError: Simulated SDK stream parser failure.
     """
 
-    yield {"delta": "Partial answer"}
+    yield {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "Partial answer"}
     raise JSONDecodeError(
         "Expecting property name enclosed in double quotes",
         "{not valid json}",

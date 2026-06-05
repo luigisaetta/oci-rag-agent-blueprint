@@ -8,10 +8,17 @@ Description: Unit tests for the OCI RAG agent command-line test client.
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 import pytest
 
-from clients.agent_cli import build_payload, parse_bool, parse_sse_lines
+from clients import agent_cli
+from clients.agent_cli import (
+    build_payload,
+    parse_bool,
+    parse_sse_lines,
+    render_json_response,
+)
 
 
 def test_build_payload_for_new_conversation() -> None:
@@ -26,6 +33,22 @@ def test_build_payload_for_new_conversation() -> None:
         "new_conversation": True,
         "user_request": "Explain deployment",
         "stream": True,
+    }
+
+
+def test_build_payload_for_non_streaming_request() -> None:
+    """Test payload construction for a non-streaming request."""
+
+    payload = build_payload(
+        create_conversation=True,
+        user_request="Explain deployment",
+        stream=False,
+    )
+
+    assert payload == {
+        "new_conversation": True,
+        "user_request": "Explain deployment",
+        "stream": False,
     }
 
 
@@ -91,3 +114,48 @@ def test_parse_sse_lines() -> None:
     assert [event.name for event in events] == ["metadata", "token", "done"]
     assert events[0].data == {"conversation_id": "conv-123"}
     assert events[1].data == {"text": "Hello"}
+
+
+def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
+    """Test non-streaming JSON response rendering."""
+
+    def fake_send_json_request(
+        endpoint: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        """Return a fake JSON response payload.
+
+        Args:
+            endpoint: Agent endpoint URL.
+            payload: Agent request payload.
+
+        Returns:
+            dict[str, object]: Fake agent response payload.
+        """
+
+        assert endpoint == "http://localhost:8080/responses"
+        assert payload["stream"] is False
+        return {
+            "conversation_id": "conv-123",
+            "response_id": "resp-123",
+            "agent_response": "JSON answer",
+            "references": [],
+            "error": None,
+        }
+
+    monkeypatch.setattr(agent_cli, "send_json_request", fake_send_json_request)
+
+    render_json_response(
+        "http://localhost:8080/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": False,
+        },
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Stream: false" in output
+    assert "[conversation: conv-123]" in output
+    assert "JSON answer" in output

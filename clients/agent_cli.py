@@ -55,6 +55,7 @@ def parse_bool(value: str) -> bool:
 def build_payload(
     create_conversation: bool,
     user_request: str,
+    stream: bool = True,
     conversation_id: str | None = None,
 ) -> dict[str, object]:
     """Build the JSON payload expected by the agent.
@@ -62,6 +63,7 @@ def build_payload(
     Args:
         create_conversation: Whether to create a new conversation.
         user_request: User request text.
+        stream: Whether to request Server-Sent Event streaming.
         conversation_id: Existing conversation identifier.
 
     Returns:
@@ -74,7 +76,7 @@ def build_payload(
     payload: dict[str, object] = {
         "new_conversation": create_conversation,
         "user_request": user_request,
-        "stream": True,
+        "stream": stream,
     }
 
     if not create_conversation:
@@ -168,6 +170,39 @@ def send_streaming_request(
         raise RuntimeError(f"Unable to reach agent endpoint: {exc.reason}") from exc
 
 
+def send_json_request(endpoint: str, payload: dict[str, object]) -> dict[str, object]:
+    """Send a non-streaming JSON request to the agent endpoint.
+
+    Args:
+        endpoint: Agent endpoint URL.
+        payload: JSON request payload.
+
+    Returns:
+        dict[str, object]: Parsed JSON response payload.
+
+    Raises:
+        RuntimeError: If the HTTP request fails.
+    """
+
+    request_body = json.dumps(payload).encode("utf-8")
+    http_request = request.Request(
+        endpoint,
+        data=request_body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(http_request, timeout=120) as response:
+            response_body = response.read().decode("utf-8")
+            return json.loads(response_body)
+    except error.HTTPError as exc:
+        message = exc.read().decode("utf-8")
+        raise RuntimeError(f"HTTP {exc.code}: {message}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Unable to reach agent endpoint: {exc.reason}") from exc
+
+
 def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     """Render a streaming response to the console.
 
@@ -180,6 +215,7 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     print("=================")
     print(f"Endpoint: {endpoint}")
     print(f"Create conversation: {payload['new_conversation']}")
+    print("Stream: true")
     if "conversation_id" in payload:
         print(f"Conversation id: {payload['conversation_id']}")
     print()
@@ -196,6 +232,41 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
             print(f"\n\n[error] {event.data.get('error', 'Unknown error')}")
         elif event.name == "done":
             print("\n\n[done]")
+
+
+def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
+    """Render a non-streaming JSON response to the console.
+
+    Args:
+        endpoint: Agent endpoint URL.
+        payload: JSON request payload.
+    """
+
+    print("OCI RAG Agent CLI")
+    print("=================")
+    print(f"Endpoint: {endpoint}")
+    print(f"Create conversation: {payload['new_conversation']}")
+    print("Stream: false")
+    if "conversation_id" in payload:
+        print(f"Conversation id: {payload['conversation_id']}")
+    print()
+
+    response_payload = send_json_request(endpoint, payload)
+    conversation_id = response_payload.get("conversation_id", "")
+    if conversation_id:
+        print(f"[conversation: {conversation_id}]\n")
+
+    error_message = response_payload.get("error")
+    if error_message:
+        print(f"[error] {error_message}")
+        return
+
+    print("Response")
+    print("--------")
+    print(response_payload.get("agent_response", ""))
+    references = response_payload.get("references", [])
+    if isinstance(references, list):
+        print(f"\n[references: {len(references)}]")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -221,6 +292,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--conversation-id",
         help="Existing conversation identifier. Required when create-conversation is false.",
     )
+    parser.add_argument(
+        "--stream",
+        default=True,
+        type=parse_bool,
+        help="Use true for SSE streaming, false for a JSON response. Default: true.",
+    )
     parser.add_argument("user_request", help="User request text.")
     return parser
 
@@ -242,9 +319,13 @@ def main(argv: list[str] | None = None) -> int:
         payload = build_payload(
             create_conversation=args.create_conversation,
             conversation_id=args.conversation_id,
+            stream=args.stream,
             user_request=args.user_request,
         )
-        render_stream(args.endpoint, payload)
+        if args.stream:
+            render_stream(args.endpoint, payload)
+        else:
+            render_json_response(args.endpoint, payload)
     except ValueError as exc:
         parser.error(str(exc))
     except RuntimeError as exc:
