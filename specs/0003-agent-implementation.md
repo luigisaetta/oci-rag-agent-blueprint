@@ -25,6 +25,7 @@ This document does not define the complete security model, deployment manifests,
 
 - [Architecture Guidelines](0001-architecture-guidelines.md)
 - [Short-Term Memory](0002-short-term-memory.md)
+- [Security](0007-security.md)
 
 ## Runtime Model
 

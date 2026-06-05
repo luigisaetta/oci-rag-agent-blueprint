@@ -20,6 +20,7 @@ This document does not define the complete security model, OCI IAM application s
 - [Architecture Guidelines](0001-architecture-guidelines.md)
 - [Agent Implementation](0003-agent-implementation.md)
 - [Reference UI](0006-reference-ui.md)
+- [Security](0007-security.md)
 
 ## Local Deployment With Docker Compose
 

@@ -58,6 +58,14 @@ The agent may be protected by using:
 - JWT tokens.
 - Authorization checks applied before protected agent operations are executed.
 
+## Agent-To-Resource Security
+
+The first implementation must authenticate the agent to OCI Enterprise AI resources by using the OpenAI-compatible API key model defined in the dedicated security specification.
+
+The API key is created inside the OCI Enterprise AI project and is passed to the agent through runtime environment variables.
+
+A future release should add support for OCI-native security based on OCI Resource Principal, so the hosted workload can access OCI resources through its runtime identity instead of a long-lived API key value.
+
 ## Packaging
 
 The RAG agent must be packaged as a Docker container.
@@ -101,7 +109,7 @@ The UI is intended for testing and demonstration of the RAG agent. It must help 
 
 The following topics require dedicated specifications:
 
-- Security model and JWT validation.
+- End-user security model and JWT validation.
 - Agent API contract.
 - JSON request and response schema.
 - Vector store retrieval strategy.
