@@ -18,3 +18,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  rag-ui:
+    image: oci-rag-agent-blueprint-ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      rag-agent:
+        condition: service_healthy

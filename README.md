@@ -18,6 +18,7 @@ This project contains a blueprint and a set of guidelines for creating and deplo
 - OCI-based vector storage and retrieval.
 - Response generation through the Responses API.
 - Python implementation patterns with automated quality checks.
+- A Next.js reference UI for local chatbot testing.
 - Unit tests and coverage expectations for every new feature.
 
 ## Development Approach
@@ -46,11 +47,36 @@ See [AGENTS.md](AGENTS.md) for the full working guidelines.
 ```text
 .
 ├── AGENTS.md
+├── agent/
+├── clients/
+├── docker-compose.yml
 ├── LICENSE
 ├── README.md
-└── specs/
+├── schemas/
+├── specs/
+├── tests/
+└── ui/
+```
+
+## Local UI
+
+The local Docker Compose deployment includes:
+
+- `rag-agent`, the FastAPI backend exposed on `http://localhost:8080`.
+- `rag-ui`, the Next.js reference UI exposed on `http://localhost:3000`.
+
+Start both services with:
+
+```bash
+docker-compose up -d
+```
+
+Then open:
+
+```text
+http://localhost:3000
 ```
 
 ## Current Status
 
-The project is in its foundation phase. The first priority is to define the specifications that will drive the blueprint, implementation structure, deployment guidance, and test strategy.
+The project now includes the first backend agent implementation, Docker Compose local deployment, a CLI test client, and a reference Next.js UI.

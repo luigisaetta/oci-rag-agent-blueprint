@@ -13,18 +13,21 @@ The project must support two deployment modes:
 
 This document covers the deployment structure and minimum requirements for packaging, configuration, startup, and health validation.
 
-This document does not define the complete security model, OCI IAM application setup, OCI networking, hosted deployment automation details, or the reference UI deployment. Those topics will be covered by dedicated specifications or later revisions.
+This document does not define the complete security model, OCI IAM application setup, OCI networking, or hosted deployment automation details. Those topics will be covered by dedicated specifications or later revisions.
 
 ## Related Specifications
 
 - [Architecture Guidelines](0001-architecture-guidelines.md)
 - [Agent Implementation](0003-agent-implementation.md)
+- [Reference UI](0006-reference-ui.md)
 
 ## Local Deployment With Docker Compose
 
 Local deployment must be based on Docker Compose and must support development and local testing of the RAG agent.
 
 The local deployment must run the agent backend as a containerized FastAPI service.
+
+The local deployment must also run the reference UI as a containerized Next.js service.
 
 The Docker image must be built from `Dockerfile` in the repository root.
 
@@ -38,9 +41,13 @@ The container must start the agent with `uvicorn` using the package path defined
 uvicorn agent.main:app --host 0.0.0.0 --port 8080
 ```
 
-The container must expose the agent on port `8080`.
+The agent container must expose the agent on port `8080`.
+
+The reference UI container must expose the UI on port `3000`.
 
 The Docker Compose service name must be `rag-agent`.
+
+The Docker Compose service name for the reference UI must be `rag-ui`.
 
 The local image name must be `oci-rag-agent-blueprint-agent`.
 
@@ -77,17 +84,33 @@ POST /responses
 
 Streaming requests must use the `stream=true` request field defined in the agent request schema.
 
+The local deployment must expose the reference UI at:
+
+```http
+GET http://localhost:3000
+```
+
+The reference UI must be able to call the local backend at:
+
+```text
+http://localhost:8080/responses
+```
+
 ### Local Deployment Acceptance Criteria
 
 - A Docker image can be built for the agent backend.
 - Docker Compose can start the agent service locally.
 - Docker Compose reads configuration from the root `.env` file.
 - Docker Compose defines the `rag-agent` service.
+- Docker Compose defines the `rag-ui` service.
 - Docker Compose builds the `oci-rag-agent-blueprint-agent` image.
+- Docker Compose builds the `oci-rag-agent-blueprint-ui` image.
 - The agent service listens on port `8080`.
+- The UI service listens on port `3000`.
 - `GET /health` returns a successful JSON response.
 - `POST /responses` can be sent to the local service.
 - `POST /responses` supports streaming when `stream=true`.
+- The UI can send streaming requests to the local backend from a browser.
 - Secrets are read from environment variables and are not hardcoded in Docker files or source code.
 
 ## Hosted Deployment In OCI Enterprise AI
@@ -128,4 +151,4 @@ The following topics require dedicated specifications or later revisions:
 - Hosted deployment scripts.
 - OCI Enterprise AI hosted deployment procedure.
 - Security and JWT validation.
-- Reference UI deployment.
+- Hosted deployment of the reference UI.
