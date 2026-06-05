@@ -114,7 +114,7 @@ For each `POST /responses` request, the agent must:
 2. Validate the payload against the configured JSON Schema.
 3. Determine whether the request starts a new conversation or attaches to an existing one.
 4. Create an OpenAI-compatible client for the OCI Enterprise AI Responses API.
-5. Create a new conversation when `new_conversation=true`.
+5. Create a new conversation with `client.conversations.create` when `new_conversation=true`.
 6. Attach the Responses API request to the provided conversation when `new_conversation=false`.
 7. Create a response by using the configured model.
 8. Configure file search as a Responses API tool.
@@ -141,12 +141,41 @@ The `openai` client must authenticate with an OpenAI-compatible API key provided
 
 The agent must use the Responses API to:
 
-- Create or attach to a conversation, according to the request.
+- Create a conversation with `client.conversations.create` when the request starts a new conversation.
+- Attach to an existing conversation by passing the conversation identifier to `client.responses.create` through the `conversation` parameter.
 - Create the model response.
 - Configure `file_search` as a tool.
 - Pass the configured vector store identifier to the file search tool.
 
 Provider-specific extensions must be isolated and documented if they become necessary.
+
+The MVP implementation must use the following Responses API call shape:
+
+```python
+response = client.responses.create(
+    model=OCI_MODEL_ID,
+    input=user_request,
+    conversation=conversation_id,
+    tools=[
+        {
+            "type": "file_search",
+            "vector_store_ids": [OCI_VECTOR_STORE_ID],
+        }
+    ],
+    timeout=60,
+)
+```
+
+When `new_conversation=true`, the agent must first create a conversation:
+
+```python
+conversation = client.conversations.create()
+conversation_id = conversation.id
+```
+
+When `new_conversation=false`, the agent must use the `conversation_id` provided by the validated request payload.
+
+The MVP implementation must return `references=[]`. Extraction of citations and references from Responses API file search results will be covered by a later specification.
 
 ## Environment Variables
 
@@ -180,9 +209,58 @@ The agent must return structured JSON errors for:
 - Missing required environment variables.
 - Responses API failures.
 
-Error responses must be deterministic enough to support unit tests.
+Error responses must use the `error` field already defined in [Agent Response Schema](../schemas/agent-response.schema.json). For the first implementation, the `error` field is a simple human-readable error message.
 
-The exact error schema will be defined before implementation.
+Error messages must be deterministic enough to support unit tests.
+
+## Logging
+
+The agent must implement minimal structured logging.
+
+The first implementation must log:
+
+- Agent startup.
+- Request validation errors.
+- Active `conversation_id` values.
+- Responses API `response_id` values, when available.
+- Responses API failures.
+
+The health endpoint may log debug-level entries, but it must not create noisy logs during normal operation.
+
+Logs must never include `OPENAI_API_KEY` or other secrets.
+
+Logs must avoid recording complete user requests or full model responses because they may contain sensitive information.
+
+## Timeout And Retry
+
+The MVP implementation must use a default Responses API timeout of `60` seconds.
+
+The MVP implementation must not implement custom application-level retry logic.
+
+If the `openai` client applies default retry behavior, the agent may rely on that behavior without adding another retry layer.
+
+Timeouts and Responses API failures must be returned through the `error` field in the JSON response payload.
+
+## Test Strategy
+
+The MVP implementation must include unit tests with `pytest`.
+
+FastAPI endpoints must be tested with FastAPI `TestClient`.
+
+Tests that exercise Responses API behavior must mock the `openai` client. Unit tests must not call OCI Enterprise AI or any external service.
+
+The MVP test suite must cover:
+
+- `GET /health`.
+- JSON Schema validation for valid and invalid requests.
+- Missing required environment variables.
+- New conversation creation with `client.conversations.create`.
+- Existing conversation attachment using `conversation_id`.
+- Responses API response creation.
+- Responses API failures.
+- Structured JSON error responses.
+
+Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md), with a target above 80%.
 
 ## Acceptance Criteria
 
@@ -204,13 +282,9 @@ The exact error schema will be defined before implementation.
 - Required runtime configuration is read from environment variables.
 - Docker Compose local deployment reads configuration from a root `.env` file.
 - A tracked `.env.sample` file documents the required environment variables.
-
-## Missing Details To Specify
-
-The following details must be specified before or during implementation:
-
-- Exact JSON error schema.
-- Exact Responses API fields for conversation creation and attachment.
-- Timeout, retry, and backoff behavior for Responses API calls.
-- Logging and observability requirements.
-- Unit test strategy and mocking approach for the `openai` client.
+- The agent logs startup, validation errors, conversation identifiers, response identifiers, and Responses API failures.
+- The agent never logs secrets or complete user/model payloads.
+- Responses API calls use a default timeout of `60` seconds.
+- The MVP implementation does not add custom application-level retries.
+- Unit tests use `pytest`, FastAPI `TestClient`, and a mocked `openai` client.
+- Unit tests cover health checks, schema validation, environment validation, conversation handling, Responses API calls, and error handling.
