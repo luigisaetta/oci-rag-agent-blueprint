@@ -231,6 +231,10 @@ def _extract_response_text(response: Any) -> str:
         str: Extracted output text, or an empty string when unavailable.
     """
 
+    output_text = _extract_output_text_with_inline_citations(response)
+    if output_text:
+        return output_text
+
     output_text = getattr(response, "output_text", None)
     if isinstance(output_text, str):
         return output_text
@@ -250,12 +254,126 @@ def _extract_references(source: Any) -> list[dict[str, Any]]:
     """
 
     references: list[dict[str, Any]] = []
+    references.extend(_extract_annotation_references(source))
+
     for result in _iter_file_search_results(source):
         reference = _build_reference(result)
         if reference:
             references.append(reference)
 
     return _deduplicate_references(references)
+
+
+def _extract_output_text_with_inline_citations(source: Any) -> str:
+    """Extract output text and insert citation markers when annotations exist.
+
+    Args:
+        source: Response object or dictionary.
+
+    Returns:
+        str: Output text with inline citation markers, when available.
+    """
+
+    text_block = _get_last_output_text_block(source)
+    if text_block is None:
+        return ""
+
+    text = _get_value(text_block, "text")
+    if not isinstance(text, str):
+        return ""
+
+    annotations = _get_supported_annotations(text_block, len(text))
+    for ref_number, annotation in reversed(list(enumerate(annotations, start=1))):
+        index = _get_value(annotation, "index")
+        marker = f"[{ref_number}] "
+        text = text[:index] + marker + text[index:]
+
+    return text
+
+
+def _extract_annotation_references(source: Any) -> list[dict[str, Any]]:
+    """Extract references from output text citation annotations.
+
+    Args:
+        source: Response object or dictionary.
+
+    Returns:
+        list[dict[str, Any]]: Normalized citation references.
+    """
+
+    text_block = _get_last_output_text_block(source)
+    if text_block is None:
+        return []
+
+    text = _get_value(text_block, "text")
+    text_length = len(text) if isinstance(text, str) else 0
+    annotations = _get_supported_annotations(text_block, text_length)
+
+    references: list[dict[str, Any]] = []
+    for annotation in annotations:
+        reference = _build_reference(annotation, allow_unknown_file=True)
+        if reference:
+            references.append(reference)
+
+    return references
+
+
+def _get_last_output_text_block(source: Any) -> Any | None:
+    """Return the last Responses API output text block.
+
+    Args:
+        source: Response object or dictionary.
+
+    Returns:
+        Any | None: Last output text block, when present.
+    """
+
+    text_block = None
+    for output_item in _iter_output_items(source):
+        if _get_value(output_item, "type") != "message":
+            continue
+
+        content_items = _get_value(output_item, "content")
+        if not isinstance(content_items, list):
+            continue
+
+        for content_item in content_items:
+            if _get_value(content_item, "type") == "output_text":
+                text_block = content_item
+
+    return text_block
+
+
+def _get_supported_annotations(text_block: Any, text_length: int) -> list[Any]:
+    """Return supported file citation annotations ordered by insertion index.
+
+    Args:
+        text_block: Responses API output text block.
+        text_length: Length of the text that owns the annotations.
+
+    Returns:
+        list[Any]: Supported annotations sorted by index.
+    """
+
+    annotations = _get_value(text_block, "annotations")
+    if not isinstance(annotations, list):
+        return []
+
+    supported_annotations = []
+    for annotation in annotations:
+        annotation_type = _get_value(annotation, "type")
+        annotation_index = _get_value(annotation, "index")
+        is_supported_type = annotation_type in (None, "file_citation")
+        is_valid_index = (
+            isinstance(annotation_index, int) and 0 <= annotation_index <= text_length
+        )
+        if is_supported_type and is_valid_index:
+            supported_annotations.append(annotation)
+
+    return sorted(
+        supported_annotations,
+        key=lambda annotation: _get_value(annotation, "index"),
+    )
 
 
 def _iter_file_search_results(source: Any) -> Iterator[Any]:
@@ -374,11 +492,16 @@ def _iter_output_items(source: Any) -> Iterator[Any]:
         yield from output
 
 
-def _build_reference(result: Any) -> dict[str, Any] | None:
+def _build_reference(
+    result: Any,
+    allow_unknown_file: bool = False,
+) -> dict[str, Any] | None:
     """Build one normalized reference from a file search result.
 
     Args:
         result: Raw file search result object or dictionary.
+        allow_unknown_file: Whether to keep a reference without a source file
+            name using a deterministic placeholder.
 
     Returns:
         dict[str, Any] | None: Normalized reference, or None when the result
@@ -390,9 +513,14 @@ def _build_reference(result: Any) -> dict[str, Any] | None:
         ("filename", "file_name", "fileName", "name"),
     )
     if not file_name:
-        return None
+        if not allow_unknown_file:
+            return None
 
-    attributes = _get_mapping(result, "attributes")
+        file_name = "unknown_file"
+
+    attributes = _get_mapping(result, "additional_properties")
+    if not attributes:
+        attributes = _get_mapping(result, "attributes")
     page = _extract_page(attributes)
     metadata = _build_reference_metadata(result, attributes)
 
@@ -451,6 +579,20 @@ def _extract_page(attributes: dict[str, Any]) -> int | None:
             return value
         if isinstance(value, str) and value.isdigit() and int(value) > 0:
             return int(value)
+
+    page_numbers = attributes.get("page_numbers")
+    if not isinstance(page_numbers, list):
+        page_numbers = [page_numbers]
+
+    for page_number in page_numbers:
+        if isinstance(page_number, int) and page_number > 0:
+            return page_number
+        if (
+            isinstance(page_number, str)
+            and page_number.isdigit()
+            and int(page_number) > 0
+        ):
+            return int(page_number)
 
     return None
 

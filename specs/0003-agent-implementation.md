@@ -184,6 +184,20 @@ BASE_URL = (
 
 The `openai` client must authenticate with an OpenAI-compatible API key provided through an environment variable.
 
+The `openai` client must also pass the configured compartment identifier through
+the OCI Enterprise AI OpenAI-compatible extension:
+
+```python
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    base_url=BASE_URL,
+    project=OCI_PROJECT_ID,
+    default_headers={
+        "extra_body": json.dumps({"compartmentId": OCI_COMPARTMENT_ID})
+    },
+)
+```
+
 The agent must use the Responses API to:
 
 - Create a conversation with `client.conversations.create` when the request starts a new conversation.
@@ -246,15 +260,17 @@ conversation_id = conversation.id
 
 When `new_conversation=false`, the agent must use the `conversation_id` provided by the validated request payload.
 
-The implementation must extract references from Responses API file search results
-included through `include=["file_search_call.results"]`.
+The implementation must extract references from Responses API output text
+annotations when file citation annotations are available. When annotations are
+not available, it must fall back to file search results included through
+`include=["file_search_call.results"]`.
 
 Each reference must follow the response schema:
 
 - `file_name`: Source file name returned by file search.
 - `page`: Page number when available, otherwise `null`.
 - `metadata`: Additional retrieval metadata, including available file id, score,
-  text excerpt, and file attributes.
+  text excerpt, file attributes, and page number lists when available.
 
 Reference extraction must be defensive. Missing or partially populated file search
 results must not fail the whole response.

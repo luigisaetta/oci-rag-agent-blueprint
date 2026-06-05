@@ -31,20 +31,29 @@ class FakeOpenAI:
         api_key: API key passed to the client constructor.
         base_url: Base URL passed to the client constructor.
         project: Project identifier passed to the client constructor.
+        default_headers: Default headers passed to the client constructor.
     """
 
-    def __init__(self, api_key: str, base_url: str, project: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        project: str,
+        default_headers: dict[str, str],
+    ) -> None:
         """Store constructor arguments for assertions.
 
         Args:
             api_key: API key passed by the application.
             base_url: Base URL passed by the application.
             project: Project identifier passed by the application.
+            default_headers: Default headers passed by the application.
         """
 
         self.api_key = api_key
         self.base_url = base_url
         self.project = project
+        self.default_headers = default_headers
 
 
 def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
@@ -86,4 +95,8 @@ def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> Non
         client.base_url
         == "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com"
         "/openai/v1"
+    )
+    assert (
+        client.default_headers["extra_body"]
+        == '{"compartmentId": "ocid1.compartment.oc1..example"}'
     )

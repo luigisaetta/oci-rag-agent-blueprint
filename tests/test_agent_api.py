@@ -5,7 +5,7 @@ License: MIT
 Description: Unit tests for the OCI RAG agent FastAPI API.
 """
 
-# pylint: disable=too-few-public-methods
+# pylint: disable=too-few-public-methods,too-many-arguments,too-many-positional-arguments
 
 from __future__ import annotations
 
@@ -109,6 +109,7 @@ class FakeResponses:
         fail: bool = False,
         fail_stream_after_token: bool = False,
         nested_results: bool = False,
+        annotation_refs: bool = False,
     ) -> None:
         """Initialize fake responses state.
 
@@ -116,11 +117,13 @@ class FakeResponses:
             fail: Whether response creation should raise an error.
             fail_stream_after_token: Whether streaming should fail after a token.
             nested_results: Whether file search results use an alternate shape.
+            annotation_refs: Whether references are returned as text annotations.
         """
 
         self.fail = fail
         self.fail_stream_after_token = fail_stream_after_token
         self.nested_results = nested_results
+        self.annotation_refs = annotation_refs
         self.create_calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, Any]]:
@@ -154,7 +157,13 @@ class FakeResponses:
                 {
                     "type": "response.completed",
                     "response": {
-                        "output": [_fake_file_search_call()],
+                        "output": [
+                            (
+                                _fake_annotated_message()
+                                if self.annotation_refs
+                                else _fake_file_search_call()
+                            )
+                        ],
                     },
                 },
             ]
@@ -162,7 +171,7 @@ class FakeResponses:
         return FakeResponse(
             id="resp-123",
             output_text="Agent answer",
-            output=[] if self.nested_results else [_fake_file_search_call()],
+            output=_fake_response_output(self.nested_results, self.annotation_refs),
             nested_payload=(
                 _fake_nested_file_search_payload() if self.nested_results else None
             ),
@@ -178,6 +187,7 @@ class FakeOpenAIClient:
         fail_conversation: bool = False,
         fail_stream_after_token: bool = False,
         nested_results: bool = False,
+        annotation_refs: bool = False,
     ) -> None:
         """Initialize fake OpenAI-compatible client.
 
@@ -186,6 +196,7 @@ class FakeOpenAIClient:
             fail_conversation: Whether conversation creation should fail.
             fail_stream_after_token: Whether streaming should fail after a token.
             nested_results: Whether file search results use an alternate shape.
+            annotation_refs: Whether references are returned as text annotations.
         """
 
         self.conversations = FakeConversations(fail=fail_conversation)
@@ -193,6 +204,7 @@ class FakeOpenAIClient:
             fail=fail,
             fail_stream_after_token=fail_stream_after_token,
             nested_results=nested_results,
+            annotation_refs=annotation_refs,
         )
 
 
@@ -378,6 +390,32 @@ def test_extracts_references_from_nested_response_payload(monkeypatch: Any) -> N
     ]
 
 
+def test_extracts_references_from_output_text_annotations(monkeypatch: Any) -> None:
+    """Test reference extraction from Responses API citation annotations."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient(annotation_refs=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={"new_conversation": True, "user_request": "Answer this"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["agent_response"] == "Agent [1] answer"
+    assert response.json()["references"] == [
+        {
+            "file_name": "annotated-guide.md",
+            "page": 7,
+            "metadata": {
+                "attributes": {"page_numbers": [7, 8]},
+                "file_id": "file-annotated",
+            },
+        }
+    ]
+
+
 def test_responses_api_failure(monkeypatch: Any) -> None:
     """Test Responses API failure handling."""
 
@@ -524,6 +562,55 @@ def _fake_file_search_call() -> dict[str, Any]:
                 "score": 0.91,
                 "text": "Architecture overview excerpt",
                 "attributes": {"page": 2, "section": "overview"},
+            }
+        ],
+    }
+
+
+def _fake_response_output(
+    nested_results: bool,
+    annotation_refs: bool,
+) -> list[dict[str, Any]]:
+    """Build fake response output for reference extraction tests.
+
+    Args:
+        nested_results: Whether to omit direct file search call results.
+        annotation_refs: Whether to return an annotated output text message.
+
+    Returns:
+        list[dict[str, Any]]: Fake Responses API output.
+    """
+
+    if annotation_refs:
+        return [_fake_annotated_message()]
+    if nested_results:
+        return []
+
+    return [_fake_file_search_call()]
+
+
+def _fake_annotated_message() -> dict[str, Any]:
+    """Build a fake output text message with one file citation annotation.
+
+    Returns:
+        dict[str, Any]: Fake Responses API message output item.
+    """
+
+    return {
+        "type": "message",
+        "content": [
+            {
+                "type": "output_text",
+                "text": "Agent answer",
+                "annotations": [
+                    {
+                        "type": "file_citation",
+                        "index": 6,
+                        "filename": "annotated-guide.md",
+                        "file_id": "file-annotated",
+                        "additional_properties": {"page_numbers": [7, 8]},
+                    }
+                ],
             }
         ],
     }
