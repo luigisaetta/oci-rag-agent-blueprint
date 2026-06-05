@@ -16,6 +16,7 @@ You need:
 - Docker installed locally.
 - OCI CLI configured for the target tenancy and region.
 - Permission to create and manage OCI Generative AI resources.
+- Permission to create and manage the Object Storage bucket used for knowledge base file uploads.
 - Permission to push container images to OCI Container Registry.
 
 The OCI Generative AI documentation states that access to Generative AI resources is controlled through OCI IAM policies and that the aggregate `generative-ai-family` resource type can be used for broad access to Generative AI resources in a compartment or tenancy [[1]](https://docs.oracle.com/en-us/iaas/Content/generative-ai/iam-policies.htm).
@@ -87,6 +88,18 @@ allow group <group-name> to manage repos in compartment <compartment-name>
 
 OCI Container Registry policies control repository access, including read and manage access for groups [[10]](https://docs.public.content.oci.oraclecloud.com/iaas/Content/Registry/Concepts/registrypolicyrepoaccess.htm).
 
+### Object Storage Policy For Knowledge Base Uploads
+
+The deploying user or group must be able to create and manage the Object Storage bucket used as the staging area for knowledge base documents.
+
+Example:
+
+```text
+allow group <group-name> to manage object-family in compartment <compartment-name>
+```
+
+Use a narrower Object Storage policy for production deployments when the target bucket and operational model are known.
+
 ### Hosted Application Pull Policy
 
 Hosted deployments use a Docker image artifact stored in OCIR. OCI documentation states that deployments select a container image and tag, and that deployments require IAM policies and dynamic groups for image access [[11]](https://docs.oracle.com/en-us/iaas/Content/generative-ai/deployments.htm).
@@ -137,7 +150,7 @@ allow dynamic-group <dynamic-group-name> to read object-family in compartment <c
 
 ## Region Consistency
 
-The OCI Generative AI project, API key, vector store, model endpoint, and hosted deployment must be created in the same OCI region.
+The OCI Generative AI project, API key, vector store, Object Storage bucket, model endpoint, and hosted deployment must be created in the same OCI region.
 
 This project builds the OpenAI-compatible OCI endpoint from `OCI_REGION`:
 
@@ -189,9 +202,33 @@ Record the vector store identifier. It will be used as:
 OCI_VECTOR_STORE_ID
 ```
 
-The project, API key, and vector store are region-scoped and must belong to the same region used by the deployment.
+The project, API key, vector store, and Object Storage bucket are region-scoped and must belong to the same region used by the deployment.
 
-### 4. Create The Docker Container
+### 4. Create An Object Storage Bucket
+
+Create an Object Storage bucket in the same region and compartment.
+
+This bucket is the staging location for the documents that must be loaded into the vector store.
+
+Upload the knowledge base files to this bucket.
+
+The file formats supported by this first guide are:
+
+- PDF files (`.pdf`)
+- Plain text files (`.txt`)
+- Markdown files (`.md`)
+
+### 5. Create A Data Sync Connector In The Vector Store
+
+Create a Data Sync Connector in the vector store.
+
+The connector links the Object Storage bucket to the vector store and enables synchronization between uploaded documentation files and the vector store knowledge base.
+
+After uploading one or more files to the bucket, start a synchronization job.
+
+The synchronization job can be started from the OCI Cloud Console or through an automation script.
+
+### 6. Create The Docker Container
 
 Build the backend container image from the repository root:
 
@@ -219,7 +256,7 @@ Required environment variables:
 | `OCI_VECTOR_STORE_ID` | Vector store identifier used by file search. |
 | `OPENAI_API_KEY` | OCI Generative AI OpenAI-compatible API key secret. |
 
-### 5. Store The Image In OCI Container Registry
+### 7. Store The Image In OCI Container Registry
 
 Tag the image for OCIR.
 
@@ -242,7 +279,7 @@ Use a non-floating tag for customer deployments, for example:
 0.1.0
 ```
 
-### 6. Create And Configure The Hosted Application
+### 8. Create And Configure The Hosted Application
 
 Create a Hosted Application in OCI Enterprise AI / OCI Generative AI.
 
@@ -257,17 +294,17 @@ Configure at least:
 - Authentication settings.
 - Runtime environment variables.
 
-Set the runtime variables listed in step 4.
+Set the runtime variables listed in step 6.
 
 For a public demo endpoint, use the platform public endpoint option. For an enterprise deployment, evaluate private endpoint and customer networking mode.
 
-### 7. Create A Deployment In The Hosted Application
+### 9. Create A Deployment In The Hosted Application
 
 Create a deployment inside the hosted application and link it to the OCIR image.
 
 Hosted deployments are versioned releases of an application. A deployment selects a container image and tag; activating it makes it the running version for the application [[11]](https://docs.oracle.com/en-us/iaas/Content/generative-ai/deployments.htm).
 
-Use the image pushed in step 5:
+Use the image pushed in step 7:
 
 ```text
 <region-key>.ocir.io/<tenancy-namespace>/<repo-name>:<tag>
