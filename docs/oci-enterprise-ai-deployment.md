@@ -263,6 +263,8 @@ The `.env` file must not be committed to source control.
 
 For Hosted Application deployment in OCI Enterprise AI, the `.env` file is not used by the runtime. All environment variables and their real values must be correctly defined in the Hosted Application runtime configuration.
 
+See [Environment Variables](environment-variables.md) for the complete runtime configuration reference.
+
 | Variable | Description |
 | --- | --- |
 | `OCI_REGION` | OCI region used to build the OpenAI-compatible endpoint. |

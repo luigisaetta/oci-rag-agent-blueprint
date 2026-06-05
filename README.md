@@ -10,6 +10,8 @@ Retrieval-Augmented Generation becomes truly useful when it is treated as an eng
 
 The goal is to provide a practical foundation for creating and deploying a RAG solution in OCI Enterprise AI, using OCI Enterprise AI **Vector Store** as the retrieval layer and the **Responses API** as the interaction layer.
 
+Start with [QUICKSTART.md](QUICKSTART.md) for the end-to-end customer path from OCI resource setup to the first working RAG demo.
+
 ## What This Project Is
 
 This project contains a blueprint and a set of guidelines for creating and deploying a RAG solution in OCI Enterprise AI. It is intended to help teams move from an idea to a repeatable implementation by combining:
@@ -68,6 +70,8 @@ The local Docker Compose deployment includes:
 - `rag-ui`, the Next.js reference UI exposed on `http://localhost:3000`.
 
 Before starting the demo, create a root `.env` file from `.env.sample` and fill in the required OCI Enterprise AI values.
+
+See [Environment Variables](docs/environment-variables.md) for the complete runtime configuration reference.
 
 Start both services:
 
