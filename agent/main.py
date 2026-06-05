@@ -17,7 +17,11 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from agent.agent import process_agent_request, stream_agent_request
 from agent.config import load_settings
 from agent.openai_client import create_openai_client
-from agent.schema_validator import SchemaValidationError, validate_agent_request
+from agent.schema_validator import (
+    SchemaValidationError,
+    validate_agent_request,
+    validate_agent_response,
+)
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -117,7 +121,7 @@ def _handle_validated_response_request(
         client_factory,
     )
 
-    return JSONResponse(response_payload)
+    return JSONResponse(validate_agent_response(response_payload))
 
 
 def _error_response(error: str, status_code: int) -> JSONResponse:
@@ -131,13 +135,11 @@ def _error_response(error: str, status_code: int) -> JSONResponse:
         JSONResponse: Error response conforming to the agent response schema.
     """
 
-    return JSONResponse(
-        {
-            "conversation_id": "",
-            "response_id": None,
-            "agent_response": "",
-            "references": [],
-            "error": error,
-        },
-        status_code=status_code,
-    )
+    error_payload = {
+        "conversation_id": "",
+        "response_id": None,
+        "agent_response": "",
+        "references": [],
+        "error": error,
+    }
+    return JSONResponse(validate_agent_response(error_payload), status_code=status_code)

@@ -81,6 +81,10 @@ The agent must receive input and return output using JSON payloads.
 
 Incoming request payloads must be validated against a JSON Schema provided by the project.
 
+Outgoing non-streaming response payloads must be validated against a JSON Schema provided by the project before they are returned to the client.
+
+The implementation must use the `jsonschema` Python package for request and response JSON Schema validation instead of hand-rolled schema parsing logic.
+
 The request schema is defined in [Agent Request Schema](../schemas/agent-request.schema.json).
 
 The response schema is defined in [Agent Response Schema](../schemas/agent-response.schema.json).
