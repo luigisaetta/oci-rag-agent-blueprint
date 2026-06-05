@@ -1,5 +1,11 @@
 # OCI RAG Agent Blueprint
 
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![black](https://img.shields.io/badge/code%20style-black-000000)
+![pylint](https://img.shields.io/badge/lint-pylint-yellowgreen)
+![pytest](https://img.shields.io/badge/tests-pytest-blueviolet)
+![spec-driven](https://img.shields.io/badge/development-spec--driven-orange)
+
 Retrieval-Augmented Generation becomes truly useful when it is treated as an engineered system, not as a demo stitched together around a prompt. This repository is a blueprint for building that system on OCI Enterprise AI: grounded retrieval, clear deployment guidance, and agent behavior specified before code is written.
 
 The goal is to provide a practical foundation for creating and deploying a RAG solution in Oracle Cloud Infrastructure, using OCI Vector Store as the retrieval layer and the Responses API as the interaction layer.
