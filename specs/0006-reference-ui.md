@@ -15,6 +15,7 @@ This document covers:
 - Backend URL configuration.
 - Conversation reset behavior.
 - Streaming response rendering.
+- Markdown rendering for assistant responses.
 - Light and dark visual themes.
 - Local Docker Compose deployment.
 
@@ -64,6 +65,25 @@ http://localhost:8080/responses
 The main area must display user and agent messages in a familiar chatbot style.
 
 The main area must include a message composer that allows users to submit questions.
+
+## Markdown Rendering
+
+Assistant responses must be rendered as Markdown because model output commonly
+contains Markdown formatting.
+
+The UI must support at least:
+
+- Paragraphs.
+- Headings.
+- Ordered and unordered lists.
+- Inline code and fenced code blocks.
+- Links.
+- Tables.
+
+User messages may be rendered as plain text.
+
+Markdown content must remain visually contained inside the message bubble and
+must not break the chat layout on narrow screens.
 
 ## Conversation Behavior
 
@@ -149,6 +169,7 @@ The `rag-ui` service must:
 - The UI has an editable backend URL field defaulting to `http://localhost:8080/responses`.
 - The UI supports light and dark themes.
 - The UI displays user and assistant messages in chatbot style.
+- The UI renders assistant Markdown responses correctly.
 - The UI sends streaming requests to the backend.
 - The UI renders streamed assistant tokens as they arrive.
 - The UI stores and reuses the active backend `conversation_id`.

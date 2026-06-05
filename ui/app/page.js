@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
 
@@ -284,7 +286,15 @@ export default function Home() {
               <article key={message.id} className={`message ${message.role}`}>
                 <div className="avatar">{message.role === "user" ? "You" : "AI"}</div>
                 <div className="bubble">
-                  <p>{message.content || (message.status === "streaming" ? "..." : "")}</p>
+                  {message.role === "assistant" ? (
+                    <div className="markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {message.content || (message.status === "streaming" ? "..." : "")}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p>{message.content}</p>
+                  )}
                 </div>
               </article>
             ))

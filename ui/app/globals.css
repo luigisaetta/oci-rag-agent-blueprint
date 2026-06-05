@@ -100,7 +100,8 @@ button {
 .topBar p,
 .emptyState h3,
 .emptyState p,
-.bubble p {
+.bubble p,
+.markdown > :first-child {
   margin: 0;
 }
 
@@ -344,6 +345,91 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.58;
+}
+
+.markdown {
+  overflow-wrap: anywhere;
+  line-height: 1.58;
+}
+
+.markdown > * + * {
+  margin-top: 0.78rem;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  margin-bottom: 0;
+  line-height: 1.25;
+}
+
+.markdown h1 {
+  font-size: 1.3rem;
+}
+
+.markdown h2 {
+  font-size: 1.15rem;
+}
+
+.markdown h3 {
+  font-size: 1.02rem;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.25rem;
+}
+
+.markdown li + li {
+  margin-top: 0.35rem;
+}
+
+.markdown a {
+  color: var(--accent-strong);
+}
+
+.markdown code {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.12rem 0.34rem;
+  background: var(--surface-strong);
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-strong);
+}
+
+.markdown pre code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th {
+  background: var(--surface-strong);
 }
 
 .errorBar {
