@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/luigisaetta/oci-rag-agent-blueprint/schemas/agent-request.schema.json",
+  "title": "AgentRequest",
+  "description": "Request payload accepted by the RAG agent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["new_conversation", "user_request"],
+  "properties": {
+    "new_conversation": {
+      "description": "When true, the agent starts a new conversation. When false, conversation_id must identify an existing conversation.",
+      "type": "boolean"
+    },
+    "conversation_id": {
+      "description": "Existing conversation identifier. Required when new_conversation is false.",
+      "type": "string",
+      "minLength": 1
+    },
+    "user_request": {
+      "description": "User request text to be processed by the RAG agent.",
+      "type": "string",
+      "minLength": 1
+    },
+    "user_id": {
+      "description": "Optional user identifier reserved for future authentication, authorization, auditing, and personalization use cases.",
+      "type": "string"
+    },
+    "user_role": {
+      "description": "Optional user role reserved for future authorization and behavior customization use cases.",
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "new_conversation": {
+            "const": false
+          }
+        },
+        "required": ["new_conversation"]
+      },
+      "then": {
+        "required": ["conversation_id"]
+      }
+    }
+  ]
+}
