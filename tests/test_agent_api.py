@@ -410,6 +410,27 @@ def test_attaches_to_existing_conversation(monkeypatch: Any) -> None:
     assert fake_client.responses.create_calls[0]["conversation"] == "conv-existing"
 
 
+def test_uses_runtime_tuning_for_non_streaming_request(monkeypatch: Any) -> None:
+    """Test runtime tuning values in non-streaming Responses API calls."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("FILE_SEARCH_MAX_NUM_RESULTS", "3")
+    monkeypatch.setenv("RESPONSES_TIMEOUT_SECONDS", "42")
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={"new_conversation": True, "user_request": "Answer this"},
+    )
+
+    assert response.status_code == 200
+    create_call = fake_client.responses.create_calls[0]
+    assert create_call["timeout"] == 42
+    assert create_call["tools"][0]["max_num_results"] == 3
+
+
 def test_extracts_references_from_nested_response_payload(monkeypatch: Any) -> None:
     """Test defensive reference extraction for alternate SDK payload shapes."""
 
@@ -540,6 +561,39 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
             "response_id": "resp-stream",
             "include": ["file_search_call.results"],
             "timeout": 60,
+        }
+    ]
+
+
+def test_uses_runtime_tuning_for_streaming_request(monkeypatch: Any) -> None:
+    """Test runtime tuning values in streaming create and retrieve calls."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("FILE_SEARCH_MAX_NUM_RESULTS", "4")
+    monkeypatch.setenv("RESPONSES_TIMEOUT_SECONDS", "55")
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    create_call = fake_client.responses.create_calls[0]
+    assert create_call["stream"] is True
+    assert create_call["timeout"] == 55
+    assert create_call["tools"][0]["max_num_results"] == 4
+    assert fake_client.responses.retrieve_calls == [
+        {
+            "response_id": "resp-stream",
+            "include": ["file_search_call.results"],
+            "timeout": 55,
         }
     ]
 

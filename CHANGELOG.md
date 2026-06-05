@@ -28,3 +28,7 @@ changes, or documentation updates are introduced.
 - Updated the Python CLI test client to display token usage.
 - Updated the Next.js UI sidebar to show cumulative input and output token usage
   for the active conversation.
+- Added an agent runtime tuning specification for file search result count and
+  Responses API timeout configuration.
+- Implemented runtime tuning for file search result count and Responses API
+  timeout through environment variables.

@@ -23,7 +23,6 @@ from agent.references import (
 from agent.usage import extract_usage
 
 LOGGER = logging.getLogger(__name__)
-RESPONSES_TIMEOUT_SECONDS = 60
 OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta"
 
 AGENT_INSTRUCTIONS = """
@@ -77,7 +76,7 @@ def process_agent_request(
 
     response = client.responses.create(
         **_build_response_request(payload, settings, conversation_id),
-        timeout=RESPONSES_TIMEOUT_SECONDS,
+        timeout=settings.responses_timeout_seconds,
     )
 
     response_id = getattr(response, "id", None)
@@ -131,7 +130,7 @@ def stream_agent_request(
             token_events_emitted += 1
             yield _format_sse_event("token", {"text": token})
 
-        _complete_stream_state(client, stream_state)
+        _complete_stream_state(client, stream_state, settings)
         yield from _iter_stream_final_events(conversation_id, stream_state)
     except JSONDecodeError as exc:
         if token_events_emitted:
@@ -140,7 +139,7 @@ def stream_agent_request(
                 token_events_emitted,
                 exc,
             )
-            _complete_stream_state(client, stream_state)
+            _complete_stream_state(client, stream_state, settings)
             yield from _iter_stream_final_events(conversation_id, stream_state)
         else:
             LOGGER.exception("Responses API streaming parser failure")
@@ -172,7 +171,7 @@ def _stream_response_tokens(
 
     stream = client.responses.create(
         **_build_response_request(payload, settings, conversation_id),
-        timeout=RESPONSES_TIMEOUT_SECONDS,
+        timeout=settings.responses_timeout_seconds,
         stream=True,
     )
 
@@ -208,12 +207,14 @@ def _capture_stream_response_id(
 def _complete_stream_state(
     client: Any,
     stream_state: StreamState,
+    settings: AgentSettings,
 ) -> None:
     """Complete stream state by retrieving final response data.
 
     Args:
         client: OpenAI-compatible client.
         stream_state: Stream metadata containing the response ID.
+        settings: Runtime settings for Responses API timeout configuration.
     """
 
     if client is None:
@@ -227,7 +228,7 @@ def _complete_stream_state(
         response = client.responses.retrieve(
             response_id,
             include=["file_search_call.results"],
-            timeout=RESPONSES_TIMEOUT_SECONDS,
+            timeout=settings.responses_timeout_seconds,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.warning("Unable to retrieve streamed response data: %s", exc)
@@ -321,7 +322,7 @@ def _build_file_search_tool(settings: AgentSettings) -> dict[str, Any]:
     return {
         "type": "file_search",
         "vector_store_ids": [settings.oci_vector_store_id],
-        "max_num_results": 10,
+        "max_num_results": settings.file_search_max_num_results,
     }
 
 

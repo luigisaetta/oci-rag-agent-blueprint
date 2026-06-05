@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from agent.config import AgentSettings, load_settings
 from agent.openai_client import create_openai_client
 
@@ -72,6 +74,49 @@ def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
         == "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com"
         "/openai/v1"
     )
+    assert settings.file_search_max_num_results == 10
+    assert settings.responses_timeout_seconds == 60
+
+
+def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
+    """Test optional runtime tuning values."""
+
+    for env_name, env_value in REQUIRED_ENV.items():
+        monkeypatch.setenv(env_name, env_value)
+    monkeypatch.setenv("FILE_SEARCH_MAX_NUM_RESULTS", "7")
+    monkeypatch.setenv("RESPONSES_TIMEOUT_SECONDS", "120")
+
+    settings = load_settings()
+
+    assert settings.file_search_max_num_results == 7
+    assert settings.responses_timeout_seconds == 120
+
+
+@pytest.mark.parametrize(
+    ("env_name", "env_value", "expected_message"),
+    [
+        ("FILE_SEARCH_MAX_NUM_RESULTS", "0", "integer from 1 to 50"),
+        ("FILE_SEARCH_MAX_NUM_RESULTS", "51", "integer from 1 to 50"),
+        ("FILE_SEARCH_MAX_NUM_RESULTS", "many", "integer from 1 to 50"),
+        ("RESPONSES_TIMEOUT_SECONDS", "0", "integer from 1 to 300"),
+        ("RESPONSES_TIMEOUT_SECONDS", "301", "integer from 1 to 300"),
+        ("RESPONSES_TIMEOUT_SECONDS", "slow", "integer from 1 to 300"),
+    ],
+)
+def test_load_settings_rejects_invalid_runtime_tuning(
+    monkeypatch: Any,
+    env_name: str,
+    env_value: str,
+    expected_message: str,
+) -> None:
+    """Test invalid runtime tuning values fail configuration loading."""
+
+    for required_name, required_value in REQUIRED_ENV.items():
+        monkeypatch.setenv(required_name, required_value)
+    monkeypatch.setenv(env_name, env_value)
+
+    with pytest.raises(ValueError, match=expected_message):
+        load_settings()
 
 
 def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> None:

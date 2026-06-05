@@ -34,6 +34,8 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `OCI_MODEL_ID` | Yes | `openai.gpt-5.4` | Set in root `.env`. | Set as a runtime environment variable. | Model identifier selected from the supported OCI Enterprise AI model catalog. |
 | `OCI_VECTOR_STORE_ID` | Yes | `vs_...` | Set in root `.env`. | Set as a runtime environment variable. | Vector store identifier used by the Responses API `file_search` tool. |
 | `OPENAI_API_KEY` | Yes | `sk-...` | Set in root `.env`. | Set as a runtime environment variable, preferably through the most protected configuration mechanism available. | OpenAI-compatible API key created inside the OCI Enterprise AI project. Never log or commit this value. |
+| `FILE_SEARCH_MAX_NUM_RESULTS` | No | `10` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Maximum number of Vector Store file search results requested by the Responses API `file_search` tool. Accepted range: `1` to `50`. |
+| `RESPONSES_TIMEOUT_SECONDS` | No | `60` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Timeout in seconds for Responses API create and retrieve calls. Accepted range: `1` to `300`. |
 
 ## Region Consistency
 
@@ -54,6 +56,10 @@ If one or more required variables are missing, the agent must fail request handl
 If variables point to resources in different regions, the most common outcomes are authentication failures, project lookup failures, vector store lookup failures, or Responses API request errors.
 
 If `OPENAI_API_KEY` is invalid or missing required API key permissions, the agent cannot call OCI Enterprise AI.
+
+If optional tuning variables are missing, the agent uses their defaults. If they
+are present but invalid, the agent fails request handling before calling the
+Responses API.
 
 ## Security Rules
 
