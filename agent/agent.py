@@ -95,17 +95,11 @@ def stream_agent_request(
         LOGGER.info("Streaming request for conversation_id=%s", conversation_id)
         yield _format_sse_event("metadata", {"conversation_id": conversation_id})
 
-        stream = client.responses.create(
-            **_build_response_request(payload, settings, conversation_id),
-            timeout=RESPONSES_TIMEOUT_SECONDS,
-            stream=True,
-        )
-
-        for event in stream:
-            token = _extract_stream_token(event)
-            if token:
-                token_events_emitted += 1
-                yield _format_sse_event("token", {"text": token})
+        for token in _stream_response_tokens(
+            payload, settings, client, conversation_id
+        ):
+            token_events_emitted += 1
+            yield _format_sse_event("token", {"text": token})
 
         yield _format_sse_event("done", {"conversation_id": conversation_id})
     except JSONDecodeError as exc:
@@ -122,6 +116,36 @@ def stream_agent_request(
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.exception("Responses API streaming failure")
         yield _format_sse_event("error", {"error": f"Responses API failure: {exc}"})
+
+
+def _stream_response_tokens(
+    payload: dict[str, Any],
+    settings: AgentSettings,
+    client: Any,
+    conversation_id: str,
+) -> Iterator[str]:
+    """Yield final-answer tokens from a Responses API stream.
+
+    Args:
+        payload: Validated request payload.
+        settings: Runtime settings for model and vector store access.
+        client: OpenAI-compatible client.
+        conversation_id: Active conversation identifier.
+
+    Yields:
+        str: Final-answer text tokens.
+    """
+
+    stream = client.responses.create(
+        **_build_response_request(payload, settings, conversation_id),
+        timeout=RESPONSES_TIMEOUT_SECONDS,
+        stream=True,
+    )
+
+    for event in stream:
+        token = _extract_stream_token(event)
+        if token:
+            yield token
 
 
 def _resolve_conversation_id(payload: dict[str, Any], client: Any) -> str:
@@ -165,15 +189,26 @@ def _build_response_request(
         "instructions": AGENT_INSTRUCTIONS,
         "input": payload["user_request"],
         "conversation": conversation_id,
-        "tools": [
-            {
-                "type": "file_search",
-                "vector_store_ids": [settings.oci_vector_store_id],
-                "max_num_results": 10,
-            }
-        ],
+        "tools": [_build_file_search_tool(settings)],
         "tool_choice": "required",
         "include": ["file_search_call.results"],
+    }
+
+
+def _build_file_search_tool(settings: AgentSettings) -> dict[str, Any]:
+    """Build the Responses API file search tool configuration.
+
+    Args:
+        settings: Runtime settings containing the configured vector store.
+
+    Returns:
+        dict[str, Any]: File search tool configuration.
+    """
+
+    return {
+        "type": "file_search",
+        "vector_store_ids": [settings.oci_vector_store_id],
+        "max_num_results": 10,
     }
 
 

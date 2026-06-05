@@ -8,6 +8,7 @@ Description: FastAPI entrypoint for the OCI RAG agent.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,28 +71,51 @@ async def create_response(request: Request) -> Response:
         return _error_response(str(exc), status_code=400)
 
     try:
-        settings = load_settings()
-        if validated_payload.get("stream", False):
-            return StreamingResponse(
-                stream_agent_request(
-                    validated_payload,
-                    settings,
-                    request.app.state.openai_client_factory,
-                ),
-                media_type="text/event-stream",
-            )
-
-        response_payload = process_agent_request(
-            validated_payload,
-            settings,
-            request.app.state.openai_client_factory,
-        )
+        return _handle_validated_response_request(request, validated_payload)
     except ValueError as exc:
         LOGGER.info("Configuration error: %s", exc)
         return _error_response(str(exc), status_code=500)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.exception("Responses API failure")
         return _error_response(f"Responses API failure: {exc}", status_code=502)
+
+
+def _handle_validated_response_request(
+    request: Request,
+    validated_payload: dict[str, Any],
+) -> Response:
+    """Handle a schema-valid response request.
+
+    Args:
+        request: FastAPI request object.
+        validated_payload: Request payload already validated against JSON Schema.
+
+    Returns:
+        Response: Streaming or JSON response for the agent request.
+
+    Raises:
+        ValueError: If required runtime configuration is missing.
+        Exception: Propagates Responses API failures to the endpoint handler.
+    """
+
+    settings = load_settings()
+    client_factory = request.app.state.openai_client_factory
+
+    if validated_payload.get("stream", False):
+        return StreamingResponse(
+            stream_agent_request(
+                validated_payload,
+                settings,
+                client_factory,
+            ),
+            media_type="text/event-stream",
+        )
+
+    response_payload = process_agent_request(
+        validated_payload,
+        settings,
+        client_factory,
+    )
 
     return JSONResponse(response_payload)
 

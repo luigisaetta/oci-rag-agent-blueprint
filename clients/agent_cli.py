@@ -15,6 +15,8 @@ from typing import Iterable
 from urllib import error, request
 
 DEFAULT_ENDPOINT = "http://localhost:8080/responses"
+JSON_HEADERS = {"Content-Type": "application/json", "Accept": "application/json"}
+STREAM_HEADERS = {"Content-Type": "application/json", "Accept": "text/event-stream"}
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,7 @@ def parse_bool(value: str) -> bool:
         argparse.ArgumentTypeError: If the value is not true or false.
     """
 
-    normalized_value = value.lower()
+    normalized_value = value.strip().lower()
     if normalized_value == "true":
         return True
     if normalized_value == "false":
@@ -151,13 +153,7 @@ def send_streaming_request(
         RuntimeError: If the HTTP request fails.
     """
 
-    request_body = json.dumps(payload).encode("utf-8")
-    http_request = request.Request(
-        endpoint,
-        data=request_body,
-        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
-        method="POST",
-    )
+    http_request = _build_post_request(endpoint, payload, STREAM_HEADERS)
 
     try:
         with request.urlopen(http_request, timeout=120) as response:
@@ -184,13 +180,7 @@ def send_json_request(endpoint: str, payload: dict[str, object]) -> dict[str, ob
         RuntimeError: If the HTTP request fails.
     """
 
-    request_body = json.dumps(payload).encode("utf-8")
-    http_request = request.Request(
-        endpoint,
-        data=request_body,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
+    http_request = _build_post_request(endpoint, payload, JSON_HEADERS)
 
     try:
         with request.urlopen(http_request, timeout=120) as response:
@@ -203,6 +193,31 @@ def send_json_request(endpoint: str, payload: dict[str, object]) -> dict[str, ob
         raise RuntimeError(f"Unable to reach agent endpoint: {exc.reason}") from exc
 
 
+def _build_post_request(
+    endpoint: str,
+    payload: dict[str, object],
+    headers: dict[str, str],
+) -> request.Request:
+    """Build an HTTP POST request for the agent endpoint.
+
+    Args:
+        endpoint: Agent endpoint URL.
+        payload: JSON request payload.
+        headers: HTTP headers for the expected response mode.
+
+    Returns:
+        request.Request: Configured HTTP request.
+    """
+
+    request_body = json.dumps(payload).encode("utf-8")
+    return request.Request(
+        endpoint,
+        data=request_body,
+        headers=headers,
+        method="POST",
+    )
+
+
 def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     """Render a streaming response to the console.
 
@@ -211,14 +226,7 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
         payload: JSON request payload.
     """
 
-    print("OCI RAG Agent CLI")
-    print("=================")
-    print(f"Endpoint: {endpoint}")
-    print(f"Create conversation: {payload['new_conversation']}")
-    print("Stream: true")
-    if "conversation_id" in payload:
-        print(f"Conversation id: {payload['conversation_id']}")
-    print()
+    _print_request_header(endpoint, payload, stream=True)
     print("Response")
     print("--------")
 
@@ -242,14 +250,7 @@ def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
         payload: JSON request payload.
     """
 
-    print("OCI RAG Agent CLI")
-    print("=================")
-    print(f"Endpoint: {endpoint}")
-    print(f"Create conversation: {payload['new_conversation']}")
-    print("Stream: false")
-    if "conversation_id" in payload:
-        print(f"Conversation id: {payload['conversation_id']}")
-    print()
+    _print_request_header(endpoint, payload, stream=False)
 
     response_payload = send_json_request(endpoint, payload)
     conversation_id = response_payload.get("conversation_id", "")
@@ -267,6 +268,29 @@ def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
     references = response_payload.get("references", [])
     if isinstance(references, list):
         print(f"\n[references: {len(references)}]")
+
+
+def _print_request_header(
+    endpoint: str,
+    payload: dict[str, object],
+    stream: bool,
+) -> None:
+    """Print the common CLI request header.
+
+    Args:
+        endpoint: Agent endpoint URL.
+        payload: JSON request payload.
+        stream: Whether the request uses streaming.
+    """
+
+    print("OCI RAG Agent CLI")
+    print("=================")
+    print(f"Endpoint: {endpoint}")
+    print(f"Create conversation: {payload['new_conversation']}")
+    print(f"Stream: {str(stream).lower()}")
+    if "conversation_id" in payload:
+        print(f"Conversation id: {payload['conversation_id']}")
+    print()
 
 
 def build_parser() -> argparse.ArgumentParser:
