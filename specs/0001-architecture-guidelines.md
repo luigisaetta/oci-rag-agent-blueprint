@@ -19,6 +19,7 @@ The solution is composed of the following main areas:
 - OCI Object Storage buckets used as document staging locations.
 - OCI sync connectors used to synchronize Object Storage content with Vector Store instances.
 - An HTTPS endpoint exposing the RAG agent.
+- JSON-based request and response payloads for agent input and output.
 - A Docker-based packaging model.
 - Deployment support for both local testing and hosted deployment in OCI Enterprise AI.
 - A reference UI implemented with Next.js.
@@ -42,6 +43,8 @@ The RAG agent implementation must be entirely based on the Responses API.
 OCI Enterprise AI provides an implementation of the Responses API that is fully compatible with the OpenAI Responses API. The agent code must rely on that compatibility and avoid provider-specific behavior unless it is explicitly documented in a specification.
 
 The large language model used by the agent must be configurable. Configuration must allow selecting a model from a supported model catalog, including OpenAI models and non-OpenAI models such as Google Gemini when available through OCI Enterprise AI.
+
+The agent must receive input and return output through structured JSON payloads. The complete request and response schema will be defined in a dedicated agent API specification.
 
 ## Agent Exposure
 
@@ -100,7 +103,9 @@ The following topics require dedicated specifications:
 
 - Security model and JWT validation.
 - Agent API contract.
+- JSON request and response schema.
 - Vector store retrieval strategy.
+- Short-term memory and conversation management.
 - Object Storage to Vector Store synchronization setup.
 - Docker image structure.
 - Docker Compose local deployment.
