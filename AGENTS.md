@@ -32,6 +32,28 @@ Use the actual modification date when creating or updating a Python source file.
 
 All generated Python code must include accurate docstrings for modules, classes, methods, and functions where applicable. Docstrings must follow the Google Python docstring format and clearly describe purpose, arguments, return values, raised exceptions, and relevant behavior.
 
+## Human Readability and Maintainability
+
+Code generated for this repository must be optimised for human readability first.
+
+Generated code must be easy to read, review, test, and maintain by a human engineer. Prefer clear structure and explicit intent over cleverness, dense abstractions, or overly compact expressions.
+
+Follow these principles:
+
+- Use descriptive names for modules, classes, functions, methods, variables, and tests.
+- Keep functions focused on one clear responsibility.
+- Prefer straightforward control flow over deeply nested logic.
+- Extract helpers only when they reduce real complexity or meaningful duplication.
+- Keep public behavior easy to trace from request input to response output.
+- Make error handling explicit and predictable.
+- Avoid hidden side effects and implicit global state.
+- Keep configuration access centralized and easy to audit.
+- Use comments sparingly, only when they clarify non-obvious decisions or complex logic.
+- Preserve consistency with the existing code style and project structure.
+- Write tests that describe behavior clearly and can be understood as executable documentation.
+
+Readable code is part of the quality bar for this project. A change is not considered complete if it works technically but is unnecessarily difficult to understand or maintain.
+
 ## Spec-Driven Development Workflow
 
 1. Write or update the specification in `specs/`.
