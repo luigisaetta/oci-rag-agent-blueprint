@@ -26,3 +26,5 @@ changes, or documentation updates are introduced.
 - Implemented token usage extraction for non-streaming and streaming agent
   responses.
 - Updated the Python CLI test client to display token usage.
+- Updated the Next.js UI sidebar to show cumulative input and output token usage
+  for the active conversation.

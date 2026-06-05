@@ -5,6 +5,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
+const EMPTY_TOKEN_TOTALS = {
+  input: 0,
+  output: 0
+};
 
 function createMessage(role, content, status = "complete") {
   return {
@@ -63,6 +67,7 @@ function AssistantMessageContent({ message }) {
 export default function Home() {
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
   const [conversationId, setConversationId] = useState("");
+  const [tokenTotals, setTokenTotals] = useState(EMPTY_TOKEN_TOTALS);
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -106,8 +111,27 @@ export default function Home() {
     abortControllerRef.current = null;
     setMessages([]);
     setConversationId("");
+    setTokenTotals(EMPTY_TOKEN_TOTALS);
     setErrorMessage("");
     setIsSending(false);
+  }
+
+  function addUsageToTokenTotals(usage) {
+    if (!usage || typeof usage !== "object") {
+      return;
+    }
+
+    const inputTokens = Number.isInteger(usage.input_tokens)
+      ? usage.input_tokens
+      : 0;
+    const outputTokens = Number.isInteger(usage.output_tokens)
+      ? usage.output_tokens
+      : 0;
+
+    setTokenTotals((currentTotals) => ({
+      input: currentTotals.input + inputTokens,
+      output: currentTotals.output + outputTokens
+    }));
   }
 
   function appendAssistantToken(messageId, token) {
@@ -219,6 +243,10 @@ export default function Home() {
           appendAssistantToken(assistantMessageId, parsedFrame.data.text ?? "");
         }
 
+        if (parsedFrame.eventName === "usage") {
+          addUsageToTokenTotals(parsedFrame.data.usage);
+        }
+
         if (parsedFrame.eventName === "error") {
           const backendError = parsedFrame.data.error ?? "Backend stream error.";
           setErrorMessage(backendError);
@@ -272,6 +300,20 @@ export default function Home() {
           >
             Light
           </button>
+        </div>
+
+        <div className="tokenPanel" aria-label="Conversation token usage">
+          <span>Conversation tokens</span>
+          <div className="tokenGrid">
+            <div>
+              <small>Input</small>
+              <strong>{tokenTotals.input.toLocaleString()}</strong>
+            </div>
+            <div>
+              <small>Output</small>
+              <strong>{tokenTotals.output.toLocaleString()}</strong>
+            </div>
+          </div>
         </div>
 
         <div className="statusPanel">

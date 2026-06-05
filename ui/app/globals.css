@@ -196,6 +196,50 @@ button {
   color: var(--text);
 }
 
+.tokenPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.tokenPanel > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tokenGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tokenGrid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.tokenGrid small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.tokenGrid strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .statusPanel {
   display: grid;
   gap: 8px;
