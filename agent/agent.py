@@ -17,6 +17,7 @@ from agent.config import AgentSettings
 LOGGER = logging.getLogger(__name__)
 RESPONSES_TIMEOUT_SECONDS = 60
 OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta"
+
 AGENT_INSTRUCTIONS = """
 You are an OCI Enterprise AI RAG agent.
 Answer the user directly and concisely using the available knowledge base.
@@ -50,6 +51,7 @@ def process_agent_request(
     conversation_id = _resolve_conversation_id(payload, client)
 
     LOGGER.info("Processing request for conversation_id=%s", conversation_id)
+
     response = client.responses.create(
         **_build_response_request(payload, settings, conversation_id),
         timeout=RESPONSES_TIMEOUT_SECONDS,
@@ -167,8 +169,11 @@ def _build_response_request(
             {
                 "type": "file_search",
                 "vector_store_ids": [settings.oci_vector_store_id],
+                "max_num_results": 10,
             }
         ],
+        "tool_choice": "required",
+        "include": ["file_search_call.results"],
     }
 
 

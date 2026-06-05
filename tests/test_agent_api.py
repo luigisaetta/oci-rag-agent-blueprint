@@ -265,8 +265,11 @@ def test_creates_new_conversation_and_response(monkeypatch: Any) -> None:
                 {
                     "type": "file_search",
                     "vector_store_ids": ["test-vector-store"],
+                    "max_num_results": 10,
                 }
             ],
+            "tool_choice": "required",
+            "include": ["file_search_call.results"],
             "timeout": 60,
         }
     ]
