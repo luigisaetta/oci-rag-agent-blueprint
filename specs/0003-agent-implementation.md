@@ -206,6 +206,10 @@ stream = client.responses.create(
 )
 ```
 
+The agent must use only the Responses API surface exposed by the `openai` Python
+library. The implementation must not bypass the SDK with a custom raw HTTP client
+for Responses API calls.
+
 When `new_conversation=true`, the agent must first create a conversation:
 
 ```python
