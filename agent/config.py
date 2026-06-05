@@ -13,6 +13,7 @@ from os import environ
 REQUIRED_ENV_VARS = (
     "OCI_REGION",
     "OCI_COMPARTMENT_ID",
+    "OCI_PROJECT_ID",
     "OCI_MODEL_ID",
     "OCI_VECTOR_STORE_ID",
     "OPENAI_API_KEY",
@@ -26,6 +27,7 @@ class AgentSettings:
     Attributes:
         oci_region: OCI region used to build the OCI Enterprise AI endpoint.
         oci_compartment_id: OCI compartment identifier.
+        oci_project_id: OCI Enterprise AI project identifier.
         oci_model_id: Model identifier used by Responses API calls.
         oci_vector_store_id: Vector store identifier used for file search.
         openai_api_key: OpenAI-compatible API key for OCI Enterprise AI.
@@ -33,6 +35,7 @@ class AgentSettings:
 
     oci_region: str
     oci_compartment_id: str
+    oci_project_id: str
     oci_model_id: str
     oci_vector_store_id: str
     openai_api_key: str
@@ -69,6 +72,7 @@ def load_settings() -> AgentSettings:
     return AgentSettings(
         oci_region=environ["OCI_REGION"],
         oci_compartment_id=environ["OCI_COMPARTMENT_ID"],
+        oci_project_id=environ["OCI_PROJECT_ID"],
         oci_model_id=environ["OCI_MODEL_ID"],
         oci_vector_store_id=environ["OCI_VECTOR_STORE_ID"],
         openai_api_key=environ["OPENAI_API_KEY"],

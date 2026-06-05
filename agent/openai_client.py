@@ -24,4 +24,8 @@ def create_openai_client(settings: AgentSettings) -> Any:
         Any: Configured OpenAI client instance.
     """
 
-    return OpenAI(api_key=settings.openai_api_key, base_url=settings.base_url)
+    return OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.base_url,
+        project=settings.oci_project_id,
+    )

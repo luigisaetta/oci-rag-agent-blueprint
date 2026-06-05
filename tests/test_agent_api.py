@@ -19,6 +19,7 @@ from agent.main import app
 REQUIRED_ENV = {
     "OCI_REGION": "eu-frankfurt-1",
     "OCI_COMPARTMENT_ID": "ocid1.compartment.oc1..example",
+    "OCI_PROJECT_ID": "ocid1.generativeaiproject.oc1..example",
     "OCI_MODEL_ID": "test-model",
     "OCI_VECTOR_STORE_ID": "test-vector-store",
     "OPENAI_API_KEY": "test-api-key",

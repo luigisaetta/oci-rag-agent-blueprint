@@ -54,6 +54,7 @@ The local deployment must pass at least the following environment variables to t
 | --- | --- |
 | `OCI_REGION` | OCI region used to build the OCI Enterprise AI endpoint. |
 | `OCI_COMPARTMENT_ID` | OCI compartment identifier used by the deployment and API calls. |
+| `OCI_PROJECT_ID` | OCI Enterprise AI project identifier passed to the OpenAI-compatible client. |
 | `OCI_MODEL_ID` | Model identifier selected from the supported OCI Enterprise AI model catalog. |
 | `OCI_VECTOR_STORE_ID` | Vector store identifier used by the Responses API file search tool. |
 | `OPENAI_API_KEY` | OpenAI-compatible API key used by the `openai` client to authenticate to OCI Enterprise AI. |
