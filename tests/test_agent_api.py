@@ -52,9 +52,14 @@ class FakeResponse:
 class FakeConversations:
     """Mock Conversations API surface."""
 
-    def __init__(self) -> None:
-        """Initialize fake conversations state."""
+    def __init__(self, fail: bool = False) -> None:
+        """Initialize fake conversations state.
 
+        Args:
+            fail: Whether conversation creation should raise an error.
+        """
+
+        self.fail = fail
         self.create_calls = 0
 
     def create(self) -> FakeConversation:
@@ -63,6 +68,9 @@ class FakeConversations:
         Returns:
             FakeConversation: Created fake conversation.
         """
+
+        if self.fail:
+            raise RuntimeError("conversation unavailable")
 
         self.create_calls += 1
         return FakeConversation(id="conv-new")
@@ -107,14 +115,15 @@ class FakeResponses:
 class FakeOpenAIClient:
     """Mock OpenAI-compatible client."""
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, fail_conversation: bool = False) -> None:
         """Initialize fake OpenAI-compatible client.
 
         Args:
             fail: Whether Responses API calls should fail.
+            fail_conversation: Whether conversation creation should fail.
         """
 
-        self.conversations = FakeConversations()
+        self.conversations = FakeConversations(fail=fail_conversation)
         self.responses = FakeResponses(fail=fail)
 
 
@@ -303,6 +312,28 @@ def test_rejects_invalid_stream_field(monkeypatch: Any) -> None:
     assert response.status_code == 400
     assert "Field must be a boolean: stream" in response.json()["error"]
     assert not fake_client.responses.create_calls
+
+
+def test_streams_error_when_conversation_creation_fails(monkeypatch: Any) -> None:
+    """Test streaming error events for early Responses API failures."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient(fail_conversation=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: error" in response.text
+    assert "Responses API failure: conversation unavailable" in response.text
 
 
 def _set_required_env(monkeypatch: Any) -> None:

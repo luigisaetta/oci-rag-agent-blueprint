@@ -83,12 +83,12 @@ def stream_agent_request(
         str: Server-Sent Event frames.
     """
 
-    client = client_factory(settings)
-    conversation_id = _resolve_conversation_id(payload, client)
-    LOGGER.info("Streaming request for conversation_id=%s", conversation_id)
-    yield _format_sse_event("metadata", {"conversation_id": conversation_id})
-
     try:
+        client = client_factory(settings)
+        conversation_id = _resolve_conversation_id(payload, client)
+        LOGGER.info("Streaming request for conversation_id=%s", conversation_id)
+        yield _format_sse_event("metadata", {"conversation_id": conversation_id})
+
         stream = client.responses.create(
             model=settings.oci_model_id,
             input=payload["user_request"],

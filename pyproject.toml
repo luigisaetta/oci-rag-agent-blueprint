@@ -8,7 +8,7 @@ pythonpath = ["."]
 addopts = "--cov=agent --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
-source = ["agent"]
+source = ["agent", "clients"]
 
 [tool.coverage.report]
 show_missing = true

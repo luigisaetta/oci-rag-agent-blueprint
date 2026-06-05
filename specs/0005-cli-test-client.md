@@ -1,0 +1,115 @@
+# CLI Test Client
+
+## Purpose
+
+This specification defines a simple Python command-line client used to test the local Docker Compose deployment of the RAG agent.
+
+The client is intended for development and manual validation. It is not the reference UI and must remain small, readable, and easy to run.
+
+## Scope
+
+This document covers:
+
+- Command-line arguments.
+- Request payload construction.
+- Streaming response handling.
+- Console output behavior.
+
+This document does not define the Next.js reference UI or production client behavior.
+
+## Related Specifications
+
+- [Agent Implementation](0003-agent-implementation.md)
+- [Deployment](0004-deployment.md)
+
+## Command-Line Interface
+
+The client must accept the user request from the command line.
+
+The client must accept a `--create-conversation` argument with explicit `true` or `false` values.
+
+When `--create-conversation false` is used, the client must require `--conversation-id`.
+
+The client must accept the user request as a positional argument.
+
+The client must be runnable from the repository root with:
+
+```bash
+python -m clients.agent_cli
+```
+
+The client must allow overriding the agent endpoint URL. The default endpoint must be:
+
+```text
+http://localhost:8080/responses
+```
+
+## Request Payload
+
+The client must map the command-line `--create-conversation` value to the agent request payload field `new_conversation`.
+
+The client must always request streaming by setting:
+
+```json
+{
+  "stream": true
+}
+```
+
+When creating a new conversation, the client must send:
+
+```json
+{
+  "new_conversation": true,
+  "user_request": "User request text",
+  "stream": true
+}
+```
+
+When attaching to an existing conversation, the client must send:
+
+```json
+{
+  "new_conversation": false,
+  "conversation_id": "existing-conversation-id",
+  "user_request": "User request text",
+  "stream": true
+}
+```
+
+## Streaming Response Handling
+
+The client must call the agent endpoint with `POST /responses`.
+
+The client must consume the `text/event-stream` response returned by the agent.
+
+The client must handle the following Server-Sent Events:
+
+- `metadata`, used to display the active conversation identifier.
+- `token`, used to print response text incrementally.
+- `done`, used to close the response output cleanly.
+- `error`, used to display a readable error message.
+
+## Console Output
+
+The client must print a compact, readable console output suitable for manual testing.
+
+The output must show:
+
+- Target endpoint.
+- Whether a new conversation is being created.
+- Existing conversation identifier, when provided.
+- Active conversation identifier returned by the stream metadata.
+- Response text streamed token by token.
+- Errors, when returned by the agent.
+
+## Acceptance Criteria
+
+- The client can create a streaming request for a new conversation.
+- The client can create a streaming request for an existing conversation.
+- The client can be launched from the repository root with `python -m clients.agent_cli`.
+- The client rejects `--create-conversation false` when `--conversation-id` is missing.
+- The client maps `--create-conversation` to `new_conversation`.
+- The client always sends `stream=true`.
+- The client consumes Server-Sent Events from the agent endpoint.
+- Unit tests cover payload construction, argument validation, and SSE parsing.
