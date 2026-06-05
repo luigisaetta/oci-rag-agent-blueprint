@@ -17,6 +17,7 @@ from agent.config import AgentSettings
 LOGGER = logging.getLogger(__name__)
 RESPONSES_TIMEOUT_SECONDS = 60
 OUTPUT_TEXT_DELTA_EVENT_TYPE = "response.output_text.delta"
+REFERENCE_SCAN_MAX_DEPTH = 8
 
 AGENT_INSTRUCTIONS = """
 You are an OCI Enterprise AI RAG agent.
@@ -287,6 +288,76 @@ def _iter_file_search_results(source: Any) -> Iterator[Any]:
         if isinstance(results, list):
             yield from results
 
+    yield from _iter_nested_file_search_results(source)
+
+
+def _iter_nested_file_search_results(
+    source: Any,
+    depth: int = 0,
+) -> Iterator[Any]:
+    """Yield file search results from nested response structures.
+
+    Args:
+        source: Object, dictionary, list, or scalar to inspect.
+        depth: Current recursion depth.
+
+    Yields:
+        Any: Raw file search result objects.
+    """
+
+    if source is None or depth > REFERENCE_SCAN_MAX_DEPTH:
+        return
+
+    if isinstance(source, list):
+        for item in source:
+            yield from _iter_nested_file_search_results(item, depth + 1)
+        return
+
+    source_mapping = _as_mapping(source)
+    if not source_mapping:
+        return
+
+    results = source_mapping.get("results")
+    if _looks_like_file_search_results(results):
+        yield from results
+
+    for value in source_mapping.values():
+        yield from _iter_nested_file_search_results(value, depth + 1)
+
+
+def _looks_like_file_search_results(value: Any) -> bool:
+    """Return whether a value looks like file search results.
+
+    Args:
+        value: Value to inspect.
+
+    Returns:
+        bool: True when the value is a list containing file search results.
+    """
+
+    return isinstance(value, list) and any(
+        _looks_like_file_search_result(item) for item in value
+    )
+
+
+def _looks_like_file_search_result(value: Any) -> bool:
+    """Return whether a value looks like one file search result.
+
+    Args:
+        value: Value to inspect.
+
+    Returns:
+        bool: True when the value contains a recognizable source file name.
+    """
+
+    return (
+        _get_first_string(
+            value,
+            ("filename", "file_name", "fileName", "name"),
+        )
+        is not None
+    )
+
 
 def _iter_output_items(source: Any) -> Iterator[Any]:
     """Yield output items from a Responses API object.
@@ -314,7 +385,10 @@ def _build_reference(result: Any) -> dict[str, Any] | None:
             does not contain a usable source file name.
     """
 
-    file_name = _get_first_string(result, ("filename", "file_name", "name"))
+    file_name = _get_first_string(
+        result,
+        ("filename", "file_name", "fileName", "name"),
+    )
     if not file_name:
         return None
 
@@ -347,10 +421,16 @@ def _build_reference_metadata(
     if attributes:
         metadata["attributes"] = attributes
 
-    for field_name in ("file_id", "score", "text"):
-        value = _get_value(result, field_name)
+    for metadata_name, result_field_name in (
+        ("file_id", "file_id"),
+        ("file_id", "fileId"),
+        ("score", "score"),
+        ("text", "text"),
+        ("text", "content"),
+    ):
+        value = _get_value(result, result_field_name)
         if value is not None:
-            metadata[field_name] = value
+            metadata[metadata_name] = value
 
     return metadata
 
@@ -452,6 +532,34 @@ def _get_value(source: Any, field_name: str) -> Any:
         return source.get(field_name)
 
     return getattr(source, field_name, None)
+
+
+def _as_mapping(source: Any) -> dict[str, Any]:
+    """Convert dictionary-like objects to plain dictionaries.
+
+    Args:
+        source: Object or dictionary to inspect.
+
+    Returns:
+        dict[str, Any]: Plain dictionary representation, when available.
+    """
+
+    if isinstance(source, dict):
+        return source
+
+    model_dump = getattr(source, "model_dump", None)
+    if callable(model_dump):
+        dumped_value = model_dump()
+        if isinstance(dumped_value, dict):
+            return dumped_value
+
+    dict_method = getattr(source, "dict", None)
+    if callable(dict_method):
+        dumped_value = dict_method()
+        if isinstance(dumped_value, dict):
+            return dumped_value
+
+    return {}
 
 
 def _extract_stream_token(event: Any) -> str:

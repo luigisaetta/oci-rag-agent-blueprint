@@ -48,11 +48,30 @@ class FakeResponse:
         id: Response identifier.
         output_text: Response text.
         output: Responses API output items.
+        nested_payload: Optional nested payload used to test defensive parsing.
     """
 
     id: str
     output_text: str
     output: list[dict[str, Any]]
+    nested_payload: dict[str, Any] | None = None
+
+    def model_dump(self) -> dict[str, Any]:
+        """Dump fake response data like an SDK model object.
+
+        Returns:
+            dict[str, Any]: Serialized fake response payload.
+        """
+
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "output_text": self.output_text,
+            "output": self.output,
+        }
+        if self.nested_payload:
+            payload["nested_payload"] = self.nested_payload
+
+        return payload
 
 
 class FakeConversations:
@@ -89,16 +108,19 @@ class FakeResponses:
         self,
         fail: bool = False,
         fail_stream_after_token: bool = False,
+        nested_results: bool = False,
     ) -> None:
         """Initialize fake responses state.
 
         Args:
             fail: Whether response creation should raise an error.
             fail_stream_after_token: Whether streaming should fail after a token.
+            nested_results: Whether file search results use an alternate shape.
         """
 
         self.fail = fail
         self.fail_stream_after_token = fail_stream_after_token
+        self.nested_results = nested_results
         self.create_calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, Any]]:
@@ -140,7 +162,10 @@ class FakeResponses:
         return FakeResponse(
             id="resp-123",
             output_text="Agent answer",
-            output=[_fake_file_search_call()],
+            output=[] if self.nested_results else [_fake_file_search_call()],
+            nested_payload=(
+                _fake_nested_file_search_payload() if self.nested_results else None
+            ),
         )
 
 
@@ -152,6 +177,7 @@ class FakeOpenAIClient:
         fail: bool = False,
         fail_conversation: bool = False,
         fail_stream_after_token: bool = False,
+        nested_results: bool = False,
     ) -> None:
         """Initialize fake OpenAI-compatible client.
 
@@ -159,12 +185,14 @@ class FakeOpenAIClient:
             fail: Whether Responses API calls should fail.
             fail_conversation: Whether conversation creation should fail.
             fail_stream_after_token: Whether streaming should fail after a token.
+            nested_results: Whether file search results use an alternate shape.
         """
 
         self.conversations = FakeConversations(fail=fail_conversation)
         self.responses = FakeResponses(
             fail=fail,
             fail_stream_after_token=fail_stream_after_token,
+            nested_results=nested_results,
         )
 
 
@@ -323,6 +351,33 @@ def test_attaches_to_existing_conversation(monkeypatch: Any) -> None:
     assert fake_client.responses.create_calls[0]["conversation"] == "conv-existing"
 
 
+def test_extracts_references_from_nested_response_payload(monkeypatch: Any) -> None:
+    """Test defensive reference extraction for alternate SDK payload shapes."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient(nested_results=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={"new_conversation": True, "user_request": "Answer this"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["references"] == [
+        {
+            "file_name": "nested-guide.md",
+            "page": 4,
+            "metadata": {
+                "attributes": {"page_number": "4"},
+                "file_id": "file-nested",
+                "score": 0.77,
+                "text": "Nested excerpt",
+            },
+        }
+    ]
+
+
 def test_responses_api_failure(monkeypatch: Any) -> None:
     """Test Responses API failure handling."""
 
@@ -471,6 +526,30 @@ def _fake_file_search_call() -> dict[str, Any]:
                 "attributes": {"page": 2, "section": "overview"},
             }
         ],
+    }
+
+
+def _fake_nested_file_search_payload() -> dict[str, Any]:
+    """Build a fake nested file search result payload.
+
+    Returns:
+        dict[str, Any]: Nested payload containing file search results.
+    """
+
+    return {
+        "event": {
+            "item": {
+                "results": [
+                    {
+                        "fileName": "nested-guide.md",
+                        "fileId": "file-nested",
+                        "score": 0.77,
+                        "content": "Nested excerpt",
+                        "attributes": {"page_number": "4"},
+                    }
+                ]
+            }
+        }
     }
 
 
