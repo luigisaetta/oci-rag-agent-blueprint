@@ -31,7 +31,7 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `OCI_REGION` | Yes | `eu-frankfurt-1` | Set in root `.env`. | Set as a runtime environment variable. | Used to build the OpenAI-compatible OCI Enterprise AI endpoint. |
 | `OCI_COMPARTMENT_ID` | Yes | `ocid1.compartment.oc1..example` | Set in root `.env`. | Set as a runtime environment variable. | Target compartment OCID for project resources and deployment context. |
 | `OCI_PROJECT_ID` | Yes | `ocid1.generativeaiproject.oc1..example` | Set in root `.env`. | Set as a runtime environment variable. | OCI Enterprise AI project identifier passed to the OpenAI-compatible client. |
-| `OCI_MODEL_ID` | Yes | `cohere.command-r-plus` | Set in root `.env`. | Set as a runtime environment variable. | Model identifier selected from the supported OCI Enterprise AI model catalog. |
+| `OCI_MODEL_ID` | Yes | `openai.gpt-5.4` | Set in root `.env`. | Set as a runtime environment variable. | Model identifier selected from the supported OCI Enterprise AI model catalog. |
 | `OCI_VECTOR_STORE_ID` | Yes | `vs_...` | Set in root `.env`. | Set as a runtime environment variable. | Vector store identifier used by the Responses API `file_search` tool. |
 | `OPENAI_API_KEY` | Yes | `sk-...` | Set in root `.env`. | Set as a runtime environment variable, preferably through the most protected configuration mechanism available. | OpenAI-compatible API key created inside the OCI Enterprise AI project. Never log or commit this value. |
 
