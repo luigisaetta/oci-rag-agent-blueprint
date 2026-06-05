@@ -249,6 +249,20 @@ The container must satisfy these runtime constraints:
 
 Required environment variables:
 
+For local validation and Docker Compose deployment, all environment variables must be placed in a `.env` file in the repository root.
+
+Create the file by copying the tracked sample:
+
+```bash
+cp .env.sample .env
+```
+
+Then edit `.env` and replace the sample values with the real values for the target OCI region, project, model, vector store, compartment, and API key.
+
+The `.env` file must not be committed to source control.
+
+For Hosted Application deployment in OCI Enterprise AI, the `.env` file is not used by the runtime. All environment variables and their real values must be correctly defined in the Hosted Application runtime configuration.
+
 | Variable | Description |
 | --- | --- |
 | `OCI_REGION` | OCI region used to build the OpenAI-compatible endpoint. |
