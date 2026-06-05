@@ -110,6 +110,7 @@ class FakeResponses:
         fail_stream_after_token: bool = False,
         nested_results: bool = False,
         annotation_refs: bool = False,
+        page_in_text: bool = False,
     ) -> None:
         """Initialize fake responses state.
 
@@ -118,13 +119,16 @@ class FakeResponses:
             fail_stream_after_token: Whether streaming should fail after a token.
             nested_results: Whether file search results use an alternate shape.
             annotation_refs: Whether references are returned as text annotations.
+            page_in_text: Whether page numbers are embedded in result text.
         """
 
         self.fail = fail
         self.fail_stream_after_token = fail_stream_after_token
         self.nested_results = nested_results
         self.annotation_refs = annotation_refs
+        self.page_in_text = page_in_text
         self.create_calls: list[dict[str, Any]] = []
+        self.retrieve_calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, Any]]:
         """Mock response creation.
@@ -149,6 +153,10 @@ class FakeResponses:
         if kwargs.get("stream"):
             return [
                 {
+                    "type": "response.created",
+                    "response": {"id": "resp-stream"},
+                },
+                {
                     "type": "response.reasoning_text.delta",
                     "delta": "I should plan this.",
                 },
@@ -158,10 +166,9 @@ class FakeResponses:
                     "type": "response.completed",
                     "response": {
                         "output": [
-                            (
-                                _fake_annotated_message()
-                                if self.annotation_refs
-                                else _fake_file_search_call()
+                            _fake_stream_output_item(
+                                self.annotation_refs,
+                                self.page_in_text,
                             )
                         ],
                     },
@@ -171,9 +178,35 @@ class FakeResponses:
         return FakeResponse(
             id="resp-123",
             output_text="Agent answer",
-            output=_fake_response_output(self.nested_results, self.annotation_refs),
+            output=_fake_response_output(
+                self.nested_results,
+                self.annotation_refs,
+                self.page_in_text,
+            ),
             nested_payload=(
                 _fake_nested_file_search_payload() if self.nested_results else None
+            ),
+        )
+
+    def retrieve(self, response_id: str, **kwargs: Any) -> FakeResponse:
+        """Mock response retrieval after streaming.
+
+        Args:
+            response_id: Response identifier to retrieve.
+            **kwargs: Retrieval arguments.
+
+        Returns:
+            FakeResponse: Retrieved fake response.
+        """
+
+        self.retrieve_calls.append({"response_id": response_id, **kwargs})
+        return FakeResponse(
+            id=response_id,
+            output_text="Agent answer",
+            output=_fake_response_output(
+                self.nested_results,
+                self.annotation_refs,
+                self.page_in_text,
             ),
         )
 
@@ -188,6 +221,7 @@ class FakeOpenAIClient:
         fail_stream_after_token: bool = False,
         nested_results: bool = False,
         annotation_refs: bool = False,
+        page_in_text: bool = False,
     ) -> None:
         """Initialize fake OpenAI-compatible client.
 
@@ -197,6 +231,7 @@ class FakeOpenAIClient:
             fail_stream_after_token: Whether streaming should fail after a token.
             nested_results: Whether file search results use an alternate shape.
             annotation_refs: Whether references are returned as text annotations.
+            page_in_text: Whether page numbers are embedded in result text.
         """
 
         self.conversations = FakeConversations(fail=fail_conversation)
@@ -205,6 +240,7 @@ class FakeOpenAIClient:
             fail_stream_after_token=fail_stream_after_token,
             nested_results=nested_results,
             annotation_refs=annotation_refs,
+            page_in_text=page_in_text,
         )
 
 
@@ -416,6 +452,32 @@ def test_extracts_references_from_output_text_annotations(monkeypatch: Any) -> N
     ]
 
 
+def test_extracts_page_number_from_result_text(monkeypatch: Any) -> None:
+    """Test page extraction when OCI returns page data only in result text."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient(page_in_text=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={"new_conversation": True, "user_request": "Answer this"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["references"] == [
+        {
+            "file_name": "guide-with-page-text.pdf",
+            "page": 44,
+            "metadata": {
+                "file_id": "file-page-text",
+                "score": 0.81,
+                "text": "Oracle AI Vector Search User's Guide Page 44 of 56",
+            },
+        }
+    ]
+
+
 def test_responses_api_failure(monkeypatch: Any) -> None:
     """Test Responses API failure handling."""
 
@@ -460,6 +522,13 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
     assert fake_client.responses.create_calls[0]["instructions"] == AGENT_INSTRUCTIONS
+    assert fake_client.responses.retrieve_calls == [
+        {
+            "response_id": "resp-stream",
+            "include": ["file_search_call.results"],
+            "timeout": 60,
+        }
+    ]
 
 
 def test_rejects_invalid_stream_field(monkeypatch: Any) -> None:
@@ -524,20 +593,23 @@ def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None
 
     assert response.status_code == 200
     assert 'event: token\ndata: {"text": "Partial answer"}' in response.text
+    assert "event: references" in response.text
+    assert '"file_name": "architecture.md"' in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert "event: error" not in response.text
 
 
-def _stream_with_json_decode_error() -> Iterator[dict[str, str]]:
+def _stream_with_json_decode_error() -> Iterator[dict[str, Any]]:
     """Build a fake stream that fails after one valid token event.
 
     Yields:
-        dict[str, str]: One valid stream token before the simulated parser error.
+        dict[str, Any]: Stream events before the simulated parser error.
 
     Raises:
         JSONDecodeError: Simulated SDK stream parser failure.
     """
 
+    yield {"type": "response.created", "response": {"id": "resp-stream"}}
     yield {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "Partial answer"}
     raise JSONDecodeError(
         "Expecting property name enclosed in double quotes",
@@ -567,15 +639,60 @@ def _fake_file_search_call() -> dict[str, Any]:
     }
 
 
+def _fake_file_search_call_with_page_text() -> dict[str, Any]:
+    """Build a fake file search call with page data embedded in text.
+
+    Returns:
+        dict[str, Any]: Fake file search call with page text.
+    """
+
+    return {
+        "type": "file_search_call",
+        "results": [
+            {
+                "attributes": {},
+                "filename": "guide-with-page-text.pdf",
+                "file_id": "file-page-text",
+                "score": 0.81,
+                "text": "Oracle AI Vector Search User's Guide Page 44 of 56",
+            }
+        ],
+    }
+
+
+def _fake_stream_output_item(
+    annotation_refs: bool,
+    page_in_text: bool,
+) -> dict[str, Any]:
+    """Build a fake stream completion output item.
+
+    Args:
+        annotation_refs: Whether to return an annotated message.
+        page_in_text: Whether to return page data embedded in result text.
+
+    Returns:
+        dict[str, Any]: Fake stream output item.
+    """
+
+    if annotation_refs:
+        return _fake_annotated_message()
+    if page_in_text:
+        return _fake_file_search_call_with_page_text()
+
+    return _fake_file_search_call()
+
+
 def _fake_response_output(
     nested_results: bool,
     annotation_refs: bool,
+    page_in_text: bool = False,
 ) -> list[dict[str, Any]]:
     """Build fake response output for reference extraction tests.
 
     Args:
         nested_results: Whether to omit direct file search call results.
         annotation_refs: Whether to return an annotated output text message.
+        page_in_text: Whether to return page data embedded in result text.
 
     Returns:
         list[dict[str, Any]]: Fake Responses API output.
@@ -583,6 +700,8 @@ def _fake_response_output(
 
     if annotation_refs:
         return [_fake_annotated_message()]
+    if page_in_text:
+        return [_fake_file_search_call_with_page_text()]
     if nested_results:
         return []
 

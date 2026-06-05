@@ -265,10 +265,19 @@ annotations when file citation annotations are available. When annotations are
 not available, it must fall back to file search results included through
 `include=["file_search_call.results"]`.
 
+For streaming responses, the implementation must capture the `response_id` from
+the `response.created` stream event. Because OCI Enterprise AI may not include
+complete file search results in streaming events, the agent must retrieve the
+completed response with `client.responses.retrieve(response_id,
+include=["file_search_call.results"])` before emitting the final `references`
+event.
+
 Each reference must follow the response schema:
 
 - `file_name`: Source file name returned by file search.
-- `page`: Page number when available, otherwise `null`.
+- `page`: Page number when available, otherwise `null`. When the page is not
+  available in file attributes, the implementation may derive it from retrieved
+  text patterns such as `Page 44 of 56`.
 - `metadata`: Additional retrieval metadata, including available file id, score,
   text excerpt, file attributes, and page number lists when available.
 
