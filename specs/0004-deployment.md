@@ -26,6 +26,12 @@ Local deployment must be based on Docker Compose and must support development an
 
 The local deployment must run the agent backend as a containerized FastAPI service.
 
+The Docker image must be built from `Dockerfile` in the repository root.
+
+The image must use a Python 3.11 runtime base image.
+
+Runtime Python dependencies must be installed from `requirements.txt`.
+
 The container must start the agent with `uvicorn` using the package path defined in the agent implementation specification:
 
 ```bash
@@ -33,6 +39,10 @@ uvicorn agent.main:app --host 0.0.0.0 --port 8080
 ```
 
 The container must expose the agent on port `8080`.
+
+The Docker Compose service name must be `rag-agent`.
+
+The local image name must be `oci-rag-agent-blueprint-agent`.
 
 The Docker Compose configuration must load runtime configuration from a `.env` file located in the repository root.
 
@@ -56,6 +66,8 @@ GET /health
 
 The health endpoint must be usable to verify that the agent container is alive and ready to serve requests.
 
+Docker Compose must define a health check for the `rag-agent` service using `GET /health`.
+
 The local deployment must support both non-streaming and streaming requests to:
 
 ```http
@@ -69,6 +81,8 @@ Streaming requests must use the `stream=true` request field defined in the agent
 - A Docker image can be built for the agent backend.
 - Docker Compose can start the agent service locally.
 - Docker Compose reads configuration from the root `.env` file.
+- Docker Compose defines the `rag-agent` service.
+- Docker Compose builds the `oci-rag-agent-blueprint-agent` image.
 - The agent service listens on port `8080`.
 - `GET /health` returns a successful JSON response.
 - `POST /responses` can be sent to the local service.
@@ -109,8 +123,6 @@ Security details, including OCI IAM confidential application setup, JWT validati
 
 The following topics require dedicated specifications or later revisions:
 
-- Dockerfile structure.
-- Docker Compose file structure.
 - Local deployment scripts.
 - Hosted deployment scripts.
 - OCI Enterprise AI hosted deployment procedure.
