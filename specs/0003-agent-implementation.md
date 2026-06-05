@@ -129,6 +129,14 @@ The agent must use the `openai` Python library to call the OCI Enterprise AI Ope
 
 The agent must create a client configured for the OCI Enterprise AI endpoint derived from runtime configuration.
 
+The base URL for the OpenAI-compatible client must be built from `OCI_REGION` using this rule:
+
+```python
+BASE_URL = (
+    f"https://inference.generativeai.{REGION}.oci.oraclecloud.com/openai/v1"
+)
+```
+
 The `openai` client must authenticate with an OpenAI-compatible API key provided through an environment variable.
 
 The agent must use the Responses API to:
@@ -202,7 +210,6 @@ The exact error schema will be defined before implementation.
 The following details must be specified before or during implementation:
 
 - Exact JSON error schema.
-- How the OCI Enterprise AI endpoint is built from `OCI_REGION`.
 - Exact Responses API fields for conversation creation and attachment.
 - Timeout, retry, and backoff behavior for Responses API calls.
 - Logging and observability requirements.
