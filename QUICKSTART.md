@@ -149,13 +149,17 @@ For CLI usage, see [CLI Test Client](clients/README.md).
 
 ## 7. Build The Container Image
 
-Build the backend image from the repository root:
+For local development on Apple Silicon or other ARM-based machines, `./start_demo.sh --build` can build and run native ARM images. This is valid for local testing only.
+
+For OCI Enterprise AI Hosted Deployment, the image must be built for `linux/amd64`. The recommended approach is to build the hosted deployment image on a Linux AMD64 build machine.
+
+Build the backend image for hosted deployment from the repository root on the AMD64 build machine:
 
 ```bash
 docker build -t oci-rag-agent-blueprint-agent:latest .
 ```
 
-The container exposes HTTP on port `8080` and expects all runtime configuration through environment variables.
+The resulting container exposes HTTP on port `8080` and expects all runtime configuration through environment variables.
 
 ## 8. Push The Image To OCI Container Registry
 

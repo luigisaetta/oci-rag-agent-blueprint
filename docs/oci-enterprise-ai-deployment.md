@@ -232,7 +232,13 @@ The synchronization job can be started from the OCI Cloud Console or through an 
 
 ### 6. Create The Docker Container
 
-Build the backend container image from the repository root:
+The Docker image used for OCI Enterprise AI Hosted Deployment must be built for the `linux/amd64` platform.
+
+Local Docker Compose builds on Apple Silicon or other ARM-based machines may produce native ARM images. Those images are valid for local testing only and must not be used for OCI Enterprise AI Hosted Deployment.
+
+The recommended approach is to build the hosted deployment image on a Linux AMD64 build machine.
+
+Build the backend container image from the repository root on the AMD64 build machine:
 
 ```bash
 docker build -t oci-rag-agent-blueprint-agent:latest .

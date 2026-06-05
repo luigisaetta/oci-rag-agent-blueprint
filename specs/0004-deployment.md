@@ -34,7 +34,9 @@ The Docker image must be built from `Dockerfile` in the repository root.
 
 The image must use a Python 3.11 runtime base image.
 
-The Docker image must be built for the `linux/amd64` platform. This is a mandatory requirement for OCI Enterprise AI hosted deployment compatibility.
+Local Docker Compose builds may use the native platform of the development machine.
+
+The image intended for OCI Enterprise AI hosted deployment must be built for the `linux/amd64` platform. This is a mandatory requirement for OCI Enterprise AI hosted deployment compatibility.
 
 Runtime Python dependencies must be installed from `requirements.txt`.
 
@@ -129,7 +131,7 @@ repository root from their own location.
 - Docker Compose defines the `rag-agent` service.
 - Docker Compose defines the `rag-ui` service.
 - Docker Compose builds the `oci-rag-agent-blueprint-agent` image.
-- The agent Docker image is built for the `linux/amd64` platform.
+- Local Docker Compose builds can run on the native platform of the development machine.
 - Docker Compose builds the `oci-rag-agent-blueprint-ui` image.
 - The agent service listens on port `8080`.
 - The UI service listens on port `3000`.
@@ -146,6 +148,8 @@ Hosted deployment must deploy the RAG agent as a containerized application in OC
 The hosted deployment must use the same agent container image and runtime contract used by local deployment whenever possible.
 
 The hosted deployment image must be a `linux/amd64` image.
+
+For Apple Silicon or other ARM-based development machines, the local Docker Compose demo can still be built and run locally with native ARM images. The hosted deployment image must be built separately as `linux/amd64`, preferably on a Linux AMD64 build machine.
 
 Hosted deployment configuration must provide the required environment variables through OCI Enterprise AI deployment configuration or an equivalent managed configuration mechanism.
 
