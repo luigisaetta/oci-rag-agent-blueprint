@@ -9,11 +9,14 @@ Description: Unit tests for the OCI RAG agent FastAPI API.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
+from json import JSONDecodeError
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from agent.agent import AGENT_INSTRUCTIONS
 from agent.main import app
 
 REQUIRED_ENV = {
@@ -80,14 +83,20 @@ class FakeConversations:
 class FakeResponses:
     """Mock Responses API surface."""
 
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(
+        self,
+        fail: bool = False,
+        fail_stream_after_token: bool = False,
+    ) -> None:
         """Initialize fake responses state.
 
         Args:
             fail: Whether response creation should raise an error.
+            fail_stream_after_token: Whether streaming should fail after a token.
         """
 
         self.fail = fail
+        self.fail_stream_after_token = fail_stream_after_token
         self.create_calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, str]]:
@@ -107,6 +116,9 @@ class FakeResponses:
             raise RuntimeError("upstream unavailable")
 
         self.create_calls.append(kwargs)
+        if kwargs.get("stream") and self.fail_stream_after_token:
+            return _stream_with_json_decode_error()
+
         if kwargs.get("stream"):
             return [{"delta": "Agent "}, {"delta": "answer"}]
 
@@ -116,16 +128,25 @@ class FakeResponses:
 class FakeOpenAIClient:
     """Mock OpenAI-compatible client."""
 
-    def __init__(self, fail: bool = False, fail_conversation: bool = False) -> None:
+    def __init__(
+        self,
+        fail: bool = False,
+        fail_conversation: bool = False,
+        fail_stream_after_token: bool = False,
+    ) -> None:
         """Initialize fake OpenAI-compatible client.
 
         Args:
             fail: Whether Responses API calls should fail.
             fail_conversation: Whether conversation creation should fail.
+            fail_stream_after_token: Whether streaming should fail after a token.
         """
 
         self.conversations = FakeConversations(fail=fail_conversation)
-        self.responses = FakeResponses(fail=fail)
+        self.responses = FakeResponses(
+            fail=fail,
+            fail_stream_after_token=fail_stream_after_token,
+        )
 
 
 def test_health_endpoint() -> None:
@@ -213,6 +234,7 @@ def test_creates_new_conversation_and_response(monkeypatch: Any) -> None:
     assert fake_client.responses.create_calls == [
         {
             "model": "test-model",
+            "instructions": AGENT_INSTRUCTIONS,
             "input": "Answer this",
             "conversation": "conv-new",
             "tools": [
@@ -291,6 +313,7 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: token\ndata: {"text": "answer"}' in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
+    assert fake_client.responses.create_calls[0]["instructions"] == AGENT_INSTRUCTIONS
 
 
 def test_rejects_invalid_stream_field(monkeypatch: Any) -> None:
@@ -335,6 +358,46 @@ def test_streams_error_when_conversation_creation_fails(monkeypatch: Any) -> Non
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: error" in response.text
     assert "Responses API failure: conversation unavailable" in response.text
+
+
+def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None:
+    """Test SDK parser failures after partial output do not append user errors."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient(fail_stream_after_token=True))
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'event: token\ndata: {"text": "Partial answer"}' in response.text
+    assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
+    assert "event: error" not in response.text
+
+
+def _stream_with_json_decode_error() -> Iterator[dict[str, str]]:
+    """Build a fake stream that fails after one valid token event.
+
+    Yields:
+        dict[str, str]: One valid stream token before the simulated parser error.
+
+    Raises:
+        JSONDecodeError: Simulated SDK stream parser failure.
+    """
+
+    yield {"delta": "Partial answer"}
+    raise JSONDecodeError(
+        "Expecting property name enclosed in double quotes",
+        "{not valid json}",
+        1,
+    )
 
 
 def _set_required_env(monkeypatch: Any) -> None:

@@ -126,6 +126,12 @@ The streaming MVP must emit:
 
 Streaming errors must not include secrets or complete request payloads.
 
+If the OpenAI SDK stream parser fails after one or more token events have already
+been emitted, the agent should log the parser failure and close the client stream
+with a `done` event instead of appending a user-visible parser error to a partially
+delivered answer. Parser failures that happen before any token is emitted must
+still be returned as `error` events.
+
 Streaming mode must still validate the JSON request payload and required environment variables before creating the stream.
 
 ## Request Handling Flow
@@ -166,6 +172,8 @@ The agent must use the Responses API to:
 - Create a conversation with `client.conversations.create` when the request starts a new conversation.
 - Attach to an existing conversation by passing the conversation identifier to `client.responses.create` through the `conversation` parameter.
 - Create the model response.
+- Pass agent instructions that require direct final answers and forbid exposing
+  internal reasoning or tool-selection narration.
 - Configure `file_search` as a tool.
 - Pass the configured vector store identifier to the file search tool.
 
@@ -176,6 +184,7 @@ The MVP implementation must use the following Responses API call shape:
 ```python
 response = client.responses.create(
     model=OCI_MODEL_ID,
+    instructions=AGENT_INSTRUCTIONS,
     input=user_request,
     conversation=conversation_id,
     tools=[
@@ -193,6 +202,7 @@ When streaming is requested, the MVP implementation must use the same call shape
 ```python
 stream = client.responses.create(
     model=OCI_MODEL_ID,
+    instructions=AGENT_INSTRUCTIONS,
     input=user_request,
     conversation=conversation_id,
     tools=[
@@ -303,6 +313,8 @@ The MVP test suite must cover:
 - Existing conversation attachment using `conversation_id`.
 - Responses API response creation.
 - Streaming Responses API creation.
+- Agent instructions passed to Responses API calls.
+- SDK stream parser failures after partial token delivery.
 - Responses API failures.
 - Structured JSON error responses.
 
@@ -325,6 +337,7 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The agent creates a Responses API client configured for OCI Enterprise AI.
 - The agent creates Responses API responses using `file_search`.
 - The agent creates streaming Responses API responses with `stream=True` when requested.
+- The agent passes behavior instructions to Responses API calls.
 - The agent passes `OCI_VECTOR_STORE_ID` to the file search configuration.
 - The agent passes `OCI_PROJECT_ID` to the OpenAI-compatible client as the project identifier.
 - The agent authenticates the `openai` client with `OPENAI_API_KEY`.

@@ -9,12 +9,20 @@ from __future__ import annotations
 
 import json
 import logging
+from json import JSONDecodeError
 from typing import Any, Callable, Iterator
 
 from agent.config import AgentSettings
 
 LOGGER = logging.getLogger(__name__)
 RESPONSES_TIMEOUT_SECONDS = 60
+AGENT_INSTRUCTIONS = """
+You are an OCI Enterprise AI RAG agent.
+Answer the user directly and concisely using the available knowledge base.
+Do not expose internal reasoning, planning, tool-selection narration, or analysis.
+Do not mention web search or external tools.
+If the knowledge base does not contain enough information, say so plainly.
+""".strip()
 
 
 def process_agent_request(
@@ -42,15 +50,7 @@ def process_agent_request(
 
     LOGGER.info("Processing request for conversation_id=%s", conversation_id)
     response = client.responses.create(
-        model=settings.oci_model_id,
-        input=payload["user_request"],
-        conversation=conversation_id,
-        tools=[
-            {
-                "type": "file_search",
-                "vector_store_ids": [settings.oci_vector_store_id],
-            }
-        ],
+        **_build_response_request(payload, settings, conversation_id),
         timeout=RESPONSES_TIMEOUT_SECONDS,
     )
 
@@ -83,6 +83,9 @@ def stream_agent_request(
         str: Server-Sent Event frames.
     """
 
+    conversation_id = ""
+    token_events_emitted = 0
+
     try:
         client = client_factory(settings)
         conversation_id = _resolve_conversation_id(payload, client)
@@ -90,15 +93,7 @@ def stream_agent_request(
         yield _format_sse_event("metadata", {"conversation_id": conversation_id})
 
         stream = client.responses.create(
-            model=settings.oci_model_id,
-            input=payload["user_request"],
-            conversation=conversation_id,
-            tools=[
-                {
-                    "type": "file_search",
-                    "vector_store_ids": [settings.oci_vector_store_id],
-                }
-            ],
+            **_build_response_request(payload, settings, conversation_id),
             timeout=RESPONSES_TIMEOUT_SECONDS,
             stream=True,
         )
@@ -106,9 +101,21 @@ def stream_agent_request(
         for event in stream:
             token = _extract_stream_token(event)
             if token:
+                token_events_emitted += 1
                 yield _format_sse_event("token", {"text": token})
 
         yield _format_sse_event("done", {"conversation_id": conversation_id})
+    except JSONDecodeError as exc:
+        if token_events_emitted:
+            LOGGER.warning(
+                "Responses API stream parser failure after %s token events: %s",
+                token_events_emitted,
+                exc,
+            )
+            yield _format_sse_event("done", {"conversation_id": conversation_id})
+        else:
+            LOGGER.exception("Responses API streaming parser failure")
+            yield _format_sse_event("error", {"error": f"Responses API failure: {exc}"})
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.exception("Responses API streaming failure")
         yield _format_sse_event("error", {"error": f"Responses API failure: {exc}"})
@@ -132,6 +139,36 @@ def _resolve_conversation_id(payload: dict[str, Any], client: Any) -> str:
         return conversation_id
 
     return payload["conversation_id"]
+
+
+def _build_response_request(
+    payload: dict[str, Any],
+    settings: AgentSettings,
+    conversation_id: str,
+) -> dict[str, Any]:
+    """Build common Responses API request parameters.
+
+    Args:
+        payload: Validated request payload.
+        settings: Runtime settings for model and vector store access.
+        conversation_id: Active conversation identifier.
+
+    Returns:
+        dict[str, Any]: Responses API request parameters.
+    """
+
+    return {
+        "model": settings.oci_model_id,
+        "instructions": AGENT_INSTRUCTIONS,
+        "input": payload["user_request"],
+        "conversation": conversation_id,
+        "tools": [
+            {
+                "type": "file_search",
+                "vector_store_ids": [settings.oci_vector_store_id],
+            }
+        ],
+    }
 
 
 def _extract_response_text(response: Any) -> str:
