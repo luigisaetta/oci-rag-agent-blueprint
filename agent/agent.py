@@ -65,7 +65,7 @@ def process_agent_request(
         "conversation_id": conversation_id,
         "response_id": response_id,
         "agent_response": _extract_response_text(response),
-        "references": [],
+        "references": _extract_references(response),
         "error": None,
     }
 
@@ -88,6 +88,7 @@ def stream_agent_request(
 
     conversation_id = ""
     token_events_emitted = 0
+    references: list[dict[str, Any]] = []
 
     try:
         client = client_factory(settings)
@@ -96,11 +97,15 @@ def stream_agent_request(
         yield _format_sse_event("metadata", {"conversation_id": conversation_id})
 
         for token in _stream_response_tokens(
-            payload, settings, client, conversation_id
+            payload, settings, client, conversation_id, references
         ):
             token_events_emitted += 1
             yield _format_sse_event("token", {"text": token})
 
+        yield _format_sse_event(
+            "references",
+            {"references": _deduplicate_references(references)},
+        )
         yield _format_sse_event("done", {"conversation_id": conversation_id})
     except JSONDecodeError as exc:
         if token_events_emitted:
@@ -123,6 +128,7 @@ def _stream_response_tokens(
     settings: AgentSettings,
     client: Any,
     conversation_id: str,
+    references: list[dict[str, Any]],
 ) -> Iterator[str]:
     """Yield final-answer tokens from a Responses API stream.
 
@@ -131,6 +137,7 @@ def _stream_response_tokens(
         settings: Runtime settings for model and vector store access.
         client: OpenAI-compatible client.
         conversation_id: Active conversation identifier.
+        references: Mutable list receiving references found in stream events.
 
     Yields:
         str: Final-answer text tokens.
@@ -143,6 +150,7 @@ def _stream_response_tokens(
     )
 
     for event in stream:
+        references.extend(_extract_references(event))
         token = _extract_stream_token(event)
         if token:
             yield token
@@ -227,6 +235,223 @@ def _extract_response_text(response: Any) -> str:
         return output_text
 
     return ""
+
+
+def _extract_references(source: Any) -> list[dict[str, Any]]:
+    """Extract normalized references from Responses API data.
+
+    Args:
+        source: Response object, stream event, dictionary, or nested data.
+
+    Returns:
+        list[dict[str, Any]]: Normalized references compatible with the response
+            schema.
+    """
+
+    references: list[dict[str, Any]] = []
+    for result in _iter_file_search_results(source):
+        reference = _build_reference(result)
+        if reference:
+            references.append(reference)
+
+    return _deduplicate_references(references)
+
+
+def _iter_file_search_results(source: Any) -> Iterator[Any]:
+    """Yield file search results from a response or stream event.
+
+    Args:
+        source: Response object, stream event, dictionary, or nested data.
+
+    Yields:
+        Any: Raw file search result objects.
+    """
+
+    if source is None:
+        return
+
+    if isinstance(source, list):
+        for item in source:
+            yield from _iter_file_search_results(item)
+        return
+
+    event_response = _get_value(source, "response")
+    if event_response is not None:
+        yield from _iter_file_search_results(event_response)
+
+    for output_item in _iter_output_items(source):
+        if _get_value(output_item, "type") != "file_search_call":
+            continue
+
+        results = _get_value(output_item, "results")
+        if isinstance(results, list):
+            yield from results
+
+
+def _iter_output_items(source: Any) -> Iterator[Any]:
+    """Yield output items from a Responses API object.
+
+    Args:
+        source: Response object or dictionary.
+
+    Yields:
+        Any: Output items.
+    """
+
+    output = _get_value(source, "output")
+    if isinstance(output, list):
+        yield from output
+
+
+def _build_reference(result: Any) -> dict[str, Any] | None:
+    """Build one normalized reference from a file search result.
+
+    Args:
+        result: Raw file search result object or dictionary.
+
+    Returns:
+        dict[str, Any] | None: Normalized reference, or None when the result
+            does not contain a usable source file name.
+    """
+
+    file_name = _get_first_string(result, ("filename", "file_name", "name"))
+    if not file_name:
+        return None
+
+    attributes = _get_mapping(result, "attributes")
+    page = _extract_page(attributes)
+    metadata = _build_reference_metadata(result, attributes)
+
+    return {
+        "file_name": file_name,
+        "page": page,
+        "metadata": metadata,
+    }
+
+
+def _build_reference_metadata(
+    result: Any,
+    attributes: dict[str, Any],
+) -> dict[str, Any]:
+    """Build metadata for a normalized reference.
+
+    Args:
+        result: Raw file search result object or dictionary.
+        attributes: File search result attributes.
+
+    Returns:
+        dict[str, Any]: JSON-serializable metadata.
+    """
+
+    metadata: dict[str, Any] = {}
+    if attributes:
+        metadata["attributes"] = attributes
+
+    for field_name in ("file_id", "score", "text"):
+        value = _get_value(result, field_name)
+        if value is not None:
+            metadata[field_name] = value
+
+    return metadata
+
+
+def _extract_page(attributes: dict[str, Any]) -> int | None:
+    """Extract a page number from file search attributes.
+
+    Args:
+        attributes: File search result attributes.
+
+    Returns:
+        int | None: Page number when available.
+    """
+
+    for key in ("page", "page_number"):
+        value = attributes.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.isdigit() and int(value) > 0:
+            return int(value)
+
+    return None
+
+
+def _deduplicate_references(
+    references: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove duplicate references while preserving order.
+
+    Args:
+        references: References to deduplicate.
+
+    Returns:
+        list[dict[str, Any]]: Deduplicated references.
+    """
+
+    seen: set[str] = set()
+    unique_references = []
+    for reference in references:
+        reference_key = json.dumps(reference, sort_keys=True)
+        if reference_key in seen:
+            continue
+
+        seen.add(reference_key)
+        unique_references.append(reference)
+
+    return unique_references
+
+
+def _get_first_string(source: Any, field_names: tuple[str, ...]) -> str | None:
+    """Return the first string value found in a source object.
+
+    Args:
+        source: Object or dictionary to inspect.
+        field_names: Candidate field names.
+
+    Returns:
+        str | None: First string value, when available.
+    """
+
+    for field_name in field_names:
+        value = _get_value(source, field_name)
+        if isinstance(value, str) and value:
+            return value
+
+    return None
+
+
+def _get_mapping(source: Any, field_name: str) -> dict[str, Any]:
+    """Return a dictionary field from an object or dictionary.
+
+    Args:
+        source: Object or dictionary to inspect.
+        field_name: Field name to read.
+
+    Returns:
+        dict[str, Any]: Field value when it is a dictionary, otherwise empty.
+    """
+
+    value = _get_value(source, field_name)
+    if isinstance(value, dict):
+        return value
+
+    return {}
+
+
+def _get_value(source: Any, field_name: str) -> Any:
+    """Read one value from a dictionary or object.
+
+    Args:
+        source: Object or dictionary to inspect.
+        field_name: Field name to read.
+
+    Returns:
+        Any: Field value, or None when missing.
+    """
+
+    if isinstance(source, dict):
+        return source.get(field_name)
+
+    return getattr(source, field_name, None)
 
 
 def _extract_stream_token(event: Any) -> str:

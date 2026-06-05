@@ -98,12 +98,13 @@ The client must handle the following Server-Sent Events:
 
 - `metadata`, used to display the active conversation identifier.
 - `token`, used to print response text incrementally.
+- `references`, used to collect and display source references returned by the agent.
 - `done`, used to close the response output cleanly.
 - `error`, used to display a readable error message.
 
 When `--stream false` is used, the client must consume the JSON response returned
 by the agent and print the active conversation identifier, agent response text,
-references count, and error message when present.
+references, and error message when present.
 
 ## Console Output
 
@@ -117,6 +118,7 @@ The output must show:
 - Whether streaming is enabled.
 - Active conversation identifier returned by the stream metadata.
 - Response text, either streamed token by token or printed from the JSON response.
+- References returned by the agent, including file name and page when available.
 - Errors, when returned by the agent.
 
 ## Acceptance Criteria
@@ -131,5 +133,6 @@ The output must show:
 - The client maps `--stream` to `stream`.
 - The client consumes Server-Sent Events from the agent endpoint.
 - The client consumes JSON responses from the agent endpoint.
+- The client displays references for both streaming and non-streaming responses.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
   JSON response handling.

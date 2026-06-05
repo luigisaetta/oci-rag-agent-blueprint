@@ -47,10 +47,12 @@ class FakeResponse:
     Attributes:
         id: Response identifier.
         output_text: Response text.
+        output: Responses API output items.
     """
 
     id: str
     output_text: str
+    output: list[dict[str, Any]]
 
 
 class FakeConversations:
@@ -99,7 +101,7 @@ class FakeResponses:
         self.fail_stream_after_token = fail_stream_after_token
         self.create_calls: list[dict[str, Any]] = []
 
-    def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, str]]:
+    def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, Any]]:
         """Mock response creation.
 
         Args:
@@ -127,9 +129,19 @@ class FakeResponses:
                 },
                 {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "Agent "},
                 {"type": OUTPUT_TEXT_DELTA_EVENT_TYPE, "delta": "answer"},
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "output": [_fake_file_search_call()],
+                    },
+                },
             ]
 
-        return FakeResponse(id="resp-123", output_text="Agent answer")
+        return FakeResponse(
+            id="resp-123",
+            output_text="Agent answer",
+            output=[_fake_file_search_call()],
+        )
 
 
 class FakeOpenAIClient:
@@ -251,7 +263,18 @@ def test_creates_new_conversation_and_response(monkeypatch: Any) -> None:
         "conversation_id": "conv-new",
         "response_id": "resp-123",
         "agent_response": "Agent answer",
-        "references": [],
+        "references": [
+            {
+                "file_name": "architecture.md",
+                "page": 2,
+                "metadata": {
+                    "attributes": {"page": 2, "section": "overview"},
+                    "file_id": "file-123",
+                    "score": 0.91,
+                    "text": "Architecture overview excerpt",
+                },
+            }
+        ],
         "error": None,
     }
     assert fake_client.conversations.create_calls == 1
@@ -338,6 +361,8 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: metadata\ndata: {"conversation_id": "conv-new"}' in response.text
     assert 'event: token\ndata: {"text": "Agent "}' in response.text
     assert 'event: token\ndata: {"text": "answer"}' in response.text
+    assert "event: references" in response.text
+    assert '"file_name": "architecture.md"' in response.text
     assert "I should plan this." not in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
@@ -426,6 +451,27 @@ def _stream_with_json_decode_error() -> Iterator[dict[str, str]]:
         "{not valid json}",
         1,
     )
+
+
+def _fake_file_search_call() -> dict[str, Any]:
+    """Build a fake Responses API file search call output item.
+
+    Returns:
+        dict[str, Any]: Fake file search call with one result.
+    """
+
+    return {
+        "type": "file_search_call",
+        "results": [
+            {
+                "filename": "architecture.md",
+                "file_id": "file-123",
+                "score": 0.91,
+                "text": "Architecture overview excerpt",
+                "attributes": {"page": 2, "section": "overview"},
+            }
+        ],
+    }
 
 
 def _set_required_env(monkeypatch: Any) -> None:

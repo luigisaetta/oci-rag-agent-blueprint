@@ -229,6 +229,7 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     _print_request_header(endpoint, payload, stream=True)
     print("Response")
     print("--------")
+    references: list[object] = []
 
     for event in send_streaming_request(endpoint, payload):
         if event.name == "metadata":
@@ -236,9 +237,14 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
             print(f"\n[conversation: {conversation_id}]\n")
         elif event.name == "token":
             print(event.data.get("text", ""), end="", flush=True)
+        elif event.name == "references":
+            event_references = event.data.get("references", [])
+            if isinstance(event_references, list):
+                references = event_references
         elif event.name == "error":
             print(f"\n\n[error] {event.data.get('error', 'Unknown error')}")
         elif event.name == "done":
+            _print_references(references)
             print("\n\n[done]")
 
 
@@ -265,9 +271,28 @@ def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
     print("Response")
     print("--------")
     print(response_payload.get("agent_response", ""))
-    references = response_payload.get("references", [])
-    if isinstance(references, list):
-        print(f"\n[references: {len(references)}]")
+    _print_references(response_payload.get("references", []))
+
+
+def _print_references(references: object) -> None:
+    """Print response references in a readable CLI format.
+
+    Args:
+        references: References returned by the agent.
+    """
+
+    if not isinstance(references, list):
+        return
+
+    print(f"\n[references: {len(references)}]")
+    for index, reference in enumerate(references, start=1):
+        if not isinstance(reference, dict):
+            continue
+
+        file_name = reference.get("file_name", "unknown")
+        page = reference.get("page")
+        page_label = f", page {page}" if page else ""
+        print(f"  {index}. {file_name}{page_label}")
 
 
 def _print_request_header(

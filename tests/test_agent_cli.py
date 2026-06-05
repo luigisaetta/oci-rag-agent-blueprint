@@ -18,6 +18,7 @@ from clients.agent_cli import (
     parse_bool,
     parse_sse_lines,
     render_json_response,
+    render_stream,
 )
 
 
@@ -104,6 +105,9 @@ def test_parse_sse_lines() -> None:
                 "event: token\n",
                 'data: {"text": "Hello"}\n',
                 "\n",
+                "event: references\n",
+                'data: {"references": [{"file_name": "guide.md", "page": 3, "metadata": {}}]}\n',
+                "\n",
                 "event: done\n",
                 'data: {"conversation_id": "conv-123"}\n',
                 "\n",
@@ -111,9 +115,17 @@ def test_parse_sse_lines() -> None:
         )
     )
 
-    assert [event.name for event in events] == ["metadata", "token", "done"]
+    assert [event.name for event in events] == [
+        "metadata",
+        "token",
+        "references",
+        "done",
+    ]
     assert events[0].data == {"conversation_id": "conv-123"}
     assert events[1].data == {"text": "Hello"}
+    assert events[2].data == {
+        "references": [{"file_name": "guide.md", "page": 3, "metadata": {}}]
+    }
 
 
 def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
@@ -139,7 +151,7 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
             "conversation_id": "conv-123",
             "response_id": "resp-123",
             "agent_response": "JSON answer",
-            "references": [],
+            "references": [{"file_name": "guide.md", "page": 3, "metadata": {}}],
             "error": None,
         }
 
@@ -159,3 +171,56 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
     assert "Stream: false" in output
     assert "[conversation: conv-123]" in output
     assert "JSON answer" in output
+    assert "[references: 1]" in output
+    assert "1. guide.md, page 3" in output
+
+
+def test_render_stream_prints_references(
+    monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    """Test streaming reference rendering."""
+
+    def fake_send_streaming_request(
+        endpoint: str,
+        payload: dict[str, object],
+    ) -> list[agent_cli.SseEvent]:
+        """Return fake streaming events.
+
+        Args:
+            endpoint: Agent endpoint URL.
+            payload: Agent request payload.
+
+        Returns:
+            list[agent_cli.SseEvent]: Fake SSE events.
+        """
+
+        assert endpoint == "http://localhost:8080/responses"
+        assert payload["stream"] is True
+        return [
+            agent_cli.SseEvent("metadata", {"conversation_id": "conv-123"}),
+            agent_cli.SseEvent("token", {"text": "Streaming answer"}),
+            agent_cli.SseEvent(
+                "references",
+                {"references": [{"file_name": "guide.md", "page": 3}]},
+            ),
+            agent_cli.SseEvent("done", {"conversation_id": "conv-123"}),
+        ]
+
+    monkeypatch.setattr(
+        agent_cli, "send_streaming_request", fake_send_streaming_request
+    )
+
+    render_stream(
+        "http://localhost:8080/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": True,
+        },
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Streaming answer" in output
+    assert "[references: 1]" in output
+    assert "1. guide.md, page 3" in output

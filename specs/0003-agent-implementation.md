@@ -126,6 +126,7 @@ The streaming MVP must emit:
 
 - A `metadata` event containing the active `conversation_id`.
 - One or more `token` events containing generated final-answer text deltas.
+- A `references` event containing normalized file search references, when available.
 - A final `done` event when streaming completes.
 - An `error` event when the Responses API fails during streaming.
 
@@ -146,6 +147,9 @@ still be returned as `error` events.
 
 Streaming mode must still validate the JSON request payload and required environment variables before creating the stream.
 
+When references are available, the `references` event must be emitted after token
+events and before the final `done` event.
+
 ## Request Handling Flow
 
 For each `POST /responses` request, the agent must:
@@ -159,7 +163,8 @@ For each `POST /responses` request, the agent must:
 7. Create a response by using the configured model.
 8. Configure file search as a Responses API tool.
 9. Scope file search to the configured OCI Vector Store.
-10. Return a structured JSON response to the client.
+10. Extract normalized references from Responses API file search results when available.
+11. Return a structured JSON response to the client.
 
 Validation failures must stop the flow before any Responses API call is made.
 
@@ -241,7 +246,18 @@ conversation_id = conversation.id
 
 When `new_conversation=false`, the agent must use the `conversation_id` provided by the validated request payload.
 
-The MVP implementation must return `references=[]`. Extraction of citations and references from Responses API file search results will be covered by a later specification.
+The implementation must extract references from Responses API file search results
+included through `include=["file_search_call.results"]`.
+
+Each reference must follow the response schema:
+
+- `file_name`: Source file name returned by file search.
+- `page`: Page number when available, otherwise `null`.
+- `metadata`: Additional retrieval metadata, including available file id, score,
+  text excerpt, and file attributes.
+
+Reference extraction must be defensive. Missing or partially populated file search
+results must not fail the whole response.
 
 ## Environment Variables
 
