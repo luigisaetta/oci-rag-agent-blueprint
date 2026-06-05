@@ -13,6 +13,7 @@ This project contains a blueprint and a set of guidelines for creating and deplo
 - New functionality must include unit tests written with `pytest`.
 - Unit tests must provide sufficient coverage, with a target above 80%.
 - Tests must be executed in the `oci-rag-agent-blueprint` Conda environment.
+- Significant features, fixes, refactorings, specification updates, deployment changes, and documentation updates must be recorded in `CHANGELOG.md` under the current date.
 - Done means: code formatted, tests written, pylint checks completed, tests executed, and all test and pylint issues resolved.
 
 ## Python Code Conventions

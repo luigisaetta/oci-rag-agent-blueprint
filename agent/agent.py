@@ -20,6 +20,7 @@ from agent.references import (
     extract_response_text,
     get_value,
 )
+from agent.usage import extract_usage
 
 LOGGER = logging.getLogger(__name__)
 RESPONSES_TIMEOUT_SECONDS = 60
@@ -41,10 +42,12 @@ class StreamState:
     Attributes:
         response_id: Responses API response identifier captured from the stream.
         references: References found in stream events or retrieved afterwards.
+        usage: Token usage found in stream events or retrieved afterwards.
     """
 
     response_id: str | None = None
     references: list[dict[str, Any]] = field(default_factory=list)
+    usage: dict[str, int | None] | None = None
 
 
 def process_agent_request(
@@ -86,6 +89,7 @@ def process_agent_request(
         "response_id": response_id,
         "agent_response": extract_response_text(response),
         "references": extract_references(response),
+        "usage": extract_usage(response),
         "error": None,
     }
 
@@ -127,14 +131,8 @@ def stream_agent_request(
             token_events_emitted += 1
             yield _format_sse_event("token", {"text": token})
 
-        stream_state.references.extend(
-            _retrieve_response_references(client, stream_state)
-        )
-        yield _format_sse_event(
-            "references",
-            {"references": deduplicate_references(stream_state.references)},
-        )
-        yield _format_sse_event("done", {"conversation_id": conversation_id})
+        _complete_stream_state(client, stream_state)
+        yield from _iter_stream_final_events(conversation_id, stream_state)
     except JSONDecodeError as exc:
         if token_events_emitted:
             LOGGER.warning(
@@ -142,14 +140,8 @@ def stream_agent_request(
                 token_events_emitted,
                 exc,
             )
-            stream_state.references.extend(
-                _retrieve_response_references(client, stream_state)
-            )
-            yield _format_sse_event(
-                "references",
-                {"references": deduplicate_references(stream_state.references)},
-            )
-            yield _format_sse_event("done", {"conversation_id": conversation_id})
+            _complete_stream_state(client, stream_state)
+            yield from _iter_stream_final_events(conversation_id, stream_state)
         else:
             LOGGER.exception("Responses API streaming parser failure")
             yield _format_sse_event("error", {"error": f"Responses API failure: {exc}"})
@@ -187,6 +179,7 @@ def _stream_response_tokens(
     for event in stream:
         _capture_stream_response_id(event, stream_state)
         stream_state.references.extend(extract_references(event))
+        stream_state.usage = extract_usage(event) or stream_state.usage
         token = _extract_stream_token(event)
         if token:
             yield token
@@ -212,26 +205,23 @@ def _capture_stream_response_id(
         stream_state.response_id = response_id
 
 
-def _retrieve_response_references(
+def _complete_stream_state(
     client: Any,
     stream_state: StreamState,
-) -> list[dict[str, Any]]:
-    """Retrieve completed response references after streaming.
+) -> None:
+    """Complete stream state by retrieving final response data.
 
     Args:
         client: OpenAI-compatible client.
         stream_state: Stream metadata containing the response ID.
-
-    Returns:
-        list[dict[str, Any]]: References extracted from the retrieved response.
     """
 
     if client is None:
-        return []
+        return
 
     response_id = stream_state.response_id
     if not response_id:
-        return []
+        return
 
     try:
         response = client.responses.retrieve(
@@ -240,10 +230,35 @@ def _retrieve_response_references(
             timeout=RESPONSES_TIMEOUT_SECONDS,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        LOGGER.warning("Unable to retrieve streamed response references: %s", exc)
-        return []
+        LOGGER.warning("Unable to retrieve streamed response data: %s", exc)
+        return
 
-    return extract_references(response)
+    stream_state.references.extend(extract_references(response))
+    stream_state.usage = extract_usage(response) or stream_state.usage
+
+
+def _iter_stream_final_events(
+    conversation_id: str,
+    stream_state: StreamState,
+) -> Iterator[str]:
+    """Yield final Server-Sent Events for a stream.
+
+    Args:
+        conversation_id: Active conversation identifier.
+        stream_state: Stream metadata and final response details.
+
+    Yields:
+        str: Final SSE frames for references, usage, and completion.
+    """
+
+    yield _format_sse_event(
+        "references",
+        {"references": deduplicate_references(stream_state.references)},
+    )
+    if stream_state.usage is not None:
+        yield _format_sse_event("usage", {"usage": stream_state.usage})
+
+    yield _format_sse_event("done", {"conversation_id": conversation_id})
 
 
 def _resolve_conversation_id(payload: dict[str, Any], client: Any) -> str:

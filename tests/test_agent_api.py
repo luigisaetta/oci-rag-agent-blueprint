@@ -48,12 +48,14 @@ class FakeResponse:
         id: Response identifier.
         output_text: Response text.
         output: Responses API output items.
+        usage: Responses API token usage payload.
         nested_payload: Optional nested payload used to test defensive parsing.
     """
 
     id: str
     output_text: str
     output: list[dict[str, Any]]
+    usage: dict[str, Any] | None = None
     nested_payload: dict[str, Any] | None = None
 
     def model_dump(self) -> dict[str, Any]:
@@ -67,6 +69,7 @@ class FakeResponse:
             "id": self.id,
             "output_text": self.output_text,
             "output": self.output,
+            "usage": self.usage,
         }
         if self.nested_payload:
             payload["nested_payload"] = self.nested_payload
@@ -183,6 +186,7 @@ class FakeResponses:
                 self.annotation_refs,
                 self.page_in_text,
             ),
+            usage=_fake_usage(),
             nested_payload=(
                 _fake_nested_file_search_payload() if self.nested_results else None
             ),
@@ -208,6 +212,7 @@ class FakeResponses:
                 self.annotation_refs,
                 self.page_in_text,
             ),
+            usage=_fake_usage(),
         )
 
 
@@ -351,6 +356,12 @@ def test_creates_new_conversation_and_response(monkeypatch: Any) -> None:
                 },
             }
         ],
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "reasoning_tokens": 3,
+        },
         "error": None,
     }
     assert fake_client.conversations.create_calls == 1
@@ -518,6 +529,8 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: token\ndata: {"text": "answer"}' in response.text
     assert "event: references" in response.text
     assert '"file_name": "architecture.md"' in response.text
+    assert "event: usage" in response.text
+    assert '"total_tokens": 150' in response.text
     assert "I should plan this." not in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
@@ -595,6 +608,8 @@ def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None
     assert 'event: token\ndata: {"text": "Partial answer"}' in response.text
     assert "event: references" in response.text
     assert '"file_name": "architecture.md"' in response.text
+    assert "event: usage" in response.text
+    assert '"total_tokens": 150' in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert "event: error" not in response.text
 
@@ -636,6 +651,21 @@ def _fake_file_search_call() -> dict[str, Any]:
                 "attributes": {"page": 2, "section": "overview"},
             }
         ],
+    }
+
+
+def _fake_usage() -> dict[str, Any]:
+    """Build a fake Responses API usage payload.
+
+    Returns:
+        dict[str, Any]: Fake token usage payload.
+    """
+
+    return {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_tokens": 150,
+        "output_tokens_details": {"reasoning_tokens": 3},
     }
 
 

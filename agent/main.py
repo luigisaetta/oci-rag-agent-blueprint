@@ -140,6 +140,7 @@ def _error_response(error: str, status_code: int) -> JSONResponse:
         "response_id": None,
         "agent_response": "",
         "references": [],
+        "usage": None,
         "error": error,
     }
     return JSONResponse(validate_agent_response(error_payload), status_code=status_code)

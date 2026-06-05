@@ -230,6 +230,7 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     print("Response")
     print("--------")
     references: list[object] = []
+    usage: object = None
 
     for event in send_streaming_request(endpoint, payload):
         if event.name == "metadata":
@@ -241,10 +242,13 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
             event_references = event.data.get("references", [])
             if isinstance(event_references, list):
                 references = event_references
+        elif event.name == "usage":
+            usage = event.data.get("usage")
         elif event.name == "error":
             print(f"\n\n[error] {event.data.get('error', 'Unknown error')}")
         elif event.name == "done":
             _print_references(references)
+            _print_usage(usage)
             print("\n\n[done]")
 
 
@@ -272,6 +276,7 @@ def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
     print("--------")
     print(response_payload.get("agent_response", ""))
     _print_references(response_payload.get("references", []))
+    _print_usage(response_payload.get("usage"))
 
 
 def _print_references(references: object) -> None:
@@ -293,6 +298,28 @@ def _print_references(references: object) -> None:
         page = reference.get("page")
         page_label = f", page {page}" if page else ""
         print(f"  {index}. {file_name}{page_label}")
+
+
+def _print_usage(usage: object) -> None:
+    """Print token usage in a compact format.
+
+    Args:
+        usage: Usage payload returned by the agent.
+    """
+
+    if not isinstance(usage, dict):
+        return
+
+    input_tokens = usage.get("input_tokens", "n/a")
+    output_tokens = usage.get("output_tokens", "n/a")
+    total_tokens = usage.get("total_tokens", "n/a")
+    reasoning_tokens = usage.get("reasoning_tokens")
+
+    details = f"input {input_tokens}, output {output_tokens}, total {total_tokens}"
+    if reasoning_tokens is not None:
+        details = f"{details}, reasoning {reasoning_tokens}"
+
+    print(f"\n[tokens: {details}]")
 
 
 def _print_request_header(

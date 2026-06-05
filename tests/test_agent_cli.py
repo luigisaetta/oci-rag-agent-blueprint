@@ -108,6 +108,12 @@ def test_parse_sse_lines() -> None:
                 "event: references\n",
                 'data: {"references": [{"file_name": "guide.md", "page": 3, "metadata": {}}]}\n',
                 "\n",
+                "event: usage\n",
+                (
+                    'data: {"usage": {"input_tokens": 10, "output_tokens": 5, '
+                    '"total_tokens": 15, "reasoning_tokens": 1}}\n'
+                ),
+                "\n",
                 "event: done\n",
                 'data: {"conversation_id": "conv-123"}\n',
                 "\n",
@@ -119,12 +125,21 @@ def test_parse_sse_lines() -> None:
         "metadata",
         "token",
         "references",
+        "usage",
         "done",
     ]
     assert events[0].data == {"conversation_id": "conv-123"}
     assert events[1].data == {"text": "Hello"}
     assert events[2].data == {
         "references": [{"file_name": "guide.md", "page": 3, "metadata": {}}]
+    }
+    assert events[3].data == {
+        "usage": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "reasoning_tokens": 1,
+        }
     }
 
 
@@ -152,6 +167,12 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
             "response_id": "resp-123",
             "agent_response": "JSON answer",
             "references": [{"file_name": "guide.md", "page": 3, "metadata": {}}],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "reasoning_tokens": 1,
+            },
             "error": None,
         }
 
@@ -173,6 +194,7 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
     assert "JSON answer" in output
     assert "[references: 1]" in output
     assert "1. guide.md, page 3" in output
+    assert "[tokens: input 10, output 5, total 15, reasoning 1]" in output
 
 
 def test_render_stream_prints_references(
@@ -203,6 +225,17 @@ def test_render_stream_prints_references(
                 "references",
                 {"references": [{"file_name": "guide.md", "page": 3}]},
             ),
+            agent_cli.SseEvent(
+                "usage",
+                {
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "total_tokens": 15,
+                        "reasoning_tokens": 1,
+                    }
+                },
+            ),
             agent_cli.SseEvent("done", {"conversation_id": "conv-123"}),
         ]
 
@@ -224,3 +257,4 @@ def test_render_stream_prints_references(
     assert "Streaming answer" in output
     assert "[references: 1]" in output
     assert "1. guide.md, page 3" in output
+    assert "[tokens: input 10, output 5, total 15, reasoning 1]" in output
