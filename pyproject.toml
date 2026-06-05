@@ -5,6 +5,14 @@ target-version = ["py311"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--cov=agent --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["agent"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.pylint.main]
 py-version = "3.11"
@@ -14,4 +22,3 @@ jobs = 0
 disable = [
     "missing-timeout",
 ]
-
