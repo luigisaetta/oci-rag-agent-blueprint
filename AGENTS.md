@@ -12,9 +12,10 @@ This project contains a blueprint and a set of guidelines for creating and deplo
 - Python code must be checked with `pylint`.
 - New functionality must include unit tests written with `pytest`.
 - Unit tests must provide sufficient coverage, with a target above 80%.
+- Tests must be executed in the `oci-rag-agent-blueprint` Conda environment.
 - Done means: code formatted, tests written, pylint checks completed, tests executed, and all test and pylint issues resolved.
 
-## Python Source Header
+## Python Code Conventions
 
 Every Python source file must start with a multiline header using this format:
 
@@ -28,6 +29,8 @@ Description: Brief description of the responsibilities and functions contained i
 ```
 
 Use the actual modification date when creating or updating a Python source file.
+
+All generated Python code must include accurate docstrings for modules, classes, methods, and functions where applicable. Docstrings must follow the Google Python docstring format and clearly describe purpose, arguments, return values, raised exceptions, and relevant behavior.
 
 ## Spec-Driven Development Workflow
 
