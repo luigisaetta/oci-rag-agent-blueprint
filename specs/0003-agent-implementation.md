@@ -37,7 +37,7 @@ The agent must be started with `uvicorn`.
 The default local start command should be:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+uvicorn agent.main:app --host 0.0.0.0 --port 8080
 ```
 
 The exact Python package layout may be refined by implementation-specific specifications, but the application must expose a FastAPI `app` object for `uvicorn`.
@@ -89,6 +89,7 @@ The initial request payload must include:
 - The user input message.
 - Conversation control fields.
 - Optional `user_id` and `user_role` fields reserved for future authentication, authorization, auditing, and personalization use cases.
+- Optional `stream` field. When omitted or `false`, the agent returns a standard JSON response. When `true`, the agent streams response tokens.
 
 The conversation control fields must follow the [Short-Term Memory](0002-short-term-memory.md) specification:
 
@@ -105,6 +106,27 @@ The response payload must include:
 - Structured error information when the request fails.
 
 The JSON request and response schemas must be treated as implementation contracts.
+
+## Streaming Output
+
+The agent must support token streaming for the response.
+
+Streaming is controlled by the optional `stream` field in [Agent Request Schema](../schemas/agent-request.schema.json).
+
+When `stream` is omitted or `false`, `POST /responses` must return the standard JSON response defined by [Agent Response Schema](../schemas/agent-response.schema.json).
+
+When `stream=true`, `POST /responses` must return a `text/event-stream` response using Server-Sent Events.
+
+The streaming MVP must emit:
+
+- A `metadata` event containing the active `conversation_id`.
+- One or more `token` events containing generated text deltas.
+- A final `done` event when streaming completes.
+- An `error` event when the Responses API fails during streaming.
+
+Streaming errors must not include secrets or complete request payloads.
+
+Streaming mode must still validate the JSON request payload and required environment variables before creating the stream.
 
 ## Request Handling Flow
 
@@ -163,6 +185,24 @@ response = client.responses.create(
         }
     ],
     timeout=60,
+)
+```
+
+When streaming is requested, the MVP implementation must use the same call shape with `stream=True`:
+
+```python
+stream = client.responses.create(
+    model=OCI_MODEL_ID,
+    input=user_request,
+    conversation=conversation_id,
+    tools=[
+        {
+            "type": "file_search",
+            "vector_store_ids": [OCI_VECTOR_STORE_ID],
+        }
+    ],
+    timeout=60,
+    stream=True,
 )
 ```
 
@@ -257,6 +297,7 @@ The MVP test suite must cover:
 - New conversation creation with `client.conversations.create`.
 - Existing conversation attachment using `conversation_id`.
 - Responses API response creation.
+- Streaming Responses API creation.
 - Responses API failures.
 - Structured JSON error responses.
 
@@ -269,6 +310,7 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The agent can be started with `uvicorn`.
 - `GET /health` returns a JSON health response.
 - `POST /responses` accepts JSON input and returns JSON output.
+- `POST /responses` supports `stream=true` and returns `text/event-stream`.
 - The request payload is validated against [Agent Request Schema](../schemas/agent-request.schema.json) before processing.
 - Successful responses conform to [Agent Response Schema](../schemas/agent-response.schema.json).
 - Invalid payloads are rejected before any Responses API call.
@@ -277,6 +319,7 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The agent uses the `openai` Python library.
 - The agent creates a Responses API client configured for OCI Enterprise AI.
 - The agent creates Responses API responses using `file_search`.
+- The agent creates streaming Responses API responses with `stream=True` when requested.
 - The agent passes `OCI_VECTOR_STORE_ID` to the file search configuration.
 - The agent authenticates the `openai` client with `OPENAI_API_KEY`.
 - Required runtime configuration is read from environment variables.

@@ -11,7 +11,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from app.config import AgentSettings
+from agent.config import AgentSettings
 
 
 def create_openai_client(settings: AgentSettings) -> Any:

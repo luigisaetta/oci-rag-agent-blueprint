@@ -28,6 +28,11 @@
     "user_role": {
       "description": "Optional user role reserved for future authorization and behavior customization use cases.",
       "type": "string"
+    },
+    "stream": {
+      "description": "When true, the agent streams response tokens using Server-Sent Events.",
+      "type": "boolean",
+      "default": false
     }
   },
   "allOf": [

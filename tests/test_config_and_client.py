@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config import AgentSettings, load_settings
-from app.openai_client import create_openai_client
+from agent.config import AgentSettings, load_settings
+from agent.openai_client import create_openai_client
 
 REQUIRED_ENV = {
     "OCI_REGION": "eu-frankfurt-1",
@@ -63,7 +63,7 @@ def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
 def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> None:
     """Test OpenAI-compatible client creation without external API calls."""
 
-    monkeypatch.setattr("app.openai_client.OpenAI", FakeOpenAI)
+    monkeypatch.setattr("agent.openai_client.OpenAI", FakeOpenAI)
     settings = AgentSettings(
         oci_region="eu-frankfurt-1",
         oci_compartment_id="ocid1.compartment.oc1..example",

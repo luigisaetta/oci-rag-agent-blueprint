@@ -10,12 +10,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from app.agent import process_agent_request
-from app.config import load_settings
-from app.openai_client import create_openai_client
-from app.schema_validator import SchemaValidationError, validate_agent_request
+from agent.agent import process_agent_request, stream_agent_request
+from agent.config import load_settings
+from agent.openai_client import create_openai_client
+from agent.schema_validator import SchemaValidationError, validate_agent_request
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -38,8 +38,8 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/responses")
-async def create_response(request: Request) -> JSONResponse:
+@app.post("/responses", response_model=None)
+async def create_response(request: Request) -> Response:
     """Handle an agent response request.
 
     Args:
@@ -63,6 +63,16 @@ async def create_response(request: Request) -> JSONResponse:
 
     try:
         settings = load_settings()
+        if validated_payload.get("stream", False):
+            return StreamingResponse(
+                stream_agent_request(
+                    validated_payload,
+                    settings,
+                    request.app.state.openai_client_factory,
+                ),
+                media_type="text/event-stream",
+            )
+
         response_payload = process_agent_request(
             validated_payload,
             settings,

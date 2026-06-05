@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from agent.main import app
 
 REQUIRED_ENV = {
     "OCI_REGION": "eu-frankfurt-1",
@@ -81,14 +81,14 @@ class FakeResponses:
         self.fail = fail
         self.create_calls: list[dict[str, Any]] = []
 
-    def create(self, **kwargs: Any) -> FakeResponse:
+    def create(self, **kwargs: Any) -> FakeResponse | list[dict[str, str]]:
         """Mock response creation.
 
         Args:
             **kwargs: Responses API call arguments.
 
         Returns:
-            FakeResponse: Created fake response.
+            FakeResponse | list[dict[str, str]]: Created fake response or stream.
 
         Raises:
             RuntimeError: If this fake is configured to fail.
@@ -98,6 +98,9 @@ class FakeResponses:
             raise RuntimeError("upstream unavailable")
 
         self.create_calls.append(kwargs)
+        if kwargs.get("stream"):
+            return [{"delta": "Agent "}, {"delta": "answer"}]
+
         return FakeResponse(id="resp-123", output_text="Agent answer")
 
 
@@ -252,6 +255,54 @@ def test_responses_api_failure(monkeypatch: Any) -> None:
 
     assert response.status_code == 502
     assert "Responses API failure: upstream unavailable" in response.json()["error"]
+
+
+def test_streams_response_tokens(monkeypatch: Any) -> None:
+    """Test streaming response handling."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert 'event: metadata\ndata: {"conversation_id": "conv-new"}' in response.text
+    assert 'event: token\ndata: {"text": "Agent "}' in response.text
+    assert 'event: token\ndata: {"text": "answer"}' in response.text
+    assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
+    assert fake_client.responses.create_calls[0]["stream"] is True
+
+
+def test_rejects_invalid_stream_field(monkeypatch: Any) -> None:
+    """Test schema validation for the stream field."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Field must be a boolean: stream" in response.json()["error"]
+    assert not fake_client.responses.create_calls
 
 
 def _set_required_env(monkeypatch: Any) -> None:
