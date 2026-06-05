@@ -96,10 +96,32 @@ The reference UI must be able to call the local backend at:
 http://localhost:8080/responses
 ```
 
+### Local Demo Scripts
+
+The repository must provide root-level helper scripts for local demo usage:
+
+- `start_demo.sh`
+- `stop_demo.sh`
+
+`start_demo.sh` must start the Docker Compose local deployment in detached mode.
+
+`start_demo.sh` must support a `--build` option that builds images before starting
+the deployment.
+
+`stop_demo.sh` must stop and remove the Docker Compose local deployment.
+
+The scripts must be executable and must fail fast on errors.
+
+The scripts must work from any current working directory by resolving the
+repository root from their own location.
+
 ### Local Deployment Acceptance Criteria
 
 - A Docker image can be built for the agent backend.
 - Docker Compose can start the agent service locally.
+- `start_demo.sh` starts the local Docker Compose deployment.
+- `start_demo.sh --build` builds images and starts the local Docker Compose deployment.
+- `stop_demo.sh` stops and removes the local Docker Compose deployment.
 - Docker Compose reads configuration from the root `.env` file.
 - Docker Compose defines the `rag-agent` service.
 - Docker Compose defines the `rag-ui` service.
@@ -147,7 +169,6 @@ Security details, including OCI IAM confidential application setup, JWT validati
 
 The following topics require dedicated specifications or later revisions:
 
-- Local deployment scripts.
 - Hosted deployment scripts.
 - OCI Enterprise AI hosted deployment procedure.
 - Security and JWT validation.

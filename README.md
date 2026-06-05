@@ -54,21 +54,31 @@ See [AGENTS.md](AGENTS.md) for the full working guidelines.
 ├── README.md
 ├── schemas/
 ├── specs/
+├── start_demo.sh
+├── stop_demo.sh
 ├── tests/
 └── ui/
 ```
 
-## Local UI
+## Local Demo
 
 The local Docker Compose deployment includes:
 
 - `rag-agent`, the FastAPI backend exposed on `http://localhost:8080`.
 - `rag-ui`, the Next.js reference UI exposed on `http://localhost:3000`.
 
-Start both services with:
+Before starting the demo, create a root `.env` file from `.env.sample` and fill in the required OCI Enterprise AI values.
+
+Start both services:
 
 ```bash
-docker-compose up -d
+./start_demo.sh
+```
+
+Build images and then start both services:
+
+```bash
+./start_demo.sh --build
 ```
 
 Then open:
@@ -77,6 +87,23 @@ Then open:
 http://localhost:3000
 ```
 
+Stop the demo:
+
+```bash
+./stop_demo.sh
+```
+
 ## Current Status
 
-The project now includes the first backend agent implementation, Docker Compose local deployment, a CLI test client, and a reference Next.js UI.
+The project now includes:
+
+- Spec-driven architecture and implementation guidelines.
+- A FastAPI backend agent using the OpenAI-compatible Responses API.
+- Conversation management support.
+- Streaming and non-streaming response paths.
+- File search integration against a configured OCI Vector Store.
+- JSON request and response schemas.
+- A Python CLI test client.
+- A Next.js reference chatbot UI with streaming and Markdown rendering.
+- Docker Compose local deployment for backend and UI.
+- Root-level demo scripts for starting and stopping the local deployment.
