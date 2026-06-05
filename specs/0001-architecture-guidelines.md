@@ -12,6 +12,8 @@ This document describes the high-level architecture and deployment principles th
 
 ## Architectural Overview
 
+![OCI RAG Agent Blueprint architecture](../images/arch01.png)
+
 The solution is composed of the following main areas:
 
 - A RAG agent implemented in Python.

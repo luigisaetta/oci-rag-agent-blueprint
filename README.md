@@ -6,6 +6,8 @@
 ![pytest](https://img.shields.io/badge/tests-pytest-blueviolet)
 ![spec-driven](https://img.shields.io/badge/development-spec--driven-orange)
 
+![OCI RAG Agent Blueprint architecture](images/arch01.png)
+
 Retrieval-Augmented Generation becomes truly useful when it is treated as an engineered system, not as a demo stitched together around a prompt. This repository is a **blueprint** for building that system on **OCI Enterprise AI**: grounded retrieval, clear deployment guidance, and agent behavior specified before code is written.
 
 The goal is to provide a practical foundation for creating and deploying a RAG solution in OCI Enterprise AI, using OCI Enterprise AI **Vector Store** as the retrieval layer and the **Responses API** as the interaction layer.
