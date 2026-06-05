@@ -196,6 +196,8 @@ Do not commit this value to source control.
 
 Create a vector store in the same region and compartment.
 
+For a practical introduction to vector stores in OCI Enterprise AI, see [Fiest Steps with Vector Stores](https://luigi-saetta.medium.com/oci-enterprise-ai-first-steps-with-vector-stores-df074cb398cb).
+
 Record the vector store identifier. It will be used as:
 
 ```text
