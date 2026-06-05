@@ -38,6 +38,8 @@ Document loading must use OCI-native services:
 
 The architecture must support multiple vector stores when required by the use case.
 
+The detailed document loading approach is defined in [Document Loading](0008-document-loading.md).
+
 ## RAG Agent Implementation
 
 The RAG agent implementation must be entirely based on the Responses API.

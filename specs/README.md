@@ -13,3 +13,4 @@ Specifications are the source of truth for the implementation. New features must
 | [0005 - CLI Test Client](0005-cli-test-client.md) | Python command-line client for testing the agent locally, including streaming support. |
 | [0006 - Reference UI](0006-reference-ui.md) | Next.js reference UI behavior, chat experience, backend URL configuration, themes, and streaming support. |
 | [0007 - Security](0007-security.md) | Initial OpenAI-compatible API key security model and future OCI Resource Principal direction. |
+| [0008 - Document Loading](0008-document-loading.md) | Object Storage bucket and Vector Store Data Sync Connector approach for loading and updating knowledge base documents. |
