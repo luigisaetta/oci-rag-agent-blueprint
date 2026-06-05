@@ -34,6 +34,8 @@ The Docker image must be built from `Dockerfile` in the repository root.
 
 The image must use a Python 3.11 runtime base image.
 
+The Docker image must be built for the `linux/amd64` platform. This is a mandatory requirement for OCI Enterprise AI hosted deployment compatibility.
+
 Runtime Python dependencies must be installed from `requirements.txt`.
 
 The container must start the agent with `uvicorn` using the package path defined in the agent implementation specification:
@@ -127,6 +129,7 @@ repository root from their own location.
 - Docker Compose defines the `rag-agent` service.
 - Docker Compose defines the `rag-ui` service.
 - Docker Compose builds the `oci-rag-agent-blueprint-agent` image.
+- The agent Docker image is built for the `linux/amd64` platform.
 - Docker Compose builds the `oci-rag-agent-blueprint-ui` image.
 - The agent service listens on port `8080`.
 - The UI service listens on port `3000`.
@@ -141,6 +144,8 @@ repository root from their own location.
 Hosted deployment must deploy the RAG agent as a containerized application in OCI Enterprise AI.
 
 The hosted deployment must use the same agent container image and runtime contract used by local deployment whenever possible.
+
+The hosted deployment image must be a `linux/amd64` image.
 
 Hosted deployment configuration must provide the required environment variables through OCI Enterprise AI deployment configuration or an equivalent managed configuration mechanism.
 
@@ -164,6 +169,7 @@ Security details, including OCI IAM confidential application setup, JWT validati
 - The hosted endpoint can serve `GET /health`.
 - The hosted endpoint can serve `POST /responses`.
 - The hosted endpoint supports streaming when `stream=true`.
+- The deployed container image uses the `linux/amd64` platform.
 - The deployment does not hardcode secrets.
 
 ## Open Topics
