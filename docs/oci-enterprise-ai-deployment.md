@@ -287,7 +287,6 @@ Validate:
 
 - Exact console screenshots and navigation paths.
 - OCI CLI automation commands.
-- Terraform deployment.
 - Authentication setup using an identity domain.
 - Private endpoint and customer networking mode.
 - Runtime logs and observability.
