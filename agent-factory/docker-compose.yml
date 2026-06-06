@@ -1,0 +1,35 @@
+name: agent-factory
+
+services:
+  factory-api:
+    image: oci-rag-agent-factory-api
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8081/factory/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  factory-ui:
+    image: oci-rag-agent-factory-ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_FACTORY_API_URL: http://localhost:8081/factory/deployments
+    environment:
+      NEXT_PUBLIC_FACTORY_API_URL: http://localhost:8081/factory/deployments
+    ports:
+      - "3100:3100"
+    depends_on:
+      factory-api:
+        condition: service_healthy

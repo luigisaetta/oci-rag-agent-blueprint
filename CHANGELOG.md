@@ -25,6 +25,8 @@ changes, or documentation updates are introduced.
   and OCI CLI orchestration steps.
 - Added the initial Agent Factory FastAPI backend skeleton, Next.js UI, dry-run
   command generation, command export, and backend validation tests.
+- Added a separate Docker Compose deployment for Agent Factory, including API
+  and UI container builds plus root-level start and stop scripts.
 
 ## 2026-06-05
 

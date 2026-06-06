@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-const DEFAULT_BACKEND_URL = "http://localhost:8081/factory/deployments";
+const DEFAULT_BACKEND_URL =
+  process.env.NEXT_PUBLIC_FACTORY_API_URL ?? "http://localhost:8081/factory/deployments";
 
 const INITIAL_FORM = {
   compartment: "",
@@ -486,4 +487,3 @@ function normalizeValue(name, value) {
 
   return value;
 }
-

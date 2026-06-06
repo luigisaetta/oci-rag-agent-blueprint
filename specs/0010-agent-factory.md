@@ -74,6 +74,31 @@ path for user RAG requests.
 The Agent Factory UI must call the Agent Factory backend. It must not call OCI
 control plane APIs directly from the browser.
 
+## Local Docker Compose Deployment
+
+Agent Factory must provide a Docker Compose deployment that is separate from the
+RAG agent demo deployment.
+
+The local Docker Compose deployment must include:
+
+- A FastAPI backend container for the Agent Factory API.
+- A Next.js frontend container for the Agent Factory UI.
+- A dedicated Compose project name so it can be started and stopped without
+  affecting the RAG agent demo deployment.
+- Root-level helper scripts named `start_factory.sh` and `stop_factory.sh`.
+
+The helper scripts must start and stop only the Agent Factory services.
+
+The default local ports must be:
+
+| Service | Port |
+| --- | --- |
+| Agent Factory API | `8081` |
+| Agent Factory UI | `3100` |
+
+The UI container must be configurable with the backend API endpoint used by the
+browser. The local default must point to `http://localhost:8081/factory/deployments`.
+
 ## Backend Responsibilities
 
 The Agent Factory backend must provide an API for:
