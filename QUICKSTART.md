@@ -89,6 +89,12 @@ cp .env.sample .env
 
 Edit `.env` and set all required values.
 
+By default, streaming uses `STREAM_FINALIZATION_MODE=never`. This avoids a
+post-stream retrieve call for lower end-of-stream latency. Streaming references
+and token usage are therefore emitted only when OCI Enterprise AI includes them
+in the stream events. Set `STREAM_FINALIZATION_MODE=auto` or `always` when the
+deployment should trade additional latency for more complete final metadata.
+
 For Hosted Application deployment in OCI Enterprise AI, the `.env` file is not used by the runtime. The same variables and their real values must be configured in the Hosted Application runtime configuration.
 
 See [Environment Variables](docs/environment-variables.md) for the complete reference.

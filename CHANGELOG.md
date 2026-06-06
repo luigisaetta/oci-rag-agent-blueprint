@@ -6,6 +6,14 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-06
+
+- Updated the streaming finalization specification to make post-stream retrieve
+  behavior configurable with `STREAM_FINALIZATION_MODE`.
+- Documented `STREAM_FINALIZATION_MODE=never` as the default, with `auto` and
+  `always` available for deployments that prefer more complete final streaming
+  metadata over lower end-of-stream latency.
+
 ## 2026-06-05
 
 - Created the initial spec-driven project structure and repository guidelines.

@@ -280,6 +280,13 @@ See [Environment Variables](environment-variables.md) for the complete runtime c
 | `OCI_VECTOR_STORE_ID` | Vector store identifier used by file search. |
 | `OPENAI_API_KEY` | OCI Generative AI OpenAI-compatible API key secret. |
 
+Optional runtime tuning variables include `FILE_SEARCH_MAX_NUM_RESULTS`,
+`RESPONSES_TIMEOUT_SECONDS`, and `STREAM_FINALIZATION_MODE`.
+`STREAM_FINALIZATION_MODE` defaults to `never`, which avoids a post-stream
+retrieve call and treats streaming references and token usage as best-effort
+metadata. Use `auto` or `always` when the deployment should trade additional
+end-of-stream latency for more complete final metadata.
+
 ### 7. Store The Image In OCI Container Registry
 
 Tag the image for OCIR.

@@ -156,6 +156,23 @@ When token usage is available, the `usage` event must be emitted after token
 events and before the final `done` event. The `usage` event may be emitted before
 or after the `references` event.
 
+Streaming response finalization is controlled by the deployment-level
+`STREAM_FINALIZATION_MODE` setting defined in
+[Agent Runtime Tuning](0009-agent-runtime-tuning.md).
+
+The default `never` mode must avoid a post-stream `client.responses.retrieve`
+call. In this mode, streamed `references` and `usage` events are best effort and
+must be built only from data already present in Responses API stream events.
+
+The `auto` mode must prefer stream-provided data and may call
+`client.responses.retrieve(response_id, include=["file_search_call.results"])`
+only when final references or usage are missing after the stream completes.
+
+The `always` mode must preserve the legacy complete-finalization behavior by
+calling `client.responses.retrieve(response_id,
+include=["file_search_call.results"])` after token streaming whenever a
+`response_id` is available.
+
 ## Request Handling Flow
 
 For each `POST /responses` request, the agent must:
@@ -273,11 +290,14 @@ not available, it must fall back to file search results included through
 `include=["file_search_call.results"]`.
 
 For streaming responses, the implementation must capture the `response_id` from
-the `response.created` stream event. Because OCI Enterprise AI may not include
-complete file search results in streaming events, the agent must retrieve the
-completed response with `client.responses.retrieve(response_id,
-include=["file_search_call.results"])` before emitting the final `references`
-event.
+the `response.created` stream event when it is available.
+
+Because OCI Enterprise AI may not include complete file search results in
+streaming events, streaming references are best effort unless
+`STREAM_FINALIZATION_MODE` is set to `auto` or `always` and the implementation
+performs a final `client.responses.retrieve(response_id,
+include=["file_search_call.results"])` call before emitting the final
+`references` event.
 
 Each reference must follow the response schema:
 
@@ -302,8 +322,11 @@ Usage must follow the response schema:
 - `reasoning_tokens`: Reasoning tokens reported by the model/provider, when available.
 
 When token usage is not available, non-streaming responses may return `usage=null`.
-For streaming responses, the agent should retrieve the completed response by
-`response_id` and emit usage when the retrieved response contains usage data.
+For streaming responses, the agent must emit usage from stream events when those
+events include Responses API usage data. If usage is not included in stream
+events, the `usage` event may be omitted when `STREAM_FINALIZATION_MODE=never`.
+When `STREAM_FINALIZATION_MODE=auto` or `always` leads to a final retrieve call,
+the agent should emit usage when the retrieved response contains usage data.
 
 ## Environment Variables
 

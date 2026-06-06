@@ -36,6 +36,23 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `OPENAI_API_KEY` | Yes | `sk-...` | Set in root `.env`. | Set as a runtime environment variable, preferably through the most protected configuration mechanism available. | OpenAI-compatible API key created inside the OCI Enterprise AI project. Never log or commit this value. |
 | `FILE_SEARCH_MAX_NUM_RESULTS` | No | `10` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Maximum number of Vector Store file search results requested by the Responses API `file_search` tool. Accepted range: `1` to `50`. |
 | `RESPONSES_TIMEOUT_SECONDS` | No | `60` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Timeout in seconds for Responses API create and retrieve calls. Accepted range: `1` to `300`. |
+| `STREAM_FINALIZATION_MODE` | No | `never` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Controls whether streaming responses perform a post-stream retrieve call to complete references and token usage. Accepted values: `never`, `auto`, `always`. |
+
+## Streaming Finalization
+
+`STREAM_FINALIZATION_MODE` controls the latency/completeness tradeoff for
+streaming responses.
+
+The default value is `never`. In this mode, the agent does not call
+`responses.retrieve` after token streaming completes. References and token usage
+are emitted only when OCI Enterprise AI includes them in the stream events.
+
+Use `auto` when the deployment should prefer low latency but recover missing
+references or token usage with a final retrieve call when needed.
+
+Use `always` when the deployment should preserve complete finalization behavior
+and always retrieve the completed response after streaming when a `response_id`
+is available.
 
 ## Region Consistency
 
