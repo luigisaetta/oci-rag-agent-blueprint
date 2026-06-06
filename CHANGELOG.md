@@ -23,6 +23,8 @@ changes, or documentation updates are introduced.
 - Updated the Agent Factory specification with required implementation
   mechanisms for OCI Python SDK, Vector Store control plane APIs, Docker CLI,
   and OCI CLI orchestration steps.
+- Added the initial Agent Factory FastAPI backend skeleton, Next.js UI, dry-run
+  command generation, command export, and backend validation tests.
 
 ## 2026-06-05
 
