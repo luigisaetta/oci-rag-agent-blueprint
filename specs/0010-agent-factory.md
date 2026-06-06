@@ -99,6 +99,31 @@ The default local ports must be:
 The UI container must be configurable with the backend API endpoint used by the
 browser. The local default must point to `http://localhost:8081/factory/deployments`.
 
+## Guided Region And Model Choices
+
+The first implementation must use guided listbox controls for region and model
+selection to avoid free-text errors.
+
+Supported regions are:
+
+| Region | OCIR region key |
+| --- | --- |
+| `eu-frankfurt-1` | `fra` |
+| `us-chicago-1` | `ord` |
+
+OCI control plane and runtime environment configuration must use the selected
+region identifier, such as `eu-frankfurt-1`. OCI Container Registry image
+references and Docker login commands must use the lower-case region key, such
+as `fra.ocir.io` or `ord.ocir.io`.
+
+Supported model IDs are:
+
+| Display label | Model ID |
+| --- | --- |
+| GPT-5.4 | `openai.gpt-5.4` |
+| Gemini 2.5 Pro | `google.gemini-2.5-pro` |
+| OpenAI gpt-oss-120b | `openai.gpt-oss-120b` |
+
 ## Backend Responsibilities
 
 The Agent Factory backend must provide an API for:
@@ -203,7 +228,7 @@ Agent Factory must collect the following inputs.
 | Field | Required | Behavior |
 | --- | --- | --- |
 | Compartment name or OCID | Yes | Identifies the compartment where resources are created or looked up. If a name is provided, the backend must resolve it to an OCID before running deployment actions. |
-| Region | Yes | OCI region where all resources are created or reused. |
+| Region | Yes | OCI region where all resources are created or reused. Must be selected from the supported region list. |
 | Object Storage bucket mode | Yes | Either `create` or `reuse`. |
 | Object Storage bucket name | Yes | Bucket to create or reuse for source documents. |
 | Vector Store mode | Yes | Either `create` or `reuse`. |
@@ -218,7 +243,7 @@ Agent Factory must collect the following inputs.
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
 | Custom network | No | Reserved for future private/custom networking support. |
 | GenAI project OCID | Yes | OCI Enterprise AI project OCID passed to the deployed RAG agent. |
-| Model ID | Yes | Model identifier used by the deployed RAG agent. |
+| Model ID | Yes | Model identifier used by the deployed RAG agent. Must be selected from the supported model list. |
 | OpenAI-compatible API key | Yes | API key used by the deployed RAG agent to call OCI Enterprise AI. |
 | File search max results | No | Optional runtime tuning value for `FILE_SEARCH_MAX_NUM_RESULTS`. |
 | Responses timeout seconds | No | Optional runtime tuning value for `RESPONSES_TIMEOUT_SECONDS`. |
@@ -516,6 +541,8 @@ Live OCI integration tests must not be required for the default test suite.
 - Agent Factory has a backend service with deployment-run APIs.
 - Agent Factory has a Next.js UI for guided deployment.
 - The UI collects all required first-version inputs.
+- Region and model are selected through guided controls, and the backend rejects
+  unsupported values.
 - Dry-run responses include the generated OCI CLI command plan and Hosted
   Application JSON artifacts for auth, networking, environment variables, and
   active Docker artifact configuration.
@@ -535,6 +562,8 @@ Live OCI integration tests must not be required for the default test suite.
 - The backend builds the RAG agent backend image with Docker CLI.
 - The backend publishes the RAG agent backend image to OCI Container Registry
   with Docker CLI.
+- OCI Container Registry commands and image references use the selected region's
+  OCIR region key rather than the full region identifier.
 - The backend creates an OCI Enterprise AI Hosted Application with OCI CLI.
 - The backend creates a deployment inside the Hosted Application with OCI CLI.
 - The deployed agent receives the selected Vector Store identifier through

@@ -21,6 +21,12 @@ StepStatus = Literal["pending", "running", "succeeded", "failed", "skipped"]
 RESOURCE_MODES = {"create", "reuse"}
 CONNECTOR_MODES = {"create", "reuse", "skip"}
 STREAM_FINALIZATION_MODES = {"never", "auto", "always"}
+SUPPORTED_REGIONS = {"eu-frankfurt-1", "us-chicago-1"}
+SUPPORTED_MODEL_IDS = {
+    "openai.gpt-5.4",
+    "google.gemini-2.5-pro",
+    "openai.gpt-oss-120b",
+}
 
 
 @dataclass(frozen=True)
@@ -159,6 +165,8 @@ def validate_deployment_payload(payload: dict[str, Any]) -> ValidationResult:
     _validate_choice(errors, normalized, "bucket_mode", RESOURCE_MODES)
     _validate_choice(errors, normalized, "vector_store_mode", RESOURCE_MODES)
     _validate_choice(errors, normalized, "connector_mode", CONNECTOR_MODES)
+    _validate_choice(errors, normalized, "region", SUPPORTED_REGIONS)
+    _validate_choice(errors, normalized, "model_id", SUPPORTED_MODEL_IDS)
     _validate_choice(
         errors,
         normalized,

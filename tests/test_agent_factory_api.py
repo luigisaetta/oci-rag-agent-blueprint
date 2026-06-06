@@ -55,8 +55,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert "hosted-deployment create" in payload["commands_text"]
     assert "--active-artifact" in payload["commands_text"]
     assert (
-        payload["outputs"]["image_reference"]
-        == "eu-frankfurt-1.ocir.io/<tenancy-namespace>/"
+        payload["outputs"]["image_reference"] == "fra.ocir.io/<tenancy-namespace>/"
         "oci-rag-agent-blueprint-agent:0.1.0"
     )
     runtime_environment = payload["outputs"]["runtime_environment"]
@@ -100,8 +99,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert dry_run_artifacts["hosted-deployment-active-artifact.json"] == {
         "artifactType": "SIMPLE_DOCKER_ARTIFACT",
         "containerUri": (
-            "eu-frankfurt-1.ocir.io/<tenancy-namespace>/"
-            "oci-rag-agent-blueprint-agent"
+            "fra.ocir.io/<tenancy-namespace>/oci-rag-agent-blueprint-agent"
         ),
         "tag": "0.1.0",
     }
@@ -179,6 +177,48 @@ def test_agent_factory_rejects_unsupported_options() -> None:
     assert "jwt_protection_enabled" in field_errors
     assert "endpoint_visibility" in field_errors
     assert "network_mode" in field_errors
+
+
+def test_agent_factory_rejects_unknown_region_and_model() -> None:
+    """Test region and model are restricted to guided choices."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["region"] = "ap-mars-1"
+    request_payload["model_id"] = "not-a-supported-model"
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 400
+    field_errors = response.json()["field_errors"]
+    assert field_errors["region"] == ("Expected one of: eu-frankfurt-1, us-chicago-1.")
+    assert field_errors["model_id"] == (
+        "Expected one of: google.gemini-2.5-pro, openai.gpt-5.4, "
+        "openai.gpt-oss-120b."
+    )
+
+
+def test_agent_factory_uses_region_key_for_ocir_registry() -> None:
+    """Test OCIR image references use the OCI region key, not region name."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["region"] = "us-chicago-1"
+    request_payload["model_id"] = "google.gemini-2.5-pro"
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["outputs"]["image_reference"] == (
+        "ord.ocir.io/<tenancy-namespace>/oci-rag-agent-blueprint-agent:0.1.0"
+    )
+    assert "docker login ord.ocir.io" in payload["commands_text"]
+    assert payload["outputs"]["runtime_environment"]["OCI_REGION"] == "us-chicago-1"
+    assert payload["outputs"]["runtime_environment"]["OCI_MODEL_ID"] == (
+        "google.gemini-2.5-pro"
+    )
 
 
 def test_agent_factory_rejects_connector_without_name() -> None:

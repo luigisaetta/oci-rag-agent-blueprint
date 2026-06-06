@@ -36,6 +36,9 @@ changes, or documentation updates are introduced.
 - Fixed Agent Factory command planning so compartment and Vector Store names are
   represented as resolved OCID values before they are passed to downstream OCI
   commands, JSON artifacts, or agent runtime environment variables.
+- Changed Agent Factory region and model inputs to guided selections, added
+  backend validation for supported choices, and mapped OCI regions to OCIR
+  registry keys for Docker image references.
 
 ## 2026-06-05
 

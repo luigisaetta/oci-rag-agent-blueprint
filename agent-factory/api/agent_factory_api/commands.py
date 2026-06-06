@@ -14,6 +14,10 @@ from typing import Any
 DEFAULT_WAIT_STATE = "SUCCEEDED"
 GENERATED_ARTIFACT_DIR = "agent-factory/generated"
 COMPARTMENT_OCID_PREFIX = "ocid1.compartment."
+REGION_KEYS = {
+    "eu-frankfurt-1": "fra",
+    "us-chicago-1": "ord",
+}
 
 AGENT_RUNTIME_ENVIRONMENT_VARIABLES = (
     "OCI_REGION",
@@ -118,6 +122,7 @@ def _build_dry_run_commands(
     """
 
     compartment_id = resolved_identifiers["compartment_id"]
+    ocir_registry = build_ocir_registry(payload)
     connector_command = [
         "python",
         "-m",
@@ -188,7 +193,7 @@ def _build_dry_run_commands(
         [
             "docker",
             "login",
-            f"{payload['region']}.ocir.io",
+            ocir_registry,
         ],
         [
             "docker",
@@ -302,6 +307,7 @@ def _build_apply_commands(
     """
 
     compartment_id = resolved_identifiers["compartment_id"]
+    ocir_registry = build_ocir_registry(payload)
     connector_command = [
         "python",
         "-m",
@@ -369,7 +375,7 @@ def _build_apply_commands(
         [
             "docker",
             "login",
-            f"{payload['region']}.ocir.io",
+            ocir_registry,
         ],
         [
             "docker",
@@ -456,9 +462,30 @@ def build_image_reference(payload: dict[str, Any]) -> str:
 
     repository = payload["container_repository_name"].strip("/")
     return (
-        f"{payload['region']}.ocir.io/<tenancy-namespace>/{repository}:"
+        f"{build_ocir_registry(payload)}"
+        f"/<tenancy-namespace>/{repository}:"
         f"{payload['container_image_tag']}"
     )
+
+
+def build_ocir_registry(payload: dict[str, Any]) -> str:
+    """Build the target OCIR registry hostname for a selected OCI region.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: OCIR registry hostname.
+
+    Raises:
+        ValueError: If the region does not have a configured region key.
+    """
+
+    region = str(payload["region"])
+    region_key = REGION_KEYS.get(region)
+    if not region_key:
+        raise ValueError(f"Unsupported OCI region for OCIR registry: {region}")
+    return f"{region_key}.ocir.io"
 
 
 def build_hosted_application_artifacts(

@@ -30,6 +30,17 @@ const INITIAL_FORM = {
   dry_run: true
 };
 
+const REGION_OPTIONS = [
+  { value: "eu-frankfurt-1", label: "eu-frankfurt-1" },
+  { value: "us-chicago-1", label: "us-chicago-1" }
+];
+
+const MODEL_OPTIONS = [
+  { value: "openai.gpt-5.4", label: "GPT-5.4" },
+  { value: "google.gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { value: "openai.gpt-oss-120b", label: "OpenAI gpt-oss-120b" }
+];
+
 const REQUIRED_FIELDS = [
   "compartment",
   "region",
@@ -73,13 +84,28 @@ function Field({
   );
 }
 
-function SelectField({ label, name, value, onChange, children, disabled = false }) {
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+  children,
+  disabled = false,
+  error = ""
+}) {
   return (
     <label className="field">
       <span>{label}</span>
-      <select name={name} value={value} disabled={disabled} onChange={onChange}>
+      <select
+        name={name}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        aria-invalid={Boolean(error)}
+      >
         {children}
       </select>
+      {error ? <small>{error}</small> : null}
     </label>
   );
 }
@@ -252,13 +278,19 @@ export default function Home() {
                   onChange={updateField}
                   error={fieldErrors.compartment}
                 />
-                <Field
+                <SelectField
                   label="Region"
                   name="region"
                   value={form.region}
                   onChange={updateField}
                   error={fieldErrors.region}
-                />
+                >
+                  {REGION_OPTIONS.map((region) => (
+                    <option key={region.value} value={region.value}>
+                      {region.label}
+                    </option>
+                  ))}
+                </SelectField>
                 <Field
                   label="GenAI project OCID"
                   name="genai_project_ocid"
@@ -266,13 +298,19 @@ export default function Home() {
                   onChange={updateField}
                   error={fieldErrors.genai_project_ocid}
                 />
-                <Field
-                  label="Model ID"
+                <SelectField
+                  label="Model"
                   name="model_id"
                   value={form.model_id}
                   onChange={updateField}
                   error={fieldErrors.model_id}
-                />
+                >
+                  {MODEL_OPTIONS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+                </SelectField>
               </div>
             </section>
 
