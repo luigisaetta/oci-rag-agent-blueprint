@@ -170,6 +170,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
         "hosted_application_name": payload["hosted_application_name"],
         "deployment_name": payload["deployment_name"],
         "endpoint_url": None,
+        "resolved_identifiers": plan["resolved_identifiers"],
         "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
         "dry_run_artifacts": plan["artifacts"],
         "note": (

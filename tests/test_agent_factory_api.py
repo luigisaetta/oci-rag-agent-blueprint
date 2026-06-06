@@ -61,6 +61,11 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     )
     runtime_environment = payload["outputs"]["runtime_environment"]
     assert set(runtime_environment) == set(AGENT_RUNTIME_ENVIRONMENT_VARIABLES)
+    assert payload["outputs"]["resolved_identifiers"] == {
+        "compartment_id": "ocid1.compartment.oc1..example",
+        "vector_store_id": "<created-or-resolved-vector-store-ocid>",
+        "connector_id": "<created-or-resolved-data-sync-connector-ocid>",
+    }
     assert runtime_environment["OCI_REGION"] == "eu-frankfurt-1"
     assert runtime_environment["OCI_COMPARTMENT_ID"] == (
         "ocid1.compartment.oc1..example"
@@ -102,6 +107,60 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     }
     assert any(step["step_id"] == "docker-build" for step in payload["steps"])
     assert any(step["step_id"] == "runtime-environment" for step in payload["steps"])
+
+
+def test_agent_factory_resolves_names_before_downstream_commands() -> None:
+    """Test names are converted to OCID placeholders for downstream commands."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["compartment"] = "lsaetta"
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    commands = payload["commands"]
+    assert commands[0] == [
+        "oci",
+        "--region",
+        "eu-frankfurt-1",
+        "--output",
+        "json",
+        "iam",
+        "compartment",
+        "list",
+        "--name",
+        "lsaetta",
+        "--compartment-id-in-subtree",
+        "true",
+        "--access-level",
+        "ANY",
+        "--include-root",
+        "--all",
+    ]
+    assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
+        "<resolved-compartment-ocid>"
+    )
+    assert payload["outputs"]["runtime_environment"]["OCI_COMPARTMENT_ID"] == (
+        "<resolved-compartment-ocid>"
+    )
+    assert (
+        payload["outputs"]["dry_run_artifacts"]["create-hosted-application.json"][
+            "compartmentId"
+        ]
+        == "<resolved-compartment-ocid>"
+    )
+    assert (
+        payload["outputs"]["dry_run_artifacts"]["create-hosted-deployment.json"][
+            "compartmentId"
+        ]
+        == "<resolved-compartment-ocid>"
+    )
+    assert "--compartment-id '<resolved-compartment-ocid>'" in (
+        payload["commands_text"]
+    )
 
 
 def test_agent_factory_rejects_unsupported_options() -> None:
@@ -169,6 +228,9 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment() -> 
     assert "hosted-application-environment-variables.json" in (payload["commands_text"])
     assert "hosted-deployment create" in payload["commands_text"]
     runtime_environment = payload["outputs"]["runtime_environment"]
+    assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
+        "ocid1.vectorstore.oc1..example"
+    )
     assert (
         runtime_environment["OCI_VECTOR_STORE_ID"] == "ocid1.vectorstore.oc1..example"
     )

@@ -13,6 +13,7 @@ from typing import Any
 
 DEFAULT_WAIT_STATE = "SUCCEEDED"
 GENERATED_ARTIFACT_DIR = "agent-factory/generated"
+COMPARTMENT_OCID_PREFIX = "ocid1.compartment."
 
 AGENT_RUNTIME_ENVIRONMENT_VARIABLES = (
     "OCI_REGION",
@@ -39,18 +40,31 @@ def build_deployment_plan(payload: dict[str, Any], dry_run: bool) -> dict[str, A
         JSON artifacts.
     """
 
-    runtime_environment = build_agent_runtime_environment(payload)
+    resolved_identifiers = build_resolved_identifiers(payload)
+    runtime_environment = build_agent_runtime_environment(payload, resolved_identifiers)
     redacted_environment = redact_runtime_environment(runtime_environment)
-    artifacts = build_hosted_application_artifacts(payload, redacted_environment)
+    artifacts = build_hosted_application_artifacts(
+        payload,
+        redacted_environment,
+        resolved_identifiers,
+    )
     image_reference = build_image_reference(payload)
     commands = (
-        _build_dry_run_commands(payload, artifacts, image_reference)
+        _build_dry_run_commands(
+            payload, artifacts, image_reference, resolved_identifiers
+        )
         if dry_run
-        else _build_apply_commands(payload, artifacts, image_reference)
+        else _build_apply_commands(
+            payload,
+            artifacts,
+            image_reference,
+            resolved_identifiers,
+        )
     )
     return {
         "commands": commands,
         "image_reference": image_reference,
+        "resolved_identifiers": resolved_identifiers,
         "runtime_environment": runtime_environment,
         "redacted_runtime_environment": redacted_environment,
         "artifacts": artifacts,
@@ -68,18 +82,28 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
     """
 
     image_reference = build_image_reference(payload)
+    resolved_identifiers = build_resolved_identifiers(payload)
     artifacts = build_hosted_application_artifacts(
         payload,
-        redact_runtime_environment(build_agent_runtime_environment(payload)),
+        redact_runtime_environment(
+            build_agent_runtime_environment(payload, resolved_identifiers)
+        ),
+        resolved_identifiers,
     )
 
-    return _build_dry_run_commands(payload, artifacts, image_reference)
+    return _build_dry_run_commands(
+        payload,
+        artifacts,
+        image_reference,
+        resolved_identifiers,
+    )
 
 
 def _build_dry_run_commands(
     payload: dict[str, Any],
     artifacts: dict[str, Any],
     image_reference: str,
+    resolved_identifiers: dict[str, str],
 ) -> list[list[str]]:
     """Build non-mutating validation commands from prepared artifacts.
 
@@ -87,11 +111,13 @@ def _build_dry_run_commands(
         payload: Normalized deployment payload.
         artifacts: Generated Hosted Application JSON artifacts.
         image_reference: Final OCIR image reference.
+        resolved_identifiers: Resource identifiers resolved from names or OCIDs.
 
     Returns:
         list[list[str]]: Structured command arguments.
     """
 
+    compartment_id = resolved_identifiers["compartment_id"]
     connector_command = [
         "python",
         "-m",
@@ -106,18 +132,7 @@ def _build_dry_run_commands(
     ]
 
     return [
-        [
-            "oci",
-            "--region",
-            payload["region"],
-            "--output",
-            "json",
-            "iam",
-            "compartment",
-            "get",
-            "--compartment-id",
-            payload["compartment"],
-        ],
+        _build_compartment_resolution_command(payload),
         [
             "oci",
             "--region",
@@ -165,7 +180,7 @@ def _build_dry_run_commands(
             "repository",
             "list",
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--display-name",
             payload["container_repository_name"],
             "--all",
@@ -191,7 +206,7 @@ def _build_dry_run_commands(
             "hosted-application-collection",
             "list-hosted-applications",
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--all",
         ],
         [
@@ -216,7 +231,7 @@ def _build_dry_run_commands(
             "--display-name",
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--wait-for-state",
             DEFAULT_WAIT_STATE,
         ],
@@ -251,18 +266,28 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
     """
 
     image_reference = build_image_reference(payload)
+    resolved_identifiers = build_resolved_identifiers(payload)
     artifacts = build_hosted_application_artifacts(
         payload,
-        redact_runtime_environment(build_agent_runtime_environment(payload)),
+        redact_runtime_environment(
+            build_agent_runtime_environment(payload, resolved_identifiers)
+        ),
+        resolved_identifiers,
     )
 
-    return _build_apply_commands(payload, artifacts, image_reference)
+    return _build_apply_commands(
+        payload,
+        artifacts,
+        image_reference,
+        resolved_identifiers,
+    )
 
 
 def _build_apply_commands(
     payload: dict[str, Any],
     artifacts: dict[str, Any],
     image_reference: str,
+    resolved_identifiers: dict[str, str],
 ) -> list[list[str]]:
     """Build mutating command plan from prepared artifacts.
 
@@ -270,11 +295,13 @@ def _build_apply_commands(
         payload: Normalized deployment payload.
         artifacts: Generated Hosted Application JSON artifacts.
         image_reference: Final OCIR image reference.
+        resolved_identifiers: Resource identifiers resolved from names or OCIDs.
 
     Returns:
         list[list[str]]: Structured command arguments.
     """
 
+    compartment_id = resolved_identifiers["compartment_id"]
     connector_command = [
         "python",
         "-m",
@@ -289,25 +316,14 @@ def _build_apply_commands(
     ]
 
     return [
-        [
-            "oci",
-            "--region",
-            payload["region"],
-            "--output",
-            "json",
-            "iam",
-            "compartment",
-            "get",
-            "--compartment-id",
-            payload["compartment"],
-        ],
+        _build_compartment_resolution_command(payload),
         [
             "oci",
             "os",
             "bucket",
             "create",
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--name",
             payload["bucket_name"],
         ],
@@ -348,7 +364,7 @@ def _build_apply_commands(
             "--display-name",
             payload["container_repository_name"],
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
         ],
         [
             "docker",
@@ -372,7 +388,7 @@ def _build_apply_commands(
             "--display-name",
             artifacts["create-hosted-application.json"]["displayName"],
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--inbound-auth-config",
             _file_uri("hosted-application-inbound-auth-config.json"),
             "--networking-config",
@@ -404,7 +420,7 @@ def _build_apply_commands(
             "--display-name",
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
-            payload["compartment"],
+            compartment_id,
             "--wait-for-state",
             DEFAULT_WAIT_STATE,
         ],
@@ -446,19 +462,23 @@ def build_image_reference(payload: dict[str, Any]) -> str:
 
 
 def build_hosted_application_artifacts(
-    payload: dict[str, Any], environment: dict[str, str]
+    payload: dict[str, Any],
+    environment: dict[str, str],
+    resolved_identifiers: dict[str, str],
 ) -> dict[str, Any]:
     """Build OCI CLI JSON artifacts using the deployer-compatible shape.
 
     Args:
         payload: Normalized deployment payload.
         environment: Runtime environment variables safe for dry-run responses.
+        resolved_identifiers: Resource identifiers resolved from names or OCIDs.
 
     Returns:
         dict[str, Any]: Artifact filenames mapped to JSON payloads.
     """
 
     image_reference = build_image_reference(payload)
+    compartment_id = resolved_identifiers["compartment_id"]
     container_uri, tag = image_reference.rsplit(":", maxsplit=1)
     return {
         "hosted-application-inbound-auth-config.json": {
@@ -482,7 +502,7 @@ def build_hosted_application_artifacts(
             "tag": tag,
         },
         "create-hosted-application.json": {
-            "compartmentId": payload["compartment"],
+            "compartmentId": compartment_id,
             "createIfMissing": True,
             "displayName": payload["hosted_application_name"],
             "jsonFiles": {
@@ -502,7 +522,7 @@ def build_hosted_application_artifacts(
             "activate": True,
             "activeArtifact": _artifact_path("hosted-deployment-active-artifact.json"),
             "artifactTag": tag,
-            "compartmentId": payload["compartment"],
+            "compartmentId": compartment_id,
             "containerUri": container_uri,
             "createNewVersion": True,
             "displayName": payload["deployment_name"],
@@ -512,23 +532,28 @@ def build_hosted_application_artifacts(
     }
 
 
-def build_agent_runtime_environment(payload: dict[str, Any]) -> dict[str, str]:
+def build_agent_runtime_environment(
+    payload: dict[str, Any],
+    resolved_identifiers: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Build environment variables required by the deployed RAG agent.
 
     Args:
         payload: Normalized deployment payload.
+        resolved_identifiers: Resource identifiers resolved from names or OCIDs.
 
     Returns:
         dict[str, str]: Agent runtime environment variables for Hosted
         Application deployment creation.
     """
 
+    identifiers = resolved_identifiers or build_resolved_identifiers(payload)
     return {
         "OCI_REGION": str(payload["region"]),
-        "OCI_COMPARTMENT_ID": str(payload["compartment"]),
+        "OCI_COMPARTMENT_ID": identifiers["compartment_id"],
         "OCI_PROJECT_ID": str(payload["genai_project_ocid"]),
         "OCI_MODEL_ID": str(payload["model_id"]),
-        "OCI_VECTOR_STORE_ID": _vector_store_environment_value(payload),
+        "OCI_VECTOR_STORE_ID": identifiers["vector_store_id"],
         "OPENAI_API_KEY": str(payload["openai_api_key"]),
         "FILE_SEARCH_MAX_NUM_RESULTS": str(payload["file_search_max_num_results"]),
         "RESPONSES_TIMEOUT_SECONDS": str(payload["responses_timeout_seconds"]),
@@ -552,22 +577,112 @@ def redact_runtime_environment(environment: dict[str, str]) -> dict[str, str]:
     return redacted
 
 
-def _vector_store_environment_value(payload: dict[str, Any]) -> str:
-    """Return the Vector Store value to inject into the deployed agent.
+def build_resolved_identifiers(payload: dict[str, Any]) -> dict[str, str]:
+    """Build resolved resource identifiers for command planning.
 
     Args:
         payload: Normalized deployment payload.
 
     Returns:
-        str: Existing Vector Store OCID when available, otherwise a placeholder
-        for the OCID created or resolved by the workflow.
+        dict[str, str]: Resolved or placeholder OCIDs used after lookup steps.
+    """
+
+    return {
+        "compartment_id": _resolved_compartment_id(payload),
+        "vector_store_id": _resolved_vector_store_id(payload),
+        "connector_id": _resolved_connector_id(payload),
+    }
+
+
+def _resolved_compartment_id(payload: dict[str, Any]) -> str:
+    """Return the compartment OCID or the placeholder produced by resolution.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Compartment OCID value for downstream OCI commands.
+    """
+
+    compartment = str(payload["compartment"])
+    if compartment.startswith(COMPARTMENT_OCID_PREFIX):
+        return compartment
+    return "<resolved-compartment-ocid>"
+
+
+def _resolved_vector_store_id(payload: dict[str, Any]) -> str:
+    """Return the Vector Store OCID or the placeholder produced by resolution.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Vector Store OCID value for the deployed agent environment.
     """
 
     vector_store_name = str(payload["vector_store_name"])
     if vector_store_name.startswith("ocid1."):
         return vector_store_name
-
     return "<created-or-resolved-vector-store-ocid>"
+
+
+def _resolved_connector_id(payload: dict[str, Any]) -> str:
+    """Return the connector OCID or the placeholder produced by resolution.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Connector OCID value or a skip marker.
+    """
+
+    if payload["connector_mode"] == "skip":
+        return "<skipped>"
+    connector_name = str(payload.get("connector_name") or "")
+    if connector_name.startswith("ocid1."):
+        return connector_name
+    return "<created-or-resolved-data-sync-connector-ocid>"
+
+
+def _build_compartment_resolution_command(payload: dict[str, Any]) -> list[str]:
+    """Build the command that resolves a compartment name or validates an OCID.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        list[str]: OCI CLI command arguments.
+    """
+
+    compartment = str(payload["compartment"])
+    command = [
+        "oci",
+        "--region",
+        payload["region"],
+        "--output",
+        "json",
+        "iam",
+        "compartment",
+    ]
+    if compartment.startswith(COMPARTMENT_OCID_PREFIX):
+        return [
+            *command,
+            "get",
+            "--compartment-id",
+            compartment,
+        ]
+    return [
+        *command,
+        "list",
+        "--name",
+        compartment,
+        "--compartment-id-in-subtree",
+        "true",
+        "--access-level",
+        "ANY",
+        "--include-root",
+        "--all",
+    ]
 
 
 def _artifact_path(filename: str) -> str:

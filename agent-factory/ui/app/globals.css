@@ -346,15 +346,17 @@ select:disabled {
 
 .outputPanel dl {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr);
+  grid-template-columns: minmax(170px, 0.45fr) minmax(0, 1fr);
   gap: 8px;
   margin: 0;
 }
 
 .outputPanel dt {
+  min-width: 0;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .outputPanel dd {
@@ -444,5 +446,9 @@ select:disabled {
   .primaryAction,
   .secondaryAction {
     width: 100%;
+  }
+
+  .outputPanel dl {
+    grid-template-columns: 1fr;
   }
 }

@@ -189,6 +189,13 @@ Application JSON artifacts that can be rendered before OCI write operations. The
 artifact shapes should follow the existing `oci-enterprise-ai-deployer`
 implementation wherever equivalent behavior already exists.
 
+When the user supplies a name for a resource that is later required as an OCID,
+the backend must include an explicit resolution step and all downstream commands
+and generated JSON artifacts must use the resolved OCID. Dry-run output may use a
+clear placeholder such as `<resolved-compartment-ocid>` or
+`<created-or-resolved-vector-store-ocid>` for values that require live OCI
+resolution.
+
 ## Deployment Inputs
 
 Agent Factory must collect the following inputs.
@@ -516,6 +523,9 @@ Live OCI integration tests must not be required for the default test suite.
 - Endpoint visibility is fixed to public in the first implementation.
 - Network mode is fixed to Oracle-managed in the first implementation.
 - The backend validates deployment inputs before creating OCI resources.
+- The backend resolves compartment and Vector Store names before passing those
+  values to downstream commands or Hosted Application environment variables that
+  require OCIDs.
 - The backend can create or reuse an Object Storage bucket.
 - The backend uses the OCI Python SDK for Object Storage bucket operations.
 - The backend can create or reuse a Vector Store through the Vector Store

@@ -465,6 +465,10 @@ export default function Home() {
                   <dd>{run.outputs?.image_reference ?? "n/a"}</dd>
                   <dt>Endpoint</dt>
                   <dd>{run.outputs?.endpoint_url ?? "Pending real deployment"}</dd>
+                  <dt>Compartment ID</dt>
+                  <dd>{run.outputs?.resolved_identifiers?.compartment_id ?? "n/a"}</dd>
+                  <dt>Vector Store ID</dt>
+                  <dd>{run.outputs?.resolved_identifiers?.vector_store_id ?? "n/a"}</dd>
                 </dl>
                 <h3>Command script</h3>
                 <textarea readOnly value={run.commands_text ?? ""} />

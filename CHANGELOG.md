@@ -33,6 +33,9 @@ changes, or documentation updates are introduced.
 - Updated Agent Factory dry-run planning to emit deployer-compatible OCI CLI
   commands and Hosted Application JSON artifacts for auth, networking,
   environment variables, and Docker artifact configuration.
+- Fixed Agent Factory command planning so compartment and Vector Store names are
+  represented as resolved OCID values before they are passed to downstream OCI
+  commands, JSON artifacts, or agent runtime environment variables.
 
 ## 2026-06-05
 
