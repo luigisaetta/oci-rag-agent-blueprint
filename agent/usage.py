@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-06
 License: MIT
 Description: Token usage extraction helpers for Responses API payloads.
 """
@@ -22,6 +22,10 @@ def extract_usage(source: Any) -> dict[str, int | None] | None:
     """
 
     usage = _get_value(source, "usage")
+    if usage is None:
+        response = _get_value(source, "response")
+        usage = _get_value(response, "usage")
+
     if usage is None:
         return None
 

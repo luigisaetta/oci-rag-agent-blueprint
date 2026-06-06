@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-06
 License: MIT
 Description: Runtime configuration loading for the OCI RAG agent.
 """
@@ -19,6 +19,9 @@ FILE_SEARCH_MAX_NUM_RESULTS_MAX = 50
 RESPONSES_TIMEOUT_SECONDS_DEFAULT = 60
 RESPONSES_TIMEOUT_SECONDS_MIN = 1
 RESPONSES_TIMEOUT_SECONDS_MAX = 300
+
+STREAM_FINALIZATION_MODE_DEFAULT = "never"
+STREAM_FINALIZATION_MODES = frozenset({"never", "auto", "always"})
 
 REQUIRED_ENV_VARS = (
     "OCI_REGION",
@@ -43,6 +46,7 @@ class AgentSettings:
         openai_api_key: OpenAI-compatible API key for OCI Enterprise AI.
         file_search_max_num_results: Maximum number of file search results.
         responses_timeout_seconds: Timeout for Responses API calls.
+        stream_finalization_mode: Post-stream retrieve behavior.
     """
 
     oci_region: str
@@ -53,6 +57,7 @@ class AgentSettings:
     openai_api_key: str
     file_search_max_num_results: int = FILE_SEARCH_MAX_NUM_RESULTS_DEFAULT
     responses_timeout_seconds: int = RESPONSES_TIMEOUT_SECONDS_DEFAULT
+    stream_finalization_mode: str = STREAM_FINALIZATION_MODE_DEFAULT
 
     @property
     def base_url(self) -> str:
@@ -101,6 +106,11 @@ def load_settings() -> AgentSettings:
             RESPONSES_TIMEOUT_SECONDS_DEFAULT,
             RESPONSES_TIMEOUT_SECONDS_MIN,
             RESPONSES_TIMEOUT_SECONDS_MAX,
+        ),
+        stream_finalization_mode=_load_optional_choice(
+            "STREAM_FINALIZATION_MODE",
+            STREAM_FINALIZATION_MODE_DEFAULT,
+            STREAM_FINALIZATION_MODES,
         ),
     )
 
@@ -178,3 +188,34 @@ def _format_int_validation_error(
         f"{env_name} must be an integer from {minimum_value} to {maximum_value}: "
         f"{raw_value}"
     )
+
+
+def _load_optional_choice(
+    env_name: str,
+    default_value: str,
+    accepted_values: frozenset[str],
+) -> str:
+    """Load and validate an optional enumerated environment variable.
+
+    Args:
+        env_name: Environment variable name.
+        default_value: Value to use when the variable is not configured.
+        accepted_values: Accepted normalized string values.
+
+    Returns:
+        str: The configured or default value.
+
+    Raises:
+        ValueError: If the configured value is not in the accepted set.
+    """
+
+    raw_value = environ.get(env_name)
+    if raw_value is None or raw_value.strip() == "":
+        return default_value
+
+    value = raw_value.strip().lower()
+    if value in accepted_values:
+        return value
+
+    accepted_values_text = ", ".join(sorted(accepted_values))
+    raise ValueError(f"{env_name} must be one of {accepted_values_text}: {raw_value}")

@@ -1,11 +1,12 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-06
 License: MIT
 Description: Unit tests for the OCI RAG agent FastAPI API.
 """
 
-# pylint: disable=too-few-public-methods,too-many-arguments,too-many-positional-arguments
+# pylint: disable=too-few-public-methods,too-many-arguments,too-many-instance-attributes
+# pylint: disable=too-many-positional-arguments
 
 from __future__ import annotations
 
@@ -114,6 +115,8 @@ class FakeResponses:
         nested_results: bool = False,
         annotation_refs: bool = False,
         page_in_text: bool = False,
+        stream_references: bool = True,
+        stream_usage: bool = True,
     ) -> None:
         """Initialize fake responses state.
 
@@ -123,6 +126,8 @@ class FakeResponses:
             nested_results: Whether file search results use an alternate shape.
             annotation_refs: Whether references are returned as text annotations.
             page_in_text: Whether page numbers are embedded in result text.
+            stream_references: Whether final stream events include references.
+            stream_usage: Whether final stream events include token usage.
         """
 
         self.fail = fail
@@ -130,6 +135,8 @@ class FakeResponses:
         self.nested_results = nested_results
         self.annotation_refs = annotation_refs
         self.page_in_text = page_in_text
+        self.stream_references = stream_references
+        self.stream_usage = stream_usage
         self.create_calls: list[dict[str, Any]] = []
         self.retrieve_calls: list[dict[str, Any]] = []
 
@@ -168,12 +175,12 @@ class FakeResponses:
                 {
                     "type": "response.completed",
                     "response": {
-                        "output": [
-                            _fake_stream_output_item(
-                                self.annotation_refs,
-                                self.page_in_text,
-                            )
-                        ],
+                        "output": _fake_stream_output(
+                            self.annotation_refs,
+                            self.page_in_text,
+                            self.stream_references,
+                        ),
+                        "usage": _fake_usage() if self.stream_usage else None,
                     },
                 },
             ]
@@ -227,6 +234,8 @@ class FakeOpenAIClient:
         nested_results: bool = False,
         annotation_refs: bool = False,
         page_in_text: bool = False,
+        stream_references: bool = True,
+        stream_usage: bool = True,
     ) -> None:
         """Initialize fake OpenAI-compatible client.
 
@@ -237,6 +246,8 @@ class FakeOpenAIClient:
             nested_results: Whether file search results use an alternate shape.
             annotation_refs: Whether references are returned as text annotations.
             page_in_text: Whether page numbers are embedded in result text.
+            stream_references: Whether final stream events include references.
+            stream_usage: Whether final stream events include token usage.
         """
 
         self.conversations = FakeConversations(fail=fail_conversation)
@@ -246,6 +257,8 @@ class FakeOpenAIClient:
             nested_results=nested_results,
             annotation_refs=annotation_refs,
             page_in_text=page_in_text,
+            stream_references=stream_references,
+            stream_usage=stream_usage,
         )
 
 
@@ -556,17 +569,11 @@ def test_streams_response_tokens(monkeypatch: Any) -> None:
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert fake_client.responses.create_calls[0]["stream"] is True
     assert fake_client.responses.create_calls[0]["instructions"] == AGENT_INSTRUCTIONS
-    assert fake_client.responses.retrieve_calls == [
-        {
-            "response_id": "resp-stream",
-            "include": ["file_search_call.results"],
-            "timeout": 60,
-        }
-    ]
+    assert not fake_client.responses.retrieve_calls
 
 
 def test_uses_runtime_tuning_for_streaming_request(monkeypatch: Any) -> None:
-    """Test runtime tuning values in streaming create and retrieve calls."""
+    """Test runtime tuning values in streaming create calls."""
 
     fake_client = FakeOpenAIClient()
     _set_required_env(monkeypatch)
@@ -589,11 +596,91 @@ def test_uses_runtime_tuning_for_streaming_request(monkeypatch: Any) -> None:
     assert create_call["stream"] is True
     assert create_call["timeout"] == 55
     assert create_call["tools"][0]["max_num_results"] == 4
+    assert not fake_client.responses.retrieve_calls
+
+
+def test_auto_stream_finalization_retrieves_missing_metadata(
+    monkeypatch: Any,
+) -> None:
+    """Test auto finalization retrieves missing stream metadata."""
+
+    fake_client = FakeOpenAIClient(stream_usage=False)
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("STREAM_FINALIZATION_MODE", "auto")
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "event: usage" in response.text
+    assert '"total_tokens": 150' in response.text
     assert fake_client.responses.retrieve_calls == [
         {
             "response_id": "resp-stream",
             "include": ["file_search_call.results"],
-            "timeout": 55,
+            "timeout": 60,
+        }
+    ]
+
+
+def test_auto_stream_finalization_skips_retrieve_when_metadata_is_complete(
+    monkeypatch: Any,
+) -> None:
+    """Test auto finalization uses complete stream metadata without retrieve."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("STREAM_FINALIZATION_MODE", "auto")
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "event: references" in response.text
+    assert "event: usage" in response.text
+    assert not fake_client.responses.retrieve_calls
+
+
+def test_always_stream_finalization_retrieves_response(monkeypatch: Any) -> None:
+    """Test always finalization retrieves completed streaming responses."""
+
+    fake_client = FakeOpenAIClient()
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("STREAM_FINALIZATION_MODE", "always")
+    _set_client_factory(fake_client)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses",
+        json={
+            "new_conversation": True,
+            "user_request": "Stream this",
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_client.responses.retrieve_calls == [
+        {
+            "response_id": "resp-stream",
+            "include": ["file_search_call.results"],
+            "timeout": 60,
         }
     ]
 
@@ -661,9 +748,8 @@ def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None
     assert response.status_code == 200
     assert 'event: token\ndata: {"text": "Partial answer"}' in response.text
     assert "event: references" in response.text
-    assert '"file_name": "architecture.md"' in response.text
-    assert "event: usage" in response.text
-    assert '"total_tokens": 150' in response.text
+    assert '"references": []' in response.text
+    assert "event: usage" not in response.text
     assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert "event: error" not in response.text
 
@@ -764,6 +850,28 @@ def _fake_stream_output_item(
         return _fake_file_search_call_with_page_text()
 
     return _fake_file_search_call()
+
+
+def _fake_stream_output(
+    annotation_refs: bool,
+    page_in_text: bool,
+    stream_references: bool,
+) -> list[dict[str, Any]]:
+    """Build fake stream completion output items.
+
+    Args:
+        annotation_refs: Whether to return an annotated message.
+        page_in_text: Whether to return page data embedded in result text.
+        stream_references: Whether stream events include references.
+
+    Returns:
+        list[dict[str, Any]]: Fake stream output items.
+    """
+
+    if not stream_references:
+        return []
+
+    return [_fake_stream_output_item(annotation_refs, page_in_text)]
 
 
 def _fake_response_output(

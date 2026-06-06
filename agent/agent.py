@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-06
 License: MIT
 Description: Core request processing logic for the OCI RAG agent.
 """
@@ -130,7 +130,7 @@ def stream_agent_request(
             token_events_emitted += 1
             yield _format_sse_event("token", {"text": token})
 
-        _complete_stream_state(client, stream_state, settings)
+        _complete_stream_state_if_needed(client, stream_state, settings)
         yield from _iter_stream_final_events(conversation_id, stream_state)
     except JSONDecodeError as exc:
         if token_events_emitted:
@@ -139,7 +139,7 @@ def stream_agent_request(
                 token_events_emitted,
                 exc,
             )
-            _complete_stream_state(client, stream_state, settings)
+            _complete_stream_state_if_needed(client, stream_state, settings)
             yield from _iter_stream_final_events(conversation_id, stream_state)
         else:
             LOGGER.exception("Responses API streaming parser failure")
@@ -204,29 +204,25 @@ def _capture_stream_response_id(
         stream_state.response_id = response_id
 
 
-def _complete_stream_state(
+def _complete_stream_state_if_needed(
     client: Any,
     stream_state: StreamState,
     settings: AgentSettings,
 ) -> None:
-    """Complete stream state by retrieving final response data.
+    """Complete stream state according to the streaming finalization policy.
 
     Args:
         client: OpenAI-compatible client.
         stream_state: Stream metadata containing the response ID.
-        settings: Runtime settings for Responses API timeout configuration.
+        settings: Runtime settings for Responses API timeout and finalization.
     """
 
-    if client is None:
-        return
-
-    response_id = stream_state.response_id
-    if not response_id:
+    if not _should_retrieve_stream_response(client, stream_state, settings):
         return
 
     try:
         response = client.responses.retrieve(
-            response_id,
+            stream_state.response_id,
             include=["file_search_call.results"],
             timeout=settings.responses_timeout_seconds,
         )
@@ -236,6 +232,51 @@ def _complete_stream_state(
 
     stream_state.references.extend(extract_references(response))
     stream_state.usage = extract_usage(response) or stream_state.usage
+
+
+def _should_retrieve_stream_response(
+    client: Any,
+    stream_state: StreamState,
+    settings: AgentSettings,
+) -> bool:
+    """Return whether the completed streaming response should be retrieved.
+
+    Args:
+        client: OpenAI-compatible client.
+        stream_state: Stream metadata collected so far.
+        settings: Runtime settings containing the finalization mode.
+
+    Returns:
+        bool: True when a post-stream retrieve call should be made.
+    """
+
+    if client is None or not stream_state.response_id:
+        return False
+
+    mode = settings.stream_finalization_mode
+    if mode == "never":
+        return False
+
+    if mode == "always":
+        return True
+
+    return _stream_state_has_missing_final_metadata(stream_state)
+
+
+def _stream_state_has_missing_final_metadata(stream_state: StreamState) -> bool:
+    """Return whether stream events did not provide complete final metadata.
+
+    Args:
+        stream_state: Stream metadata collected from Responses API events.
+
+    Returns:
+        bool: True when final references or usage are missing.
+    """
+
+    return (
+        not deduplicate_references(stream_state.references)
+        or stream_state.usage is None
+    )
 
 
 def _iter_stream_final_events(

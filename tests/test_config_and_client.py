@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-06
 License: MIT
 Description: Unit tests for agent configuration and OpenAI client creation.
 """
@@ -76,6 +76,7 @@ def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
     )
     assert settings.file_search_max_num_results == 10
     assert settings.responses_timeout_seconds == 60
+    assert settings.stream_finalization_mode == "never"
 
 
 def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
@@ -85,11 +86,13 @@ def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
         monkeypatch.setenv(env_name, env_value)
     monkeypatch.setenv("FILE_SEARCH_MAX_NUM_RESULTS", "7")
     monkeypatch.setenv("RESPONSES_TIMEOUT_SECONDS", "120")
+    monkeypatch.setenv("STREAM_FINALIZATION_MODE", "AUTO")
 
     settings = load_settings()
 
     assert settings.file_search_max_num_results == 7
     assert settings.responses_timeout_seconds == 120
+    assert settings.stream_finalization_mode == "auto"
 
 
 @pytest.mark.parametrize(
@@ -101,6 +104,7 @@ def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
         ("RESPONSES_TIMEOUT_SECONDS", "0", "integer from 1 to 300"),
         ("RESPONSES_TIMEOUT_SECONDS", "301", "integer from 1 to 300"),
         ("RESPONSES_TIMEOUT_SECONDS", "slow", "integer from 1 to 300"),
+        ("STREAM_FINALIZATION_MODE", "sometimes", "must be one of"),
     ],
 )
 def test_load_settings_rejects_invalid_runtime_tuning(

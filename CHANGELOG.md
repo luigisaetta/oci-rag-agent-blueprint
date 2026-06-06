@@ -13,6 +13,10 @@ changes, or documentation updates are introduced.
 - Documented `STREAM_FINALIZATION_MODE=never` as the default, with `auto` and
   `always` available for deployments that prefer more complete final streaming
   metadata over lower end-of-stream latency.
+- Implemented `STREAM_FINALIZATION_MODE` in the agent runtime configuration and
+  streaming response finalization path.
+- Updated streaming tests to cover the default `never` behavior, conditional
+  `auto` retrieval, and legacy-compatible `always` retrieval.
 
 ## 2026-06-05
 
