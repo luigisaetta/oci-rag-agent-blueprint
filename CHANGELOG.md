@@ -27,6 +27,12 @@ changes, or documentation updates are introduced.
   command generation, command export, and backend validation tests.
 - Added a separate Docker Compose deployment for Agent Factory, including API
   and UI container builds plus root-level start and stop scripts.
+- Added Agent Factory runtime environment planning for Hosted Application
+  deployment creation, covering all environment variables required by the RAG
+  agent and redacting secrets in API responses.
+- Updated Agent Factory dry-run planning to emit deployer-compatible OCI CLI
+  commands and Hosted Application JSON artifacts for auth, networking,
+  environment variables, and Docker artifact configuration.
 
 ## 2026-06-05
 

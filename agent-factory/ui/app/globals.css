@@ -373,6 +373,31 @@ select:disabled {
   line-height: 1.45;
 }
 
+.artifactBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.artifactBlock strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.artifactBlock pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .errorBanner {
   margin-bottom: 16px;
   padding: 12px 14px;
@@ -421,4 +446,3 @@ select:disabled {
     width: 100%;
   }
 }
-

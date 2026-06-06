@@ -16,7 +16,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from agent_factory_api.commands import build_apply_commands, build_dry_run_commands
+from agent_factory_api.commands import (
+    build_deployment_plan,
+    redact_runtime_environment,
+)
 from agent_factory_api.models import (
     DeploymentRun,
     FactoryStep,
@@ -151,9 +154,8 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     """
 
     dry_run = bool(payload["dry_run"])
-    commands = (
-        build_dry_run_commands(payload) if dry_run else build_apply_commands(payload)
-    )
+    plan = build_deployment_plan(payload, dry_run)
+    commands = plan["commands"]
     now = utc_now()
     steps = _build_steps(payload, commands)
     status = "succeeded"
@@ -164,10 +166,12 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
         step.ended_at = now
 
     outputs = {
-        "image_reference": commands[7][3] if dry_run else commands[4][6],
+        "image_reference": plan["image_reference"],
         "hosted_application_name": payload["hosted_application_name"],
         "deployment_name": payload["deployment_name"],
         "endpoint_url": None,
+        "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
+        "dry_run_artifacts": plan["artifacts"],
         "note": (
             "Dry run completed without OCI writes."
             if dry_run
@@ -252,18 +256,23 @@ def _build_steps(
             command=commands[8],
         ),
         FactoryStep(
+            "runtime-environment",
+            "Generate Hosted Application runtime environment",
+            command=commands[9],
+        ),
+        FactoryStep(
             "hosted-deployment",
             "Create Hosted Application deployment",
-            command=commands[9],
+            command=commands[10],
         ),
         FactoryStep(
             "deployment-readiness",
             "Wait for Hosted Application deployment readiness",
-            command=commands[10],
+            command=commands[11],
         ),
         FactoryStep(
             "health",
             "Validate deployed health endpoint",
-            command=commands[11],
+            command=commands[12],
         ),
     ]

@@ -184,6 +184,11 @@ The UI must disable workflow submission while required inputs are invalid.
 The UI must display secret fields as password inputs and must not reveal secrets
 after submission.
 
+Dry-run results must include the generated command plan and the Hosted
+Application JSON artifacts that can be rendered before OCI write operations. The
+artifact shapes should follow the existing `oci-enterprise-ai-deployer`
+implementation wherever equivalent behavior already exists.
+
 ## Deployment Inputs
 
 Agent Factory must collect the following inputs.
@@ -504,6 +509,9 @@ Live OCI integration tests must not be required for the default test suite.
 - Agent Factory has a backend service with deployment-run APIs.
 - Agent Factory has a Next.js UI for guided deployment.
 - The UI collects all required first-version inputs.
+- Dry-run responses include the generated OCI CLI command plan and Hosted
+  Application JSON artifacts for auth, networking, environment variables, and
+  active Docker artifact configuration.
 - JWT protection is fixed to disabled in the first implementation.
 - Endpoint visibility is fixed to public in the first implementation.
 - Network mode is fixed to Oracle-managed in the first implementation.

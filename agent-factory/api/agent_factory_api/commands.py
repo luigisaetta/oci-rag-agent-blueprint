@@ -7,7 +7,54 @@ Description: Command planning helpers for Agent Factory deployment runs.
 
 from __future__ import annotations
 
+# pylint: disable=duplicate-code
+
 from typing import Any
+
+DEFAULT_WAIT_STATE = "SUCCEEDED"
+GENERATED_ARTIFACT_DIR = "agent-factory/generated"
+
+AGENT_RUNTIME_ENVIRONMENT_VARIABLES = (
+    "OCI_REGION",
+    "OCI_COMPARTMENT_ID",
+    "OCI_PROJECT_ID",
+    "OCI_MODEL_ID",
+    "OCI_VECTOR_STORE_ID",
+    "OPENAI_API_KEY",
+    "FILE_SEARCH_MAX_NUM_RESULTS",
+    "RESPONSES_TIMEOUT_SECONDS",
+    "STREAM_FINALIZATION_MODE",
+)
+
+
+def build_deployment_plan(payload: dict[str, Any], dry_run: bool) -> dict[str, Any]:
+    """Build commands and JSON artifacts for an Agent Factory run.
+
+    Args:
+        payload: Normalized deployment payload.
+        dry_run: Whether to build non-mutating check commands.
+
+    Returns:
+        dict[str, Any]: Command plan, image reference, runtime environment, and
+        JSON artifacts.
+    """
+
+    runtime_environment = build_agent_runtime_environment(payload)
+    redacted_environment = redact_runtime_environment(runtime_environment)
+    artifacts = build_hosted_application_artifacts(payload, redacted_environment)
+    image_reference = build_image_reference(payload)
+    commands = (
+        _build_dry_run_commands(payload, artifacts, image_reference)
+        if dry_run
+        else _build_apply_commands(payload, artifacts, image_reference)
+    )
+    return {
+        "commands": commands,
+        "image_reference": image_reference,
+        "runtime_environment": runtime_environment,
+        "redacted_runtime_environment": redacted_environment,
+        "artifacts": artifacts,
+    }
 
 
 def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
@@ -21,6 +68,29 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
     """
 
     image_reference = build_image_reference(payload)
+    artifacts = build_hosted_application_artifacts(
+        payload,
+        redact_runtime_environment(build_agent_runtime_environment(payload)),
+    )
+
+    return _build_dry_run_commands(payload, artifacts, image_reference)
+
+
+def _build_dry_run_commands(
+    payload: dict[str, Any],
+    artifacts: dict[str, Any],
+    image_reference: str,
+) -> list[list[str]]:
+    """Build non-mutating validation commands from prepared artifacts.
+
+    Args:
+        payload: Normalized deployment payload.
+        artifacts: Generated Hosted Application JSON artifacts.
+        image_reference: Final OCIR image reference.
+
+    Returns:
+        list[list[str]]: Structured command arguments.
+    """
 
     connector_command = [
         "python",
@@ -38,6 +108,10 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
     return [
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "iam",
             "compartment",
             "get",
@@ -46,6 +120,10 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "os",
             "bucket",
             "get",
@@ -67,23 +145,30 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
         connector_command,
         [
             "docker",
-            "buildx",
             "build",
             "--platform",
             "linux/amd64",
-            "--check",
             "-f",
             "Dockerfile",
+            "-t",
+            image_reference,
             ".",
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "artifacts",
             "container",
             "repository",
-            "get",
-            "--repository-name",
+            "list",
+            "--compartment-id",
+            payload["compartment"],
+            "--display-name",
             payload["container_repository_name"],
+            "--all",
         ],
         [
             "docker",
@@ -98,27 +183,54 @@ def build_dry_run_commands(payload: dict[str, Any]) -> list[list[str]]:
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
-            "hosted-application",
-            "list",
+            "hosted-application-collection",
+            "list-hosted-applications",
             "--compartment-id",
             payload["compartment"],
+            "--all",
+        ],
+        [
+            "python3",
+            "-m",
+            "json.tool",
+            _artifact_path("hosted-application-environment-variables.json"),
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
-            "hosted-application-deployment",
-            "list",
+            "hosted-deployment",
+            "create",
+            "--hosted-application-id",
+            "<hosted-application-ocid-from-create-response>",
+            "--active-artifact",
+            _file_uri("hosted-deployment-active-artifact.json"),
+            "--display-name",
+            artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
             payload["compartment"],
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
-            "work-request",
-            "list",
-            "--compartment-id",
-            payload["compartment"],
+            "hosted-deployment",
+            "get",
+            "--hosted-deployment-id",
+            "<hosted-deployment-ocid>",
         ],
         [
             "curl",
@@ -139,6 +251,29 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
     """
 
     image_reference = build_image_reference(payload)
+    artifacts = build_hosted_application_artifacts(
+        payload,
+        redact_runtime_environment(build_agent_runtime_environment(payload)),
+    )
+
+    return _build_apply_commands(payload, artifacts, image_reference)
+
+
+def _build_apply_commands(
+    payload: dict[str, Any],
+    artifacts: dict[str, Any],
+    image_reference: str,
+) -> list[list[str]]:
+    """Build mutating command plan from prepared artifacts.
+
+    Args:
+        payload: Normalized deployment payload.
+        artifacts: Generated Hosted Application JSON artifacts.
+        image_reference: Final OCIR image reference.
+
+    Returns:
+        list[list[str]]: Structured command arguments.
+    """
 
     connector_command = [
         "python",
@@ -156,6 +291,10 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
     return [
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "iam",
             "compartment",
             "get",
@@ -187,7 +326,6 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
         connector_command,
         [
             "docker",
-            "buildx",
             "build",
             "--platform",
             "linux/amd64",
@@ -199,6 +337,10 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "artifacts",
             "container",
             "repository",
@@ -220,31 +362,63 @@ def build_apply_commands(payload: dict[str, Any]) -> list[list[str]]:
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
             "hosted-application",
             "create",
             "--display-name",
-            payload["hosted_application_name"],
+            artifacts["create-hosted-application.json"]["displayName"],
             "--compartment-id",
             payload["compartment"],
+            "--inbound-auth-config",
+            _file_uri("hosted-application-inbound-auth-config.json"),
+            "--networking-config",
+            _file_uri("hosted-application-networking-config.json"),
+            "--environment-variables",
+            _file_uri("hosted-application-environment-variables.json"),
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
+        ],
+        [
+            "python3",
+            "-m",
+            "json.tool",
+            _artifact_path("hosted-application-environment-variables.json"),
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
-            "hosted-application-deployment",
+            "hosted-deployment",
             "create",
+            "--hosted-application-id",
+            "<hosted-application-ocid-from-create-response>",
+            "--active-artifact",
+            _file_uri("hosted-deployment-active-artifact.json"),
             "--display-name",
-            payload["deployment_name"],
-            "--image",
-            image_reference,
+            artifacts["create-hosted-deployment.json"]["displayName"],
+            "--compartment-id",
+            payload["compartment"],
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
         ],
         [
             "oci",
+            "--region",
+            payload["region"],
+            "--output",
+            "json",
             "generative-ai",
-            "hosted-application-deployment",
+            "hosted-deployment",
             "get",
-            "--deployment-id",
-            "<deployment-ocid>",
+            "--hosted-deployment-id",
+            "<hosted-deployment-ocid>",
         ],
         [
             "curl",
@@ -269,3 +443,154 @@ def build_image_reference(payload: dict[str, Any]) -> str:
         f"{payload['region']}.ocir.io/<tenancy-namespace>/{repository}:"
         f"{payload['container_image_tag']}"
     )
+
+
+def build_hosted_application_artifacts(
+    payload: dict[str, Any], environment: dict[str, str]
+) -> dict[str, Any]:
+    """Build OCI CLI JSON artifacts using the deployer-compatible shape.
+
+    Args:
+        payload: Normalized deployment payload.
+        environment: Runtime environment variables safe for dry-run responses.
+
+    Returns:
+        dict[str, Any]: Artifact filenames mapped to JSON payloads.
+    """
+
+    image_reference = build_image_reference(payload)
+    container_uri, tag = image_reference.rsplit(":", maxsplit=1)
+    return {
+        "hosted-application-inbound-auth-config.json": {
+            "inboundAuthConfigType": "NO_AUTH_CONFIG"
+        },
+        "hosted-application-networking-config.json": {
+            "inboundNetworkingConfig": {
+                "endpointMode": "PUBLIC",
+            },
+            "outboundNetworkingConfig": {
+                "networkMode": "MANAGED",
+            },
+        },
+        "hosted-application-environment-variables.json": [
+            {"name": name, "type": "PLAINTEXT", "value": value}
+            for name, value in environment.items()
+        ],
+        "hosted-deployment-active-artifact.json": {
+            "artifactType": "SIMPLE_DOCKER_ARTIFACT",
+            "containerUri": container_uri,
+            "tag": tag,
+        },
+        "create-hosted-application.json": {
+            "compartmentId": payload["compartment"],
+            "createIfMissing": True,
+            "displayName": payload["hosted_application_name"],
+            "jsonFiles": {
+                "inboundAuthConfig": _artifact_path(
+                    "hosted-application-inbound-auth-config.json"
+                ),
+                "networkingConfig": _artifact_path(
+                    "hosted-application-networking-config.json"
+                ),
+                "environmentVariables": _artifact_path(
+                    "hosted-application-environment-variables.json"
+                ),
+            },
+            "updateIfExists": False,
+        },
+        "create-hosted-deployment.json": {
+            "activate": True,
+            "activeArtifact": _artifact_path("hosted-deployment-active-artifact.json"),
+            "artifactTag": tag,
+            "compartmentId": payload["compartment"],
+            "containerUri": container_uri,
+            "createNewVersion": True,
+            "displayName": payload["deployment_name"],
+            "imageUri": image_reference,
+            "waitForState": DEFAULT_WAIT_STATE,
+        },
+    }
+
+
+def build_agent_runtime_environment(payload: dict[str, Any]) -> dict[str, str]:
+    """Build environment variables required by the deployed RAG agent.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        dict[str, str]: Agent runtime environment variables for Hosted
+        Application deployment creation.
+    """
+
+    return {
+        "OCI_REGION": str(payload["region"]),
+        "OCI_COMPARTMENT_ID": str(payload["compartment"]),
+        "OCI_PROJECT_ID": str(payload["genai_project_ocid"]),
+        "OCI_MODEL_ID": str(payload["model_id"]),
+        "OCI_VECTOR_STORE_ID": _vector_store_environment_value(payload),
+        "OPENAI_API_KEY": str(payload["openai_api_key"]),
+        "FILE_SEARCH_MAX_NUM_RESULTS": str(payload["file_search_max_num_results"]),
+        "RESPONSES_TIMEOUT_SECONDS": str(payload["responses_timeout_seconds"]),
+        "STREAM_FINALIZATION_MODE": str(payload["stream_finalization_mode"]),
+    }
+
+
+def redact_runtime_environment(environment: dict[str, str]) -> dict[str, str]:
+    """Redact secret values from runtime environment output.
+
+    Args:
+        environment: Agent runtime environment variables.
+
+    Returns:
+        dict[str, str]: Environment variables safe for API responses.
+    """
+
+    redacted = dict(environment)
+    if redacted.get("OPENAI_API_KEY"):
+        redacted["OPENAI_API_KEY"] = "********"
+    return redacted
+
+
+def _vector_store_environment_value(payload: dict[str, Any]) -> str:
+    """Return the Vector Store value to inject into the deployed agent.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Existing Vector Store OCID when available, otherwise a placeholder
+        for the OCID created or resolved by the workflow.
+    """
+
+    vector_store_name = str(payload["vector_store_name"])
+    if vector_store_name.startswith("ocid1."):
+        return vector_store_name
+
+    return "<created-or-resolved-vector-store-ocid>"
+
+
+def _artifact_path(filename: str) -> str:
+    """Return the relative path used by generated dry-run artifacts.
+
+    Args:
+        filename: Artifact filename.
+
+    Returns:
+        str: Relative artifact path.
+    """
+
+    return f"{GENERATED_ARTIFACT_DIR}/{filename}"
+
+
+def _file_uri(filename: str) -> str:
+    """Return an OCI CLI file URI for a generated dry-run artifact.
+
+    Args:
+        filename: Artifact filename.
+
+    Returns:
+        str: OCI CLI file URI.
+    """
+
+    return f"file://{_artifact_path(filename)}"

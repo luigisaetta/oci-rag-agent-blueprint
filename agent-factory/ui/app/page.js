@@ -468,6 +468,32 @@ export default function Home() {
                 </dl>
                 <h3>Command script</h3>
                 <textarea readOnly value={run.commands_text ?? ""} />
+                {run.outputs?.runtime_environment ? (
+                  <>
+                    <h3>Runtime environment</h3>
+                    <dl>
+                      {Object.entries(run.outputs.runtime_environment).map(([name, value]) => (
+                        <div key={name}>
+                          <dt>{name}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </>
+                ) : null}
+                {run.outputs?.dry_run_artifacts ? (
+                  <>
+                    <h3>Generated JSON artifacts</h3>
+                    {Object.entries(run.outputs.dry_run_artifacts).map(
+                      ([filename, artifact]) => (
+                        <div className="artifactBlock" key={filename}>
+                          <strong>{filename}</strong>
+                          <pre>{JSON.stringify(artifact, null, 2)}</pre>
+                        </div>
+                      )
+                    )}
+                  </>
+                ) : null}
               </div>
             ) : null}
           </aside>
