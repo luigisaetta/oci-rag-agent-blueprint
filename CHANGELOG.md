@@ -17,6 +17,12 @@ changes, or documentation updates are introduced.
   streaming response finalization path.
 - Updated streaming tests to cover the default `never` behavior, conditional
   `auto` retrieval, and legacy-compatible `always` retrieval.
+- Added the Agent Factory specification for a backend and Next.js UI that guide
+  OCI Enterprise AI RAG agent deployment from resource setup through Hosted
+  Application deployment.
+- Updated the Agent Factory specification with required implementation
+  mechanisms for OCI Python SDK, Vector Store control plane APIs, Docker CLI,
+  and OCI CLI orchestration steps.
 
 ## 2026-06-05
 

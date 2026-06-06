@@ -1,0 +1,517 @@
+# Agent Factory
+
+## Purpose
+
+This specification defines the Agent Factory application.
+
+Agent Factory is an operational web application that guides a user through all
+required steps to deploy the OCI RAG Agent backend into OCI Enterprise AI as a
+Hosted Application deployment.
+
+The application must collect deployment inputs, validate them, orchestrate OCI
+resource creation or reuse, publish the agent backend container image to OCI
+Container Registry, create the Hosted Application, create a deployment inside
+that Hosted Application, and configure the deployed RAG agent to use the selected
+OCI Vector Store.
+
+The goal is to turn the current manual deployment process into a repeatable,
+auditable, guided workflow.
+
+## Scope
+
+This specification covers:
+
+- Agent Factory application structure.
+- Backend orchestration responsibilities.
+- Required implementation mechanisms for OCI resource operations.
+- Next.js UI requirements.
+- Required and optional deployment inputs.
+- Sequential deployment workflow.
+- OCI resource creation and reuse behavior.
+- Container image build and registry publishing behavior.
+- Hosted Application and deployment creation behavior.
+- Runtime environment variables for the deployed RAG agent.
+- Status, progress, error handling, and retry expectations.
+- Initial exclusions for JWT protection and private networking.
+
+This specification does not cover:
+
+- Implementation details of every OCI SDK call.
+- Full IAM policy automation.
+- JWT-protected Hosted Application deployments.
+- Private endpoint deployments.
+- Custom VCN/subnet network setup.
+- Multi-agent deployments.
+- Cross-region deployment.
+- Production approval workflows.
+- Cost estimation.
+
+## Related Specifications
+
+- [Architecture Guidelines](0001-architecture-guidelines.md)
+- [Agent Implementation](0003-agent-implementation.md)
+- [Deployment](0004-deployment.md)
+- [Reference UI](0006-reference-ui.md)
+- [Security](0007-security.md)
+- [Document Loading](0008-document-loading.md)
+- [Agent Runtime Tuning](0009-agent-runtime-tuning.md)
+
+## Application Structure
+
+Agent Factory must be implemented as a separate application from the RAG agent
+runtime.
+
+The application must include:
+
+- A backend service that performs validation and orchestrates OCI operations.
+- A Next.js UI that collects inputs, displays progress, and starts the deployment
+  workflow.
+
+The Agent Factory backend must not be deployed as part of the generated RAG agent
+Hosted Application. It is a deployment tool, not part of the runtime serving
+path for user RAG requests.
+
+The Agent Factory UI must call the Agent Factory backend. It must not call OCI
+control plane APIs directly from the browser.
+
+## Backend Responsibilities
+
+The Agent Factory backend must provide an API for:
+
+- Validating deployment input.
+- Starting an Agent Factory deployment run.
+- Returning deployment run status.
+- Returning step-level progress and errors.
+- Returning final resource identifiers and endpoint information.
+
+The backend must orchestrate OCI operations in a deterministic sequence.
+
+The backend must use the implementation mechanisms defined in
+[Implementation Mechanisms](#implementation-mechanisms). OCI credentials and
+signing configuration must be available only to the backend.
+
+The backend must treat the submitted OpenAI-compatible API key as a secret.
+
+The backend must not log:
+
+- Full API key values.
+- Full JWT confidential application secrets.
+- Docker registry passwords or auth tokens.
+- Complete OCI signing private key material.
+
+The backend may log resource names, OCIDs, step names, status values, and
+sanitized error summaries.
+
+## Implementation Mechanisms
+
+Agent Factory must use explicit mechanisms for each class of deployment action.
+
+| Action | Required mechanism |
+| --- | --- |
+| Object Storage bucket creation and lookup | OCI Python SDK. |
+| Vector Store creation and lookup | OCI Enterprise AI Vector Store control plane API. |
+| Data Sync Connector creation and lookup | OCI Enterprise AI Vector Store control plane API. |
+| RAG agent backend Docker image build | Docker CLI. |
+| OCI Container Registry repository creation or lookup | OCI CLI unless later OCI SDK support is explicitly specified. |
+| OCI Container Registry authentication | Docker CLI using an OCI-compatible registry login flow. |
+| OCI Container Registry image push | Docker CLI. |
+| OCI Enterprise AI Hosted Application creation | OCI CLI Hosted Application commands. |
+| OCI Enterprise AI Hosted Application deployment creation | OCI CLI Hosted Application deployment commands. |
+| Hosted Application deployment status polling | OCI CLI Hosted Application deployment commands. |
+
+The backend must wrap Docker CLI and OCI CLI calls behind small internal helper
+interfaces so command construction, argument validation, timeout handling, and
+output parsing remain testable.
+
+The backend must not build shell commands by concatenating untrusted strings.
+Command arguments must be passed as structured argument lists to the process
+runner.
+
+The backend must capture command exit codes, standard output, and standard error
+for diagnostics, but returned status payloads and logs must redact secrets.
+
+The exact OCI Enterprise AI Vector Store control plane API endpoints, OCI CLI
+commands, and example payloads will be added during implementation once the
+reference examples are available.
+
+## UI Responsibilities
+
+The Agent Factory UI must be implemented as a Next.js application.
+
+The UI must provide a guided form and progress view for the deployment workflow.
+
+The first implementation must prioritize an operational console layout rather
+than a marketing page. The initial screen must be the deployment workflow itself.
+
+The UI must allow users to:
+
+- Enter deployment inputs.
+- Choose whether to create or reuse optional resources.
+- Review the planned actions before starting the deployment.
+- Start the deployment run.
+- Watch step-by-step progress.
+- See created or reused resource identifiers.
+- See the final Hosted Application deployment endpoint.
+- See actionable error messages when a step fails.
+
+The UI must disable workflow submission while required inputs are invalid.
+
+The UI must display secret fields as password inputs and must not reveal secrets
+after submission.
+
+## Deployment Inputs
+
+Agent Factory must collect the following inputs.
+
+| Field | Required | Behavior |
+| --- | --- | --- |
+| Compartment name or OCID | Yes | Identifies the compartment where resources are created or looked up. If a name is provided, the backend must resolve it to an OCID before running deployment actions. |
+| Region | Yes | OCI region where all resources are created or reused. |
+| Object Storage bucket mode | Yes | Either `create` or `reuse`. |
+| Object Storage bucket name | Yes | Bucket to create or reuse for source documents. |
+| Vector Store mode | Yes | Either `create` or `reuse`. |
+| Vector Store name or OCID | Yes | Vector Store to create or reuse. If a name is provided for reuse, the backend must resolve it to an OCI Vector Store identifier before deploying the agent. |
+| Data Sync Connector mode | Yes | Either `create`, `reuse`, or `skip`. |
+| Data Sync Connector name or identifier | Conditional | Required when connector mode is `create` or `reuse`. |
+| Hosted Application name | Yes | Name for the OCI Enterprise AI Hosted Application. |
+| Hosted Application deployment name | Yes | Name for the deployment created inside the Hosted Application. |
+| JWT protection enabled | Yes | Must be fixed to `false` in the first implementation. |
+| Confidential application | No | Reserved for future JWT support. Must be disabled in the first implementation. |
+| Endpoint visibility | Yes | Must be `public` in the first implementation. |
+| Network mode | Yes | Must be `oracle_managed` in the first implementation. |
+| Custom network | No | Reserved for future private/custom networking support. |
+| GenAI project OCID | Yes | OCI Enterprise AI project OCID passed to the deployed RAG agent. |
+| Model ID | Yes | Model identifier used by the deployed RAG agent. |
+| OpenAI-compatible API key | Yes | API key used by the deployed RAG agent to call OCI Enterprise AI. |
+| File search max results | No | Optional runtime tuning value for `FILE_SEARCH_MAX_NUM_RESULTS`. |
+| Responses timeout seconds | No | Optional runtime tuning value for `RESPONSES_TIMEOUT_SECONDS`. |
+| Stream finalization mode | No | Optional runtime tuning value for `STREAM_FINALIZATION_MODE`; default is `never`. |
+| Container repository name | Yes | OCI Container Registry repository where the agent backend image is pushed. |
+| Container image tag | Yes | Non-floating image tag used for the deployment. |
+
+The first implementation must not allow users to select:
+
+- `JWT protection enabled=true`.
+- `Endpoint visibility=private`.
+- `Network mode=custom`.
+
+These controls may be visible as disabled fields if the UI clearly marks them as
+not available in the first implementation.
+
+## Resource Modes
+
+For resources that support creation or reuse, the UI and backend must handle
+both paths explicitly.
+
+When the mode is `create`, the backend must:
+
+- Validate that the requested name is syntactically valid.
+- Check whether a conflicting resource already exists when OCI APIs allow that
+  check.
+- Create the resource when no blocking conflict exists.
+- Store the created resource identifier in the deployment run state.
+
+When the mode is `reuse`, the backend must:
+
+- Resolve the provided name or OCID.
+- Validate that the resource exists.
+- Validate that the resource is in the requested region and compartment when
+  OCI APIs expose that information.
+- Store the resolved resource identifier in the deployment run state.
+
+When Data Sync Connector mode is `skip`, the backend must not create or resolve
+a connector. The final RAG agent deployment must still be allowed when an
+existing Vector Store is supplied.
+
+## Workflow Sequence
+
+Agent Factory must run the deployment workflow in the following order.
+
+1. Validate all submitted inputs.
+2. Resolve the target compartment.
+3. Validate region and GenAI project input.
+4. Create or reuse the Object Storage bucket.
+5. Create or reuse the Vector Store.
+6. Create, reuse, or skip the Data Sync Connector.
+7. Build the RAG agent backend container image with Docker CLI.
+8. Create or reuse the OCI Container Registry repository.
+9. Authenticate Docker to OCI Container Registry.
+10. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
+11. Create the OCI Enterprise AI Hosted Application with OCI CLI.
+12. Create the deployment inside the Hosted Application with OCI CLI.
+13. Configure deployment runtime environment variables.
+14. Wait for deployment activation or readiness with OCI CLI.
+15. Validate the deployed `GET /health` endpoint when reachable.
+16. Return final deployment outputs.
+
+The backend must stop the sequence on the first unrecoverable failure.
+
+The backend must persist or retain enough run state to show which steps
+completed before a failure.
+
+## RAG Agent Image
+
+Agent Factory must deploy only the RAG agent backend image.
+
+The Next.js reference chatbot UI must not be included in the Hosted Application
+deployment created by Agent Factory.
+
+The backend image must be built from the repository root `Dockerfile` by the
+Docker CLI.
+
+The first implementation must create the image during the Agent Factory workflow.
+Using a prebuilt image is out of scope for the first implementation unless a
+later specification revision adds that option.
+
+The image intended for OCI Enterprise AI Hosted Application deployment must use
+the `linux/amd64` platform.
+
+The image tag must be non-floating. Values such as `latest` must be rejected or
+require an explicit override in a later implementation.
+
+The Docker build command must tag the image with the final OCI Container
+Registry image reference before push.
+
+The Docker push command must push the final OCI Container Registry image
+reference.
+
+The pushed image reference must be stored in the deployment run outputs.
+
+## Deployed Agent Runtime Environment
+
+The Hosted Application deployment must configure the RAG agent backend with the
+runtime environment variables required by the agent.
+
+At minimum, Agent Factory must set:
+
+| Variable | Source |
+| --- | --- |
+| `OCI_REGION` | Submitted region. |
+| `OCI_COMPARTMENT_ID` | Resolved compartment OCID. |
+| `OCI_PROJECT_ID` | Submitted GenAI project OCID. |
+| `OCI_MODEL_ID` | Submitted model ID. |
+| `OCI_VECTOR_STORE_ID` | Created or resolved Vector Store identifier. |
+| `OPENAI_API_KEY` | Submitted API key. |
+| `FILE_SEARCH_MAX_NUM_RESULTS` | Submitted optional tuning value or agent default. |
+| `RESPONSES_TIMEOUT_SECONDS` | Submitted optional tuning value or agent default. |
+| `STREAM_FINALIZATION_MODE` | Submitted optional tuning value or `never`. |
+
+Secrets must be configured using the most protected mechanism available for the
+target Hosted Application runtime. If the first implementation can only set
+plain runtime variables, the UI and documentation must clearly identify that
+limitation.
+
+## Hosted Application Requirements
+
+Agent Factory must create an OCI Enterprise AI Hosted Application using the
+selected region, compartment, and Hosted Application name.
+
+Hosted Application creation must be performed through OCI CLI commands.
+
+Hosted Application deployment creation and status polling must be performed
+through OCI CLI commands.
+
+The first implementation must create only public endpoint deployments.
+
+The first implementation must use Oracle-managed networking.
+
+The first implementation must not enable JWT protection.
+
+The first implementation must not configure a confidential application.
+
+The first implementation must not configure private endpoint networking or
+custom VCN/subnet resources.
+
+## Deployment Run State
+
+The backend must model a deployment run as an ordered set of steps.
+
+Each step must expose:
+
+- Step identifier.
+- Display name.
+- Status.
+- Start time when available.
+- End time when available.
+- Resource identifiers produced by the step when available.
+- Sanitized error message when the step fails.
+
+Supported statuses must include:
+
+- `pending`
+- `running`
+- `succeeded`
+- `failed`
+- `skipped`
+
+The UI must render the run status from backend state rather than inventing
+client-side status.
+
+## API Contract
+
+The Agent Factory backend must expose at least:
+
+```http
+POST /factory/deployments
+```
+
+Starts a new deployment run.
+
+```http
+GET /factory/deployments/{deployment_run_id}
+```
+
+Returns the current state of a deployment run.
+
+```http
+GET /factory/health
+```
+
+Returns backend health.
+
+The first implementation may run the workflow synchronously if deployment times
+are acceptable for local validation, but the API contract must be compatible with
+asynchronous execution. The `POST /factory/deployments` response must return a
+deployment run identifier.
+
+## Validation Requirements
+
+The backend must validate:
+
+- Required fields.
+- Region format.
+- OCID format for fields that require OCIDs.
+- Resource names.
+- Mutually exclusive create/reuse options.
+- Disabled first-version options, including JWT, private endpoint, and custom
+  networking.
+- Runtime tuning values.
+- Non-floating container image tag.
+
+Validation failures must occur before OCI resources are created.
+
+Validation errors must be returned as structured responses that the UI can map
+to form fields or global workflow errors.
+
+## Error Handling
+
+The backend must make errors predictable and actionable.
+
+When a step fails, the backend must:
+
+- Mark the current step as `failed`.
+- Preserve previously completed step outputs.
+- Stop later steps.
+- Return a sanitized error message.
+- Avoid logging secrets.
+
+The UI must show:
+
+- The failed step.
+- The sanitized error message.
+- Which previous steps succeeded.
+
+The first implementation does not need automatic rollback. If rollback is not
+implemented, the UI must clearly show which resources may have been created
+before failure.
+
+## Idempotency And Re-Runs
+
+The first implementation should avoid accidental duplicate resources.
+
+For create-mode resources, the backend should check for existing resources with
+the requested name before creation when OCI APIs support the lookup.
+
+If a duplicate resource exists, the backend should fail with a clear message or
+allow the user to switch that resource to reuse mode.
+
+Deployment runs must have unique identifiers.
+
+The same input submitted twice may create duplicate Hosted Applications or
+deployments unless the backend detects conflicts. This limitation must be
+documented if not fully prevented in the first implementation.
+
+## Security Requirements
+
+Agent Factory handles control plane operations and secrets.
+
+The backend must be the only component allowed to use OCI credentials.
+
+The UI must never receive OCI signing credentials.
+
+The API key field must be treated as a secret.
+
+Secrets must not be written to ordinary logs.
+
+Secrets must not be returned from status APIs.
+
+JWT protection for the deployed Hosted Application is out of scope for the first
+implementation and must be fixed to disabled.
+
+Private networking is out of scope for the first implementation and must be
+fixed to public endpoint plus Oracle-managed networking.
+
+## Test Strategy
+
+Unit tests must cover:
+
+- Request validation for required fields.
+- Rejection of unsupported first-version options.
+- Create/reuse/skip resource mode validation.
+- Selection of the required implementation mechanism for each workflow step.
+- Docker CLI command argument construction for build and push.
+- OCI CLI command argument construction for Hosted Application and deployment
+  operations.
+- Runtime environment variable construction for the deployed agent.
+- Workflow step ordering.
+- Stop-on-failure behavior.
+- Secret redaction in returned status payloads.
+- Successful run state transitions with mocked OCI operations.
+- Failed run state transitions with mocked OCI operation failures.
+- UI form validation for required and disabled fields.
+
+Integration tests may use mocked OCI clients in the first implementation.
+
+Live OCI integration tests must not be required for the default test suite.
+
+## Acceptance Criteria
+
+- Agent Factory has a backend service with deployment-run APIs.
+- Agent Factory has a Next.js UI for guided deployment.
+- The UI collects all required first-version inputs.
+- JWT protection is fixed to disabled in the first implementation.
+- Endpoint visibility is fixed to public in the first implementation.
+- Network mode is fixed to Oracle-managed in the first implementation.
+- The backend validates deployment inputs before creating OCI resources.
+- The backend can create or reuse an Object Storage bucket.
+- The backend uses the OCI Python SDK for Object Storage bucket operations.
+- The backend can create or reuse a Vector Store through the Vector Store
+  control plane API.
+- The backend can create, reuse, or skip a Data Sync Connector through the
+  Vector Store control plane API.
+- The backend builds the RAG agent backend image with Docker CLI.
+- The backend publishes the RAG agent backend image to OCI Container Registry
+  with Docker CLI.
+- The backend creates an OCI Enterprise AI Hosted Application with OCI CLI.
+- The backend creates a deployment inside the Hosted Application with OCI CLI.
+- The deployed agent receives the selected Vector Store identifier through
+  `OCI_VECTOR_STORE_ID`.
+- The deployed agent receives the submitted GenAI project OCID and API key.
+- The UI displays step-by-step progress and final outputs.
+- The backend does not return secrets in deployment status responses.
+- Unit tests cover validation, workflow ordering, status transitions, and
+  runtime environment construction.
+
+## Open Topics
+
+- Exact OCI SDK resource models for Vector Store and Data Sync Connector
+  creation.
+- Exact Vector Store control plane API endpoints and payloads.
+- Exact OCI CLI commands and payload files for Hosted Application and deployment
+  creation.
+- OCI Container Registry repository management command details.
+- Best protected secret storage mechanism for Hosted Application runtime
+  environment variables.
+- Rollback or cleanup behavior after partial failures.
+- JWT confidential application support.
+- Private endpoint and custom networking support.
