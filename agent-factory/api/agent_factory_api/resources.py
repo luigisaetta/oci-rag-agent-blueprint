@@ -568,12 +568,11 @@ def resolve_compartment_id(*, compartment: str, region: str) -> str:
             "The oci package is required for compartment resolution."
         ) from exc
 
-    profile_name = os.environ.get("OCI_PROFILE", DEFAULT_OCI_PROFILE)
-    config = oci.config.from_file(profile_name=profile_name)
-    config["region"] = region
+    config = _load_oci_config(region=region)
     identity_client = oci.identity.IdentityClient(config)
     tenancy_id = str(config.get("tenancy") or "")
     if not tenancy_id:
+        profile_name = os.environ.get("OCI_PROFILE", DEFAULT_OCI_PROFILE)
         raise ResourceProvisioningError(
             f"OCI profile '{profile_name}' does not include a tenancy OCID."
         )
@@ -657,9 +656,7 @@ def create_object_storage_client(*, region: str) -> Any:
             "The oci package is required for Object Storage operations."
         ) from exc
 
-    profile_name = os.environ.get("OCI_PROFILE", "DEFAULT")
-    config = oci.config.from_file(profile_name=profile_name)
-    config["region"] = region
+    config = _load_oci_config(region=region)
     return oci.object_storage.ObjectStorageClient(config)
 
 
@@ -728,7 +725,6 @@ def create_oci_genai_client(*, region: str) -> Any:  # pylint: disable=too-many-
     """
 
     try:
-        import oci  # pylint: disable=import-outside-toplevel
         from oci.auth.signers import (  # pylint: disable=import-outside-toplevel
             SecurityTokenSigner,
         )
@@ -749,8 +745,7 @@ def create_oci_genai_client(*, region: str) -> Any:  # pylint: disable=too-many-
 
     profile_name = os.environ.get("OCI_PROFILE", DEFAULT_OCI_PROFILE)
     auth_mode = _resolve_control_plane_auth_mode(os.environ.get(OCI_AUTH_MODE_ENV_VAR))
-    config = oci.config.from_file(profile_name=profile_name)
-    config["region"] = region
+    config = _load_oci_config(region=region)
     try:
         _validate_oci_auth_config(
             config=config,
@@ -775,6 +770,48 @@ def create_oci_genai_client(*, region: str) -> Any:  # pylint: disable=too-many-
         client_kwargs["signer"] = OciUserPrincipalAuth(profile_name=profile_name).signer
 
     return GenerativeAiClient(**client_kwargs)
+
+
+def _load_oci_config(*, region: str) -> dict[str, Any]:
+    """Load OCI configuration for live Agent Factory provisioning.
+
+    Args:
+        region: OCI region to force into the loaded config.
+
+    Returns:
+        dict[str, Any]: OCI SDK configuration.
+
+    Raises:
+        ResourceProvisioningError: If the OCI SDK is unavailable or the config
+            file/profile cannot be loaded.
+    """
+
+    try:
+        import oci  # pylint: disable=import-outside-toplevel
+    except ImportError as exc:
+        raise ResourceProvisioningError(
+            "The oci package is required for live resource provisioning."
+        ) from exc
+
+    profile_name = os.environ.get("OCI_PROFILE", DEFAULT_OCI_PROFILE)
+    config_file = os.environ.get("OCI_CONFIG_FILE")
+    try:
+        if config_file:
+            config = oci.config.from_file(
+                file_location=os.path.expanduser(config_file),
+                profile_name=profile_name,
+            )
+        else:
+            config = oci.config.from_file(profile_name=profile_name)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        location = config_file or "~/.oci/config"
+        raise ResourceProvisioningError(
+            f"Unable to load OCI config profile '{profile_name}' from {location}: "
+            f"{exc}"
+        ) from exc
+
+    config["region"] = region
+    return config
 
 
 def _resolve_control_plane_auth_mode(

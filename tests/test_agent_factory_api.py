@@ -27,9 +27,11 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     ConnectorResult,
     FoundationResourcesResult,
     ObjectStorageBucketManager,
+    ResourceProvisioningError,
     VectorStoreConnectorManager,
     VectorStoreManager,
     VectorStoreResult,
+    _load_oci_config,
     _resolve_compartment_name,
     _resolve_control_plane_auth_mode,
     _validate_oci_auth_config,
@@ -581,6 +583,22 @@ def test_resolve_compartment_name_returns_unique_active_match() -> None:
         "lifecycle_state": "ACTIVE",
         "name": "lsaetta",
     }
+
+
+def test_load_oci_config_reports_missing_config_as_provisioning_error(
+    monkeypatch,
+) -> None:
+    """Test missing OCI config is returned as a managed provisioning error."""
+
+    monkeypatch.setenv("OCI_CONFIG_FILE", "/tmp/missing-oci-config")
+
+    try:
+        _load_oci_config(region="eu-frankfurt-1")
+    except ResourceProvisioningError as exc:
+        assert "Unable to load OCI config profile" in str(exc)
+        assert "/tmp/missing-oci-config" in str(exc)
+    else:
+        raise AssertionError("Expected missing OCI config to fail.")
 
 
 def _valid_payload() -> dict[str, Any]:

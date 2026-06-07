@@ -27,6 +27,9 @@ changes, or documentation updates are introduced.
 - Fixed live Agent Factory resource provisioning so compartment names are
   resolved through OCI Identity before bucket, Vector Store, and connector
   operations receive a compartment OCID.
+- Mounted local OCI SDK configuration into the Agent Factory API container and
+  converted missing OCI config/profile failures into managed provisioning errors
+  instead of unhandled API exceptions.
 
 ## 2026-06-06
 

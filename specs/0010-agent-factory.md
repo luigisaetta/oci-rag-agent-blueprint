@@ -534,6 +534,11 @@ The backend must be the only component allowed to use OCI credentials.
 
 The UI must never receive OCI signing credentials.
 
+For local Docker Compose runs, the Agent Factory API container must receive the
+OCI SDK configuration through a read-only mount of the user's `.oci` directory.
+The container must support `OCI_CONFIG_FILE`, `OCI_PROFILE`, and `OCI_AUTH_MODE`
+so local tests can select the intended OCI profile and authentication mode.
+
 The API key field must be treated as a secret.
 
 Secrets must not be written to ordinary logs.
