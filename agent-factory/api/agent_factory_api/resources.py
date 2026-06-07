@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Mapping, Protocol
 
 CONTROL_PLANE_AUTH_MODES = {"session", "user_principal"}
+CONTROL_PLANE_API_PATH = "/20231130/openai/v1"
 DEFAULT_OCI_PROFILE = "DEFAULT"
 OCI_AUTH_MODE_ENV_VAR = "OCI_AUTH_MODE"
 
@@ -271,7 +272,7 @@ class VectorStoreManager:
         if mode == "create":
             existing_vector_store = self._find_vector_store_by_name(
                 name_or_id,
-                required=False,
+                required=True,
             )
             if existing_vector_store is not None:
                 return VectorStoreResult(
@@ -716,10 +717,9 @@ def create_control_plane_client(*, region: str, compartment_id: str) -> Any:
         else OciUserPrincipalAuth(profile_name=profile_name)
     )
     _validate_control_plane_auth(auth=auth, auth_mode=auth_mode, profile=profile_name)
-    base_url = (
-        os.environ.get("OCI_CONTROL_PLANE_ENDPOINT")
-        or f"https://generativeai.{region}.oci.oraclecloud.com/20231130"
-    )
+    base_url = os.environ.get(
+        "OCI_CONTROL_PLANE_ENDPOINT"
+    ) or _build_control_plane_base_url(region=region)
     return OpenAI(
         base_url=base_url,
         api_key="unused",
@@ -728,6 +728,19 @@ def create_control_plane_client(*, region: str, compartment_id: str) -> Any:
             headers={"opc-compartment-id": compartment_id},
         ),
     )
+
+
+def _build_control_plane_base_url(*, region: str) -> str:
+    """Build the OCI OpenAI-compatible control plane base URL.
+
+    Args:
+        region: OCI region identifier.
+
+    Returns:
+        str: Region-specific control plane base URL.
+    """
+
+    return f"https://generativeai.{region}.oci.oraclecloud.com{CONTROL_PLANE_API_PATH}"
 
 
 def create_oci_genai_client(*, region: str) -> Any:  # pylint: disable=too-many-locals

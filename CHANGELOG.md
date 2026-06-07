@@ -30,9 +30,9 @@ changes, or documentation updates are introduced.
 - Mounted local OCI SDK configuration into the Agent Factory API container and
   converted missing OCI config/profile failures into managed provisioning errors
   instead of unhandled API exceptions.
-- Allowed Vector Store create mode to continue when the best-effort pre-create
-  list lookup is unavailable, while keeping list lookup mandatory for reuse
-  mode and returning managed errors for create failures.
+- Fixed the Agent Factory control plane client endpoint to use the OCI
+  OpenAI-compatible `/20231130/openai/v1` path from the local `agent_hub`
+  examples, and kept Vector Store lookup failures visible before create/reuse.
 
 ## 2026-06-06
 

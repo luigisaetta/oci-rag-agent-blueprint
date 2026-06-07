@@ -32,6 +32,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     VectorStoreConnectorManager,
     VectorStoreManager,
     VectorStoreResult,
+    _build_control_plane_base_url,
     _load_oci_config,
     _resolve_compartment_name,
     _resolve_control_plane_auth_mode,
@@ -501,25 +502,20 @@ def test_vector_store_manager_creates_missing_vector_store() -> None:
     }
 
 
-def test_vector_store_manager_creates_when_list_is_unavailable() -> None:
-    """Test create mode proceeds when duplicate lookup is unavailable."""
+def test_vector_store_manager_create_requires_list_lookup() -> None:
+    """Test create mode fails clearly when lookup is unavailable."""
 
     client = FakeControlPlaneClient(
         list_error=RuntimeError("404 NotAuthorizedOrNotFound")
     )
     manager = VectorStoreManager(client)
 
-    result = manager.create_or_reuse(
-        name_or_id="agent-factory-vector-store",
-        mode="create",
-    )
-
-    assert result == VectorStoreResult(
-        vector_store_id="ocid1.vectorstore.oc1..created",
-        name="agent-factory-vector-store",
-        created=True,
-    )
-    assert client.vector_stores.created_payload is not None
+    with pytest.raises(ResourceProvisioningError, match="Unable to list Vector Stores"):
+        manager.create_or_reuse(
+            name_or_id="agent-factory-vector-store",
+            mode="create",
+        )
+    assert client.vector_stores.created_payload is None
 
 
 def test_vector_store_manager_reuse_requires_list_lookup() -> None:
@@ -590,6 +586,14 @@ def test_control_plane_auth_mode_defaults_to_user_principal() -> None:
 
     assert _resolve_control_plane_auth_mode(None) == "user_principal"
     assert _resolve_control_plane_auth_mode(" session ") == "session"
+
+
+def test_control_plane_base_url_matches_agent_hub_pattern() -> None:
+    """Test control plane endpoint includes the OpenAI-compatible API path."""
+
+    assert _build_control_plane_base_url(region="eu-frankfurt-1") == (
+        "https://generativeai.eu-frankfurt-1.oci.oraclecloud.com/20231130/openai/v1"
+    )
 
 
 def test_control_plane_auth_config_rejects_session_profile_for_user_principal() -> None:
