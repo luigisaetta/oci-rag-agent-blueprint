@@ -255,9 +255,11 @@ class VectorStoreManager:
                 created=False,
             )
 
-        existing_vector_store = self._find_vector_store_by_name(name_or_id)
-
         if mode == "reuse":
+            existing_vector_store = self._find_vector_store_by_name(
+                name_or_id,
+                required=True,
+            )
             if existing_vector_store is None:
                 raise ResourceProvisioningError(f"Vector Store not found: {name_or_id}")
             return VectorStoreResult(
@@ -267,6 +269,10 @@ class VectorStoreManager:
             )
 
         if mode == "create":
+            existing_vector_store = self._find_vector_store_by_name(
+                name_or_id,
+                required=False,
+            )
             if existing_vector_store is not None:
                 return VectorStoreResult(
                     vector_store_id=_resource_id(existing_vector_store),
@@ -274,12 +280,17 @@ class VectorStoreManager:
                     created=False,
                 )
 
-            vector_store = self._client.vector_stores.create(
-                name=name_or_id,
-                description="Vector Store for OCI RAG Agent Blueprint.",
-                expires_after={"anchor": "last_active_at", "days": 120},
-                metadata={"source": "oci-rag-agent-blueprint"},
-            )
+            try:
+                vector_store = self._client.vector_stores.create(
+                    name=name_or_id,
+                    description="Vector Store for OCI RAG Agent Blueprint.",
+                    expires_after={"anchor": "last_active_at", "days": 120},
+                    metadata={"source": "oci-rag-agent-blueprint"},
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                raise ResourceProvisioningError(
+                    f"Unable to create Vector Store {name_or_id}: {exc}"
+                ) from exc
             return VectorStoreResult(
                 vector_store_id=_resource_id(vector_store),
                 name=_resource_name(vector_store, fallback=name_or_id),
@@ -312,17 +323,24 @@ class VectorStoreManager:
                 f"Unable to retrieve Vector Store {vector_store_id}: {exc}"
             ) from exc
 
-    def _find_vector_store_by_name(self, vector_store_name: str) -> Any | None:
+    def _find_vector_store_by_name(
+        self,
+        vector_store_name: str,
+        *,
+        required: bool,
+    ) -> Any | None:
         """Find a Vector Store by name using the control plane list API.
 
         Args:
             vector_store_name: Vector Store display name.
+            required: Whether lookup failure should stop the workflow.
 
         Returns:
             Any | None: Matching Vector Store or None.
 
         Raises:
-            ResourceProvisioningError: If the list operation fails.
+            ResourceProvisioningError: If the list operation fails and lookup is
+                required.
         """
 
         list_vector_stores = getattr(self._client.vector_stores, "list", None)
@@ -332,6 +350,8 @@ class VectorStoreManager:
         try:
             vector_stores_page = list_vector_stores()
         except Exception as exc:  # pylint: disable=broad-exception-caught
+            if not required:
+                return None
             raise ResourceProvisioningError(
                 f"Unable to list Vector Stores: {exc}"
             ) from exc

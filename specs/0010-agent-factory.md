@@ -198,6 +198,12 @@ The Vector Store create operation must call `client.vector_stores.create(...)`
 with a resource name and may include description, expiration, and metadata. This
 matches the OpenAI-compatible Vector Store API shape used by OCI Enterprise AI
 and the shared `agent_hub/common/clients.py` example.
+When Vector Store mode is `create`, any pre-create list lookup is best effort:
+if the control plane list operation is unavailable or returns an authorization
+or not-found response, the backend must still attempt the create operation and
+surface the create result or create error. When Vector Store mode is `reuse`,
+the list or retrieve lookup remains mandatory because the backend must resolve
+an existing Vector Store identifier.
 
 Object Storage bucket creation and lookup must use `oci.object_storage`
 clients. The backend must resolve the Object Storage namespace before bucket

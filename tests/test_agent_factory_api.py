@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 AGENT_FACTORY_API_PATH = Path(__file__).resolve().parents[1] / "agent-factory" / "api"
@@ -500,6 +501,57 @@ def test_vector_store_manager_creates_missing_vector_store() -> None:
     }
 
 
+def test_vector_store_manager_creates_when_list_is_unavailable() -> None:
+    """Test create mode proceeds when duplicate lookup is unavailable."""
+
+    client = FakeControlPlaneClient(
+        list_error=RuntimeError("404 NotAuthorizedOrNotFound")
+    )
+    manager = VectorStoreManager(client)
+
+    result = manager.create_or_reuse(
+        name_or_id="agent-factory-vector-store",
+        mode="create",
+    )
+
+    assert result == VectorStoreResult(
+        vector_store_id="ocid1.vectorstore.oc1..created",
+        name="agent-factory-vector-store",
+        created=True,
+    )
+    assert client.vector_stores.created_payload is not None
+
+
+def test_vector_store_manager_reuse_requires_list_lookup() -> None:
+    """Test reuse mode fails clearly when lookup is unavailable."""
+
+    client = FakeControlPlaneClient(
+        list_error=RuntimeError("404 NotAuthorizedOrNotFound")
+    )
+    manager = VectorStoreManager(client)
+
+    with pytest.raises(ResourceProvisioningError, match="Unable to list Vector Stores"):
+        manager.create_or_reuse(
+            name_or_id="agent-factory-vector-store",
+            mode="reuse",
+        )
+
+
+def test_vector_store_manager_wraps_create_errors() -> None:
+    """Test create failures are returned as managed provisioning errors."""
+
+    client = FakeControlPlaneClient(create_error=RuntimeError("create failed"))
+    manager = VectorStoreManager(client)
+
+    with pytest.raises(
+        ResourceProvisioningError, match="Unable to create Vector Store"
+    ):
+        manager.create_or_reuse(
+            name_or_id="agent-factory-vector-store",
+            mode="create",
+        )
+
+
 def test_connector_manager_creates_object_storage_connector() -> None:
     """Test connector creation through the OCI Generative AI client."""
 
@@ -751,10 +803,17 @@ class FakeIdentityClient:
 class FakeVectorStores:
     """Fake Vector Stores control plane API."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        list_error: Exception | None = None,
+        create_error: Exception | None = None,
+    ) -> None:
         """Initialize the fake API."""
 
         self.created_payload: dict[str, Any] | None = None
+        self._list_error = list_error
+        self._create_error = create_error
 
     def list(self) -> FakeResponse:
         """Return no Vector Stores.
@@ -763,6 +822,8 @@ class FakeVectorStores:
             FakeResponse: Empty Vector Store list response.
         """
 
+        if self._list_error is not None:
+            raise self._list_error
         return FakeResponse([])
 
     def create(
@@ -785,6 +846,8 @@ class FakeVectorStores:
             dict[str, str]: Fake Vector Store resource.
         """
 
+        if self._create_error is not None:
+            raise self._create_error
         self.created_payload = {
             "name": name,
             "description": description,
@@ -797,10 +860,18 @@ class FakeVectorStores:
 class FakeControlPlaneClient:
     """Fake OCI Enterprise AI control plane client."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        list_error: Exception | None = None,
+        create_error: Exception | None = None,
+    ) -> None:
         """Initialize the fake client."""
 
-        self.vector_stores = FakeVectorStores()
+        self.vector_stores = FakeVectorStores(
+            list_error=list_error,
+            create_error=create_error,
+        )
 
 
 class FakeConnectorClient:
