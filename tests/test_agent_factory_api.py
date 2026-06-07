@@ -281,9 +281,13 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
     request_payload["vector_store_name"] = "ocid1.vectorstore.oc1..example"
-    monkeypatch.setattr(
-        "agent_factory_api.app.provision_foundation_resources",
-        lambda payload: FoundationResourcesResult(
+
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
+        _ = progress_callback
+        return FoundationResourcesResult(
             compartment_id=payload["compartment"],
             bucket=BucketResult(
                 bucket_name=payload["bucket_name"],
@@ -302,13 +306,19 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
                 lifecycle_state="ACTIVE",
                 created=False,
             ),
-        ),
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
     )
 
     response = client.post("/factory/deployments", json=request_payload)
 
     assert response.status_code == 201
-    payload = response.json()
+    assert response.json()["status"] == "running"
+    payload = _fetch_run(client, response.json()["deployment_run_id"])
+    assert payload["status"] == "succeeded"
     assert "--environment-variables" in payload["commands_text"]
     assert "hosted-application-environment-variables.json" in (payload["commands_text"])
     assert "hosted-deployment create" in payload["commands_text"]
@@ -340,9 +350,13 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
 
-    def fake_provision(payload: dict[str, Any]) -> FoundationResourcesResult:
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
         assert payload["bucket_name"] == "agent-factory-docs"
         assert payload["vector_store_name"] == "agent-factory-vector-store"
+        _notify_fake_resource_progress(progress_callback)
         return FoundationResourcesResult(
             compartment_id="ocid1.compartment.oc1..example",
             bucket=BucketResult(
@@ -373,6 +387,8 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
 
     assert response.status_code == 201
     payload = response.json()
+    assert payload["status"] == "running"
+    payload = _fetch_run(client, payload["deployment_run_id"])
     assert payload["status"] == "succeeded"
     assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
         "ocid1.compartment.oc1..example"
@@ -458,8 +474,15 @@ def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
     request_payload["dry_run"] = False
     request_payload["compartment"] = "lsaetta"
 
-    def fake_provision(payload: dict[str, Any]) -> FoundationResourcesResult:
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
         assert payload["compartment"] == "lsaetta"
+        _notify_fake_resource_progress(
+            progress_callback,
+            compartment_id="ocid1.compartment.oc1..resolved",
+        )
         return FoundationResourcesResult(
             compartment_id="ocid1.compartment.oc1..resolved",
             bucket=BucketResult(
@@ -490,6 +513,9 @@ def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
 
     assert response.status_code == 201
     payload = response.json()
+    assert payload["status"] == "running"
+    payload = _fetch_run(client, payload["deployment_run_id"])
+    assert payload["status"] == "succeeded"
     assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
         "ocid1.compartment.oc1..resolved"
     )
@@ -1198,3 +1224,68 @@ def _resource_display_name_from_details(create_details: Any) -> str:
     if isinstance(create_details, dict):
         return str(create_details["display_name"])
     return str(create_details.display_name)
+
+
+def _fetch_run(client: TestClient, deployment_run_id: str) -> dict[str, Any]:
+    """Fetch a saved Agent Factory run.
+
+    Args:
+        client: FastAPI test client.
+        deployment_run_id: Deployment run identifier.
+
+    Returns:
+        dict[str, Any]: Run payload.
+    """
+
+    response = client.get(f"/factory/deployments/{deployment_run_id}")
+    assert response.status_code == 200
+    return response.json()
+
+
+def _notify_fake_resource_progress(
+    progress_callback: Any | None,
+    *,
+    compartment_id: str = "ocid1.compartment.oc1..example",
+) -> None:
+    """Emit fake live provisioning progress events.
+
+    Args:
+        progress_callback: Optional app callback.
+        compartment_id: Compartment OCID reported by the fake resolver.
+    """
+
+    if progress_callback is None:
+        return
+    progress_callback(
+        "resolve-compartment",
+        "succeeded",
+        {"compartment_id": compartment_id},
+    )
+    progress_callback(
+        "bucket",
+        "succeeded",
+        {
+            "bucket_name": "agent-factory-docs",
+            "namespace_name": "test-namespace",
+            "created": True,
+        },
+    )
+    progress_callback(
+        "vector-store",
+        "succeeded",
+        {
+            "vector_store_id": "ocid1.vectorstore.oc1..created",
+            "name": "agent-factory-vector-store",
+            "created": True,
+        },
+    )
+    progress_callback(
+        "data-sync-connector",
+        "succeeded",
+        {
+            "connector_id": "ocid1.vectorstoreconnector.oc1..created",
+            "name": "agent-factory-connector",
+            "created": True,
+            "skipped": False,
+        },
+    )

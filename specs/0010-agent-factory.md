@@ -239,6 +239,8 @@ The UI must allow users to:
 - Review the planned actions before starting the deployment.
 - Start the deployment run.
 - Watch step-by-step progress.
+- Receive live step updates while a non-dry-run deployment is still running,
+  without waiting for the full workflow to finish.
 - See created or reused resource identifiers.
 - See the final Hosted Application deployment endpoint.
 - See actionable error messages when a step fails.
@@ -353,6 +355,11 @@ The backend must stop the sequence on the first unrecoverable failure.
 
 The backend must persist or retain enough run state to show which steps
 completed before a failure.
+For non-dry-run deployments, the backend must return an initial running
+deployment run promptly, continue provisioning work after the response, and
+update the stored run state as each step transitions to running, succeeded,
+failed, or skipped. The UI must poll the deployment status endpoint while the run
+is active and render step updates progressively.
 
 ## RAG Agent Image
 

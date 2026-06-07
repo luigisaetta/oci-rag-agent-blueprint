@@ -13,7 +13,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Mapping, Protocol
+from typing import Any, Callable, Literal, Mapping, Protocol
 
 CONTROL_PLANE_AUTH_MODES = {"session", "user_principal"}
 CONTROL_PLANE_API_PATH = "/20231130/openai/v1"
@@ -647,11 +647,14 @@ class VectorStoreConnectorManager:
 
 def provision_foundation_resources(
     payload: dict[str, Any],
+    progress_callback: Callable[[str, str, dict[str, Any] | None], None] | None = None,
 ) -> FoundationResourcesResult:
     """Create or reuse knowledge base resources for a deployment.
 
     Args:
         payload: Normalized Agent Factory deployment payload.
+        progress_callback: Optional callback receiving step id, status, and
+            non-secret step outputs as provisioning progresses.
 
     Returns:
         FoundationResourcesResult: Created or resolved resource details.
@@ -660,11 +663,19 @@ def provision_foundation_resources(
         ResourceProvisioningError: If required resource provisioning fails.
     """
 
+    _notify_progress(progress_callback, "resolve-compartment", "running")
     compartment_id = resolve_compartment_id(
         compartment=str(payload["compartment"]),
         region=str(payload["region"]),
     )
+    _notify_progress(
+        progress_callback,
+        "resolve-compartment",
+        "succeeded",
+        {"compartment_id": compartment_id},
+    )
 
+    _notify_progress(progress_callback, "bucket", "running")
     bucket = ObjectStorageBucketManager(
         create_object_storage_client(region=str(payload["region"]))
     ).create_or_reuse(
@@ -672,6 +683,18 @@ def provision_foundation_resources(
         bucket_name=str(payload["bucket_name"]),
         mode=str(payload["bucket_mode"]),
     )
+    _notify_progress(
+        progress_callback,
+        "bucket",
+        "succeeded",
+        {
+            "bucket_name": bucket.bucket_name,
+            "namespace_name": bucket.namespace_name,
+            "created": bucket.created,
+        },
+    )
+
+    _notify_progress(progress_callback, "vector-store", "running")
     vector_store = VectorStoreManager(
         create_control_plane_client(
             region=str(payload["region"]),
@@ -681,6 +704,21 @@ def provision_foundation_resources(
         name_or_id=str(payload["vector_store_name"]),
         mode=str(payload["vector_store_mode"]),
     )
+    _notify_progress(
+        progress_callback,
+        "vector-store",
+        "succeeded",
+        {
+            "vector_store_id": vector_store.vector_store_id,
+            "name": vector_store.name,
+            "created": vector_store.created,
+        },
+    )
+
+    connector_status = (
+        "skipped" if str(payload["connector_mode"]) == "skip" else "running"
+    )
+    _notify_progress(progress_callback, "data-sync-connector", connector_status)
     connector = VectorStoreConnectorManager(
         create_oci_genai_client(region=str(payload["region"]))
     ).create_reuse_or_skip(
@@ -690,6 +728,21 @@ def provision_foundation_resources(
         vector_store_id=vector_store.vector_store_id,
         namespace_name=bucket.namespace_name,
         bucket_name=bucket.bucket_name,
+    )
+    _notify_progress(
+        progress_callback,
+        "data-sync-connector",
+        "skipped" if connector is None else "succeeded",
+        (
+            {"skipped": True}
+            if connector is None
+            else {
+                "connector_id": connector.connector_id,
+                "name": connector.name,
+                "created": connector.created,
+                "skipped": connector.skipped,
+            }
+        ),
     )
     return FoundationResourcesResult(
         compartment_id=compartment_id,
@@ -876,6 +929,25 @@ def _build_control_plane_base_url(*, region: str) -> str:
     """
 
     return f"https://generativeai.{region}.oci.oraclecloud.com{CONTROL_PLANE_API_PATH}"
+
+
+def _notify_progress(
+    progress_callback: Callable[[str, str, dict[str, Any] | None], None] | None,
+    step_id: str,
+    status: str,
+    outputs: dict[str, Any] | None = None,
+) -> None:
+    """Notify a provisioning progress callback when one is configured.
+
+    Args:
+        progress_callback: Optional callback to notify.
+        step_id: Workflow step identifier.
+        status: New step status.
+        outputs: Optional non-secret step outputs.
+    """
+
+    if progress_callback is not None:
+        progress_callback(step_id, status, outputs)
 
 
 def create_oci_genai_client(*, region: str) -> Any:  # pylint: disable=too-many-locals

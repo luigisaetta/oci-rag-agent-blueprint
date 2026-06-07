@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const DEFAULT_BACKEND_URL =
   process.env.NEXT_PUBLIC_FACTORY_API_URL ?? "http://localhost:8081/factory/deployments";
@@ -54,6 +54,8 @@ const REQUIRED_FIELDS = [
   "container_repository_name",
   "container_image_tag"
 ];
+
+const ACTIVE_RUN_STATUSES = new Set(["running"]);
 
 function Field({
   label,
@@ -143,6 +145,7 @@ export default function Home() {
   const [run, setRun] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
 
   const missingRequiredFields = useMemo(
     () =>
@@ -153,7 +156,43 @@ export default function Home() {
     [form]
   );
 
-  const canSubmit = missingRequiredFields.length === 0 && !isSubmitting;
+  const canSubmit = missingRequiredFields.length === 0 && !isSubmitting && !isRunActive;
+
+  useEffect(() => {
+    if (!run?.deployment_run_id || !isRunActive) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    async function refreshRun() {
+      try {
+        const response = await fetch(deploymentStatusUrl(backendUrl, run.deployment_run_id));
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.detail ?? `Backend returned HTTP ${response.status}`);
+        }
+
+        if (!isCancelled) {
+          setRun(payload);
+          setErrorMessage("");
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setErrorMessage(error.message || "Unable to refresh Agent Factory run.");
+        }
+      }
+    }
+
+    refreshRun();
+    const intervalId = window.setInterval(refreshRun, 1500);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [backendUrl, isRunActive, run?.deployment_run_id]);
 
   function updateField(event) {
     const { name, value, type, checked } = event.target;
@@ -260,7 +299,11 @@ export default function Home() {
             <h2>Create a RAG agent deployment</h2>
           </div>
           <button className="primaryAction" disabled={!canSubmit} onClick={submitFactoryRun}>
-            {isSubmitting ? "Running" : form.dry_run ? "Run dry check" : "Start deployment"}
+            {isSubmitting || isRunActive
+              ? "Running"
+              : form.dry_run
+                ? "Run dry check"
+                : "Start deployment"}
           </button>
         </header>
 
@@ -554,4 +597,8 @@ function normalizeValue(name, value) {
   }
 
   return value;
+}
+
+function deploymentStatusUrl(baseUrl, deploymentRunId) {
+  return `${baseUrl.replace(/\/$/, "")}/${deploymentRunId}`;
 }

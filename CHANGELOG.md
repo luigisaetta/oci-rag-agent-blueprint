@@ -36,6 +36,9 @@ changes, or documentation updates are introduced.
 - Added explicit readiness waits after Object Storage bucket and Vector Store
   creation so Data Sync Connector creation starts only after its dependencies
   are readable and outside known transitional states.
+- Changed live Agent Factory deployments to return an initial running run,
+  execute resource provisioning in the background, update step status as each
+  resource phase completes, and poll those updates from the UI.
 
 ## 2026-06-06
 

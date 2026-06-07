@@ -319,6 +319,11 @@ select:disabled {
   border-left-color: var(--accent);
 }
 
+.step.running {
+  border-left-color: #2f6fb0;
+  background: #f5f9fd;
+}
+
 .step.failed {
   border-left-color: var(--danger);
 }

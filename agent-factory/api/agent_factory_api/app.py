@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -58,7 +58,9 @@ def health() -> dict[str, str]:
 
 
 @app.post("/factory/deployments")
-async def create_deployment(request: Request) -> JSONResponse:
+async def create_deployment(
+    request: Request, background_tasks: BackgroundTasks
+) -> JSONResponse:
     """Create an Agent Factory deployment run.
 
     Args:
@@ -93,7 +95,15 @@ async def create_deployment(request: Request) -> JSONResponse:
         )
 
     assert validation.payload is not None
-    deployment_run = _create_run(validation.payload)
+    if bool(validation.payload["dry_run"]):
+        deployment_run = _create_run(validation.payload)
+    else:
+        deployment_run = _create_live_run(validation.payload)
+        background_tasks.add_task(
+            _execute_live_run,
+            deployment_run.deployment_run_id,
+            validation.payload,
+        )
     RUNS[deployment_run.deployment_run_id] = deployment_run
     return JSONResponse(deployment_run.to_dict(), status_code=201)
 
@@ -189,6 +199,138 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     if resource_result is not None:
         _attach_resource_outputs(steps, resource_result)
 
+    return DeploymentRun(
+        deployment_run_id=str(uuid4()),
+        dry_run=dry_run,
+        status=status,
+        submitted_at=now,
+        completed_at=now,
+        request=redact_payload(payload),
+        steps=steps,
+        commands=commands,
+        outputs=_build_run_outputs(
+            plan_payload=plan_payload,
+            plan=plan,
+            resource_result=resource_result,
+            dry_run=dry_run,
+        ),
+    )
+
+
+def _create_live_run(payload: dict[str, Any]) -> DeploymentRun:
+    """Create an in-memory live deployment run before execution starts.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        DeploymentRun: Initial live run state.
+    """
+
+    now = utc_now()
+    plan = build_deployment_plan(payload, dry_run=False)
+    steps = _build_steps(payload, plan["commands"])
+    _set_step_status(steps, "validate-input", "succeeded", timestamp=now)
+
+    return DeploymentRun(
+        deployment_run_id=str(uuid4()),
+        dry_run=False,
+        status="running",
+        submitted_at=now,
+        completed_at=None,
+        request=redact_payload(payload),
+        steps=steps,
+        commands=plan["commands"],
+        outputs={
+            "image_reference": plan["image_reference"],
+            "hosted_application_name": payload["hosted_application_name"],
+            "deployment_name": payload["deployment_name"],
+            "endpoint_url": None,
+            "resolved_identifiers": plan["resolved_identifiers"],
+            "runtime_environment": redact_runtime_environment(
+                plan["runtime_environment"]
+            ),
+            "dry_run_artifacts": plan["artifacts"],
+            "note": "Live deployment started. Resource provisioning is in progress.",
+        },
+    )
+
+
+def _execute_live_run(deployment_run_id: str, payload: dict[str, Any]) -> None:
+    """Execute a live Agent Factory run and update its status incrementally.
+
+    Args:
+        deployment_run_id: Deployment run identifier.
+        payload: Normalized deployment payload.
+    """
+
+    deployment_run = RUNS[deployment_run_id]
+
+    def update_progress(
+        step_id: str, status: str, outputs: dict[str, Any] | None
+    ) -> None:
+        _set_step_status(
+            deployment_run.steps,
+            step_id,
+            status,
+            outputs=outputs,
+            timestamp=utc_now(),
+        )
+
+    try:
+        resource_result = provision_foundation_resources(
+            payload,
+            progress_callback=update_progress,
+        )
+    except ResourceProvisioningError as exc:
+        _mark_live_run_failed(deployment_run, payload, str(exc))
+        return
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _mark_live_run_failed(deployment_run, payload, f"Unexpected error: {exc}")
+        return
+
+    plan_payload = dict(payload)
+    plan_payload["compartment"] = resource_result.compartment_id
+    plan_payload["vector_store_name"] = resource_result.vector_store.vector_store_id
+    if resource_result.connector is not None:
+        plan_payload["connector_name"] = resource_result.connector.connector_id
+
+    plan = build_deployment_plan(plan_payload, dry_run=False)
+    deployment_run.commands = plan["commands"]
+    _refresh_step_commands(
+        deployment_run.steps, _build_steps(plan_payload, plan["commands"])
+    )
+    _complete_planned_steps(deployment_run.steps, timestamp=utc_now())
+    _attach_resource_outputs(deployment_run.steps, resource_result)
+    deployment_run.outputs = _build_run_outputs(
+        plan_payload=plan_payload,
+        plan=plan,
+        resource_result=resource_result,
+        dry_run=False,
+    )
+    deployment_run.status = "succeeded"
+    deployment_run.completed_at = utc_now()
+
+
+def _build_run_outputs(
+    *,
+    plan_payload: dict[str, Any],
+    plan: dict[str, Any],
+    resource_result: FoundationResourcesResult | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Build non-secret deployment run outputs.
+
+    Args:
+        plan_payload: Payload used to build the final command plan.
+        plan: Generated command plan.
+        resource_result: Live resource provisioning result, if any.
+        dry_run: Whether this was a dry run.
+
+    Returns:
+        dict[str, Any]: Run outputs safe for API responses.
+    """
+
     outputs = {
         "image_reference": plan["image_reference"],
         "hosted_application_name": plan_payload["hosted_application_name"],
@@ -235,17 +377,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
             ),
         }
 
-    return DeploymentRun(
-        deployment_run_id=str(uuid4()),
-        dry_run=dry_run,
-        status=status,
-        submitted_at=now,
-        completed_at=now,
-        request=redact_payload(payload),
-        steps=steps,
-        commands=commands,
-        outputs=outputs,
-    )
+    return outputs
 
 
 def _failed_resource_run(
@@ -299,6 +431,42 @@ def _failed_resource_run(
     )
 
 
+def _mark_live_run_failed(
+    deployment_run: DeploymentRun, payload: dict[str, Any], error_message: str
+) -> None:
+    """Mark a live deployment run as failed.
+
+    Args:
+        deployment_run: Run state to update.
+        payload: Normalized deployment payload.
+        error_message: Sanitized provisioning error.
+    """
+
+    timestamp = utc_now()
+    failed_step_id = _failed_resource_step_id(error_message)
+    _set_step_status(
+        deployment_run.steps,
+        failed_step_id,
+        "failed",
+        error=error_message,
+        timestamp=timestamp,
+    )
+    plan = build_deployment_plan(payload, dry_run=False)
+    deployment_run.status = "failed"
+    deployment_run.completed_at = timestamp
+    deployment_run.outputs = {
+        "image_reference": plan["image_reference"],
+        "hosted_application_name": payload["hosted_application_name"],
+        "deployment_name": payload["deployment_name"],
+        "endpoint_url": None,
+        "resolved_identifiers": plan["resolved_identifiers"],
+        "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
+        "dry_run_artifacts": plan["artifacts"],
+        "note": "Resource provisioning failed before deployment planning.",
+    }
+    deployment_run.error = error_message
+
+
 def _attach_resource_outputs(
     steps: list[FactoryStep], resource_result: FoundationResourcesResult
 ) -> None:
@@ -333,6 +501,88 @@ def _attach_resource_outputs(
                 if resource_result.connector is not None
                 else {"skipped": True}
             )
+
+
+def _set_step_status(  # pylint: disable=too-many-arguments
+    steps: list[FactoryStep],
+    step_id: str,
+    status: str,
+    *,
+    timestamp: str,
+    outputs: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """Update a workflow step status in place.
+
+    Args:
+        steps: Workflow steps for the run.
+        step_id: Target step identifier.
+        status: New step status.
+        timestamp: Update timestamp.
+        outputs: Optional non-secret step outputs.
+        error: Optional sanitized step error.
+    """
+
+    step = _find_step(steps, step_id)
+    if step is None:
+        return
+    if step.started_at is None:
+        step.started_at = timestamp
+    step.status = status  # type: ignore[assignment]
+    if status in {"succeeded", "failed", "skipped"}:
+        step.ended_at = timestamp
+    if outputs is not None:
+        step.outputs = outputs
+    if error is not None:
+        step.error = error
+
+
+def _complete_planned_steps(steps: list[FactoryStep], *, timestamp: str) -> None:
+    """Mark planned-only remaining steps as completed.
+
+    Args:
+        steps: Workflow steps for the run.
+        timestamp: Completion timestamp.
+    """
+
+    for step in steps:
+        if step.status == "pending":
+            _set_step_status(steps, step.step_id, "succeeded", timestamp=timestamp)
+
+
+def _refresh_step_commands(
+    steps: list[FactoryStep], planned_steps: list[FactoryStep]
+) -> None:
+    """Refresh workflow commands after live resource identifiers are resolved.
+
+    Args:
+        steps: Existing run steps to mutate.
+        planned_steps: Steps built from the final command plan.
+    """
+
+    commands_by_step_id = {
+        planned_step.step_id: planned_step.command for planned_step in planned_steps
+    }
+    for step in steps:
+        if step.step_id in commands_by_step_id:
+            step.command = commands_by_step_id[step.step_id]
+
+
+def _find_step(steps: list[FactoryStep], step_id: str) -> FactoryStep | None:
+    """Return a step by identifier.
+
+    Args:
+        steps: Workflow steps for the run.
+        step_id: Target step identifier.
+
+    Returns:
+        FactoryStep | None: Matching step, if present.
+    """
+
+    for step in steps:
+        if step.step_id == step_id:
+            return step
+    return None
 
 
 def _failed_resource_step_id(error_message: str) -> str:
