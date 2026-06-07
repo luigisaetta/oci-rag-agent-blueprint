@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-07
 License: MIT
 Description: FastAPI backend skeleton for Agent Factory deployment orchestration.
 """
@@ -27,6 +27,11 @@ from agent_factory_api.models import (
     redact_payload,
     utc_now,
     validate_deployment_payload,
+)
+from agent_factory_api.resources import (
+    FoundationResourcesResult,
+    ResourceProvisioningError,
+    provision_foundation_resources,
 )
 
 RUNS: dict[str, DeploymentRun] = {}
@@ -154,21 +159,39 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     """
 
     dry_run = bool(payload["dry_run"])
-    plan = build_deployment_plan(payload, dry_run)
-    commands = plan["commands"]
     now = utc_now()
-    steps = _build_steps(payload, commands)
+    resource_result: FoundationResourcesResult | None = None
+    plan_payload = dict(payload)
+
+    try:
+        if not dry_run:
+            resource_result = provision_foundation_resources(payload)
+            plan_payload["vector_store_name"] = (
+                resource_result.vector_store.vector_store_id
+            )
+            if resource_result.connector is not None:
+                plan_payload["connector_name"] = resource_result.connector.connector_id
+    except ResourceProvisioningError as exc:
+        return _failed_resource_run(payload, dry_run, now, str(exc))
+
+    plan = build_deployment_plan(plan_payload, dry_run)
+    commands = plan["commands"]
+    steps = _build_steps(plan_payload, commands)
     status = "succeeded"
 
     for step in steps:
-        step.status = "succeeded"
+        if step.status != "skipped":
+            step.status = "succeeded"
         step.started_at = now
         step.ended_at = now
 
+    if resource_result is not None:
+        _attach_resource_outputs(steps, resource_result)
+
     outputs = {
         "image_reference": plan["image_reference"],
-        "hosted_application_name": payload["hosted_application_name"],
-        "deployment_name": payload["deployment_name"],
+        "hosted_application_name": plan_payload["hosted_application_name"],
+        "deployment_name": plan_payload["deployment_name"],
         "endpoint_url": None,
         "resolved_identifiers": plan["resolved_identifiers"],
         "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
@@ -176,9 +199,39 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
         "note": (
             "Dry run completed without OCI writes."
             if dry_run
-            else "Skeleton run completed without executing OCI writes."
+            else (
+                "Object Storage bucket, Vector Store, and Data Sync Connector "
+                "were provisioned; "
+                "remaining deployment actions are still planned only."
+            )
         ),
     }
+
+    if resource_result is not None:
+        outputs["foundation_resources"] = {
+            "bucket": {
+                "bucket_name": resource_result.bucket.bucket_name,
+                "namespace_name": resource_result.bucket.namespace_name,
+                "lifecycle_state": resource_result.bucket.lifecycle_state,
+                "created": resource_result.bucket.created,
+            },
+            "vector_store": {
+                "vector_store_id": resource_result.vector_store.vector_store_id,
+                "name": resource_result.vector_store.name,
+                "created": resource_result.vector_store.created,
+            },
+            "connector": (
+                {
+                    "connector_id": resource_result.connector.connector_id,
+                    "name": resource_result.connector.name,
+                    "lifecycle_state": resource_result.connector.lifecycle_state,
+                    "created": resource_result.connector.created,
+                    "skipped": resource_result.connector.skipped,
+                }
+                if resource_result.connector is not None
+                else None
+            ),
+        }
 
     return DeploymentRun(
         deployment_run_id=str(uuid4()),
@@ -191,6 +244,111 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
         commands=commands,
         outputs=outputs,
     )
+
+
+def _failed_resource_run(
+    payload: dict[str, Any], dry_run: bool, timestamp: str, error_message: str
+) -> DeploymentRun:
+    """Build a failed deployment run for bucket or Vector Store errors.
+
+    Args:
+        payload: Normalized deployment payload.
+        dry_run: Whether the run was requested as a dry run.
+        timestamp: Completion timestamp.
+        error_message: Sanitized provisioning error.
+
+    Returns:
+        DeploymentRun: Failed run state.
+    """
+
+    plan = build_deployment_plan(payload, dry_run)
+    steps = _build_steps(payload, plan["commands"])
+    failed_step_id = _failed_resource_step_id(error_message)
+    for step in steps:
+        if step.step_id == failed_step_id:
+            step.status = "failed"
+            step.started_at = timestamp
+            step.ended_at = timestamp
+            step.error = error_message
+            break
+
+    return DeploymentRun(
+        deployment_run_id=str(uuid4()),
+        dry_run=dry_run,
+        status="failed",
+        submitted_at=timestamp,
+        completed_at=timestamp,
+        request=redact_payload(payload),
+        steps=steps,
+        commands=plan["commands"],
+        outputs={
+            "image_reference": plan["image_reference"],
+            "hosted_application_name": payload["hosted_application_name"],
+            "deployment_name": payload["deployment_name"],
+            "endpoint_url": None,
+            "resolved_identifiers": plan["resolved_identifiers"],
+            "runtime_environment": redact_runtime_environment(
+                plan["runtime_environment"]
+            ),
+            "dry_run_artifacts": plan["artifacts"],
+            "note": "Resource provisioning failed before deployment planning.",
+        },
+        error=error_message,
+    )
+
+
+def _attach_resource_outputs(
+    steps: list[FactoryStep], resource_result: FoundationResourcesResult
+) -> None:
+    """Attach bucket and Vector Store outputs to workflow steps.
+
+    Args:
+        steps: Workflow steps for the run.
+        resource_result: Provisioned foundation resources.
+    """
+
+    for step in steps:
+        if step.step_id == "bucket":
+            step.outputs = {
+                "bucket_name": resource_result.bucket.bucket_name,
+                "namespace_name": resource_result.bucket.namespace_name,
+                "created": resource_result.bucket.created,
+            }
+        if step.step_id == "vector-store":
+            step.outputs = {
+                "vector_store_id": resource_result.vector_store.vector_store_id,
+                "name": resource_result.vector_store.name,
+                "created": resource_result.vector_store.created,
+            }
+        if step.step_id == "data-sync-connector":
+            step.outputs = (
+                {
+                    "connector_id": resource_result.connector.connector_id,
+                    "name": resource_result.connector.name,
+                    "created": resource_result.connector.created,
+                    "skipped": resource_result.connector.skipped,
+                }
+                if resource_result.connector is not None
+                else {"skipped": True}
+            )
+
+
+def _failed_resource_step_id(error_message: str) -> str:
+    """Return the workflow step that best matches a provisioning error.
+
+    Args:
+        error_message: Sanitized provisioning error message.
+
+    Returns:
+        str: Failed resource step identifier.
+    """
+
+    normalized_error = error_message.lower()
+    if "bucket" in normalized_error:
+        return "bucket"
+    if "connector" in normalized_error:
+        return "data-sync-connector"
+    return "vector-store"
 
 
 def _build_steps(

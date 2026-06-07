@@ -1,11 +1,13 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-07
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
 
 from __future__ import annotations
+
+# pylint: disable=too-few-public-methods
 
 import sys
 from pathlib import Path
@@ -19,6 +21,17 @@ sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-position
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
+)
+from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
+    BucketResult,
+    ConnectorResult,
+    FoundationResourcesResult,
+    ObjectStorageBucketManager,
+    VectorStoreConnectorManager,
+    VectorStoreManager,
+    VectorStoreResult,
+    _resolve_control_plane_auth_mode,
+    _validate_oci_auth_config,
 )
 
 
@@ -251,7 +264,9 @@ def test_agent_factory_returns_saved_run_and_commands() -> None:
     assert commands_response.text.startswith("#!/usr/bin/env bash")
 
 
-def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment() -> None:
+def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
+    monkeypatch,
+) -> None:
     """Test real deployment command plan includes runtime environment injection."""
 
     RUNS.clear()
@@ -259,6 +274,28 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment() -> 
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
     request_payload["vector_store_name"] = "ocid1.vectorstore.oc1..example"
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        lambda payload: FoundationResourcesResult(
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="ocid1.vectorstore.oc1..example",
+                name="ocid1.vectorstore.oc1..example",
+                created=False,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..example",
+                name="agent-factory-connector",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+        ),
+    )
 
     response = client.post("/factory/deployments", json=request_payload)
 
@@ -285,6 +322,177 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment() -> 
         "type": "PLAINTEXT",
         "value": "********",
     }
+
+
+def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> None:
+    """Test non-dry-run deployments provision foundation resources first."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["dry_run"] = False
+
+    def fake_provision(payload: dict[str, Any]) -> FoundationResourcesResult:
+        assert payload["bucket_name"] == "agent-factory-docs"
+        assert payload["vector_store_name"] == "agent-factory-vector-store"
+        return FoundationResourcesResult(
+            bucket=BucketResult(
+                bucket_name="agent-factory-docs",
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=True,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="ocid1.vectorstore.oc1..created",
+                name="agent-factory-vector-store",
+                created=True,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..created",
+                name="agent-factory-connector",
+                lifecycle_state="ACTIVE",
+                created=True,
+            ),
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "succeeded"
+    assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
+        "ocid1.vectorstore.oc1..created"
+    )
+    assert payload["outputs"]["runtime_environment"]["OCI_VECTOR_STORE_ID"] == (
+        "ocid1.vectorstore.oc1..created"
+    )
+    assert payload["outputs"]["resolved_identifiers"]["connector_id"] == (
+        "ocid1.vectorstoreconnector.oc1..created"
+    )
+    assert payload["outputs"]["foundation_resources"]["bucket"] == {
+        "bucket_name": "agent-factory-docs",
+        "namespace_name": "test-namespace",
+        "lifecycle_state": "ACTIVE",
+        "created": True,
+    }
+    assert payload["outputs"]["foundation_resources"]["connector"] == {
+        "connector_id": "ocid1.vectorstoreconnector.oc1..created",
+        "name": "agent-factory-connector",
+        "lifecycle_state": "ACTIVE",
+        "created": True,
+        "skipped": False,
+    }
+
+
+def test_object_storage_bucket_manager_creates_missing_bucket() -> None:
+    """Test Object Storage bucket creation through the OCI client."""
+
+    client = FakeObjectStorageClient()
+    manager = ObjectStorageBucketManager(client)
+
+    result = manager.create_or_reuse(
+        compartment_id="ocid1.compartment.oc1..example",
+        bucket_name="agent-factory-docs",
+        mode="create",
+    )
+
+    assert result == BucketResult(
+        bucket_name="agent-factory-docs",
+        namespace_name="test-namespace",
+        lifecycle_state="ACTIVE",
+        created=True,
+    )
+    assert client.created_bucket_details is not None
+
+
+def test_vector_store_manager_creates_missing_vector_store() -> None:
+    """Test Vector Store creation through the control plane client."""
+
+    client = FakeControlPlaneClient()
+    manager = VectorStoreManager(client)
+
+    result = manager.create_or_reuse(
+        name_or_id="agent-factory-vector-store",
+        mode="create",
+    )
+
+    assert result == VectorStoreResult(
+        vector_store_id="ocid1.vectorstore.oc1..created",
+        name="agent-factory-vector-store",
+        created=True,
+    )
+    assert client.vector_stores.created_payload == {
+        "name": "agent-factory-vector-store",
+        "description": "Vector Store for OCI RAG Agent Blueprint.",
+        "expires_after": {"anchor": "last_active_at", "days": 120},
+        "metadata": {"source": "oci-rag-agent-blueprint"},
+    }
+
+
+def test_connector_manager_creates_object_storage_connector() -> None:
+    """Test connector creation through the OCI Generative AI client."""
+
+    client = FakeConnectorClient()
+    manager = VectorStoreConnectorManager(client)
+
+    result = manager.create_reuse_or_skip(
+        compartment_id="ocid1.compartment.oc1..example",
+        connector_name="agent-factory-connector",
+        mode="create",
+        vector_store_id="ocid1.vectorstore.oc1..created",
+        namespace_name="test-namespace",
+        bucket_name="agent-factory-docs",
+    )
+
+    assert result == ConnectorResult(
+        connector_id="ocid1.vectorstoreconnector.oc1..created",
+        name="agent-factory-connector",
+        lifecycle_state="ACTIVE",
+        created=True,
+    )
+    assert client.created_details is not None
+    assert client.created_details.compartment_id == "ocid1.compartment.oc1..example"
+    assert client.created_details.vector_store_id == "ocid1.vectorstore.oc1..created"
+    assert client.created_details.display_name == "agent-factory-connector"
+    storage_config = client.created_details.configuration.storage_config_list[0]
+    assert storage_config.namespace == "test-namespace"
+    assert storage_config.bucket_name == "agent-factory-docs"
+    assert storage_config.prefix_list == []
+    assert client.created_details.schedule_config.frequency == "HOURLY"
+    assert client.created_details.schedule_config.state == "ENABLED"
+
+
+def test_control_plane_auth_mode_defaults_to_user_principal() -> None:
+    """Test control plane auth mode defaults to user principal."""
+
+    assert _resolve_control_plane_auth_mode(None) == "user_principal"
+    assert _resolve_control_plane_auth_mode(" session ") == "session"
+
+
+def test_control_plane_auth_config_rejects_session_profile_for_user_principal() -> None:
+    """Test user principal auth rejects OCI session-token profiles."""
+
+    try:
+        _validate_oci_auth_config(
+            config={
+                "user": "ocid1.user.oc1..example",
+                "tenancy": "ocid1.tenancy.oc1..example",
+                "fingerprint": "aa:bb",
+                "key_file": "~/.oci/sessions/test/oci_api_key.pem",
+                "security_token_file": "~/.oci/sessions/test/token",
+            },
+            auth_mode="user_principal",
+            profile="DEFAULT",
+        )
+    except ValueError as exc:
+        assert "Use OCI_AUTH_MODE=session" in str(exc)
+    else:
+        raise AssertionError("Expected session profile validation to fail.")
 
 
 def _valid_payload() -> dict[str, Any]:
@@ -318,3 +526,184 @@ def _valid_payload() -> dict[str, Any]:
         "container_image_tag": "0.1.0",
         "dry_run": True,
     }
+
+
+class FakeResponse:
+    """Small OCI-style response wrapper for tests."""
+
+    def __init__(self, data: Any) -> None:
+        """Initialize the fake response.
+
+        Args:
+            data: Wrapped response data.
+        """
+
+        self.data = data
+
+
+class FakeListData:
+    """Small OCI-style list data wrapper for tests."""
+
+    def __init__(self, items: list[Any]) -> None:
+        """Initialize the fake list data.
+
+        Args:
+            items: Wrapped list items.
+        """
+
+        self.items = items
+
+
+class FakeNotFoundError(Exception):
+    """Small OCI-style 404 exception for tests."""
+
+    status = 404
+
+
+class FakeObjectStorageClient:
+    """Fake Object Storage client used by bucket manager tests."""
+
+    def __init__(self) -> None:
+        """Initialize the fake client."""
+
+        self.created_bucket_details: Any | None = None
+
+    def get_namespace(self) -> FakeResponse:
+        """Return a fake namespace response.
+
+        Returns:
+            FakeResponse: Namespace response.
+        """
+
+        return FakeResponse("test-namespace")
+
+    def get_bucket(self, namespace_name: str, bucket_name: str) -> FakeResponse:
+        """Raise 404 to simulate a missing bucket.
+
+        Args:
+            namespace_name: Object Storage namespace.
+            bucket_name: Bucket name.
+
+        Raises:
+            FakeNotFoundError: Always raised for this fake.
+        """
+
+        raise FakeNotFoundError(f"{namespace_name}/{bucket_name}")
+
+    def create_bucket(
+        self, namespace_name: str, create_bucket_details: Any
+    ) -> FakeResponse:
+        """Create a fake bucket.
+
+        Args:
+            namespace_name: Object Storage namespace.
+            create_bucket_details: OCI SDK create details.
+
+        Returns:
+            FakeResponse: Bucket response.
+        """
+
+        self.created_bucket_details = create_bucket_details
+        return FakeResponse(
+            {
+                "name": "agent-factory-docs",
+                "namespace": namespace_name,
+                "lifecycle_state": "ACTIVE",
+            }
+        )
+
+
+class FakeVectorStores:
+    """Fake Vector Stores control plane API."""
+
+    def __init__(self) -> None:
+        """Initialize the fake API."""
+
+        self.created_payload: dict[str, Any] | None = None
+
+    def list(self) -> FakeResponse:
+        """Return no Vector Stores.
+
+        Returns:
+            FakeResponse: Empty Vector Store list response.
+        """
+
+        return FakeResponse([])
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: str,
+        expires_after: dict[str, Any],
+        metadata: dict[str, str],
+    ) -> dict[str, str]:
+        """Create a fake Vector Store.
+
+        Args:
+            name: Vector Store name.
+            description: Vector Store description.
+            expires_after: Expiration policy.
+            metadata: Vector Store metadata.
+
+        Returns:
+            dict[str, str]: Fake Vector Store resource.
+        """
+
+        self.created_payload = {
+            "name": name,
+            "description": description,
+            "expires_after": expires_after,
+            "metadata": metadata,
+        }
+        return {"id": "ocid1.vectorstore.oc1..created", "name": name}
+
+
+class FakeControlPlaneClient:
+    """Fake OCI Enterprise AI control plane client."""
+
+    def __init__(self) -> None:
+        """Initialize the fake client."""
+
+        self.vector_stores = FakeVectorStores()
+
+
+class FakeConnectorClient:
+    """Fake OCI Generative AI client used by connector manager tests."""
+
+    def __init__(self) -> None:
+        """Initialize the fake client."""
+
+        self.created_details: Any | None = None
+
+    def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
+        """Return no existing connectors.
+
+        Args:
+            compartment_id: Compartment OCID.
+
+        Returns:
+            FakeResponse: Empty connector list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        return FakeResponse(FakeListData([]))
+
+    def create_vector_store_connector(self, create_details: Any) -> FakeResponse:
+        """Create a fake connector.
+
+        Args:
+            create_details: OCI SDK create connector details.
+
+        Returns:
+            FakeResponse: Connector response.
+        """
+
+        self.created_details = create_details
+        return FakeResponse(
+            {
+                "id": "ocid1.vectorstoreconnector.oc1..created",
+                "display_name": "agent-factory-connector",
+                "lifecycle_state": "ACTIVE",
+            }
+        )

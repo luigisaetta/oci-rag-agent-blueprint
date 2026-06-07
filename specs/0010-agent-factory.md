@@ -160,7 +160,7 @@ Agent Factory must use explicit mechanisms for each class of deployment action.
 | --- | --- |
 | Object Storage bucket creation and lookup | OCI Python SDK. |
 | Vector Store creation and lookup | OCI Enterprise AI Vector Store control plane API. |
-| Data Sync Connector creation and lookup | OCI Enterprise AI Vector Store control plane API. |
+| Data Sync Connector creation and lookup | OCI Generative AI Python SDK control plane client. |
 | RAG agent backend Docker image build | Docker CLI. |
 | OCI Container Registry repository creation or lookup | OCI CLI unless later OCI SDK support is explicitly specified. |
 | OCI Container Registry authentication | Docker CLI using an OCI-compatible registry login flow. |
@@ -180,9 +180,36 @@ runner.
 The backend must capture command exit codes, standard output, and standard error
 for diagnostics, but returned status payloads and logs must redact secrets.
 
-The exact OCI Enterprise AI Vector Store control plane API endpoints, OCI CLI
-commands, and example payloads will be added during implementation once the
-reference examples are available.
+Vector Store creation must use an OpenAI-compatible control plane client signed
+with OCI authentication. The backend must construct the client with
+`openai.OpenAI`, `httpx.Client`, and the `oci_genai_auth` authentication helpers.
+The control plane endpoint must use this shape:
+
+```text
+https://generativeai.<region>.oci.oraclecloud.com/20231130
+```
+
+The client must set `api_key` to a non-empty placeholder value, attach the
+`opc-compartment-id` header to the HTTP client, and select authentication from
+`OCI_AUTH_MODE`. Supported values are `user_principal` and `session`, with
+`user_principal` as the default.
+
+The Vector Store create operation must call `client.vector_stores.create(...)`
+with a resource name and may include description, expiration, and metadata. This
+matches the OpenAI-compatible Vector Store API shape used by OCI Enterprise AI
+and the shared `agent_hub/common/clients.py` example.
+
+Object Storage bucket creation and lookup must use `oci.object_storage`
+clients. The backend must resolve the Object Storage namespace before bucket
+lookup or creation.
+
+Data Sync Connector creation must use the OCI Generative AI Python SDK control
+plane client. The backend must construct `CreateVectorStoreConnectorDetails`
+with the resolved compartment OCID, Vector Store OCID, connector display name,
+and an `OciObjectStorageConfiguration` containing the resolved Object Storage
+namespace and bucket name. The first implementation must create an hourly
+enabled interval schedule and start it shortly after connector creation. This
+matches the shared `agent_hub/connectors/create_connector.py` example.
 
 ## UI Responsibilities
 

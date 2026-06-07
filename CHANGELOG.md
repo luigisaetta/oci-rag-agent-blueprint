@@ -6,6 +6,25 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-07
+
+- Added Agent Factory resource managers for creating or reusing Object Storage
+  buckets through the OCI Python SDK and Vector Stores through the OCI
+  OpenAI-compatible control plane client.
+- Integrated bucket and Vector Store provisioning into non-dry-run Agent Factory
+  deployment requests, using the resolved Vector Store OCID in the deployed
+  agent runtime environment.
+- Updated Agent Factory tests to cover mocked bucket creation, Vector Store
+  creation, and non-dry-run resource provisioning outputs.
+- Documented the concrete Vector Store control plane client and Object Storage
+  SDK mechanisms in the Agent Factory specification.
+- Aligned Agent Factory control plane client construction with the shared
+  `agent_hub/common/clients.py` pattern using `openai.OpenAI`, `httpx`, and
+  `oci_genai_auth` authentication helpers.
+- Added Agent Factory Data Sync Connector provisioning through the OCI
+  Generative AI Python SDK, linking the resolved Object Storage bucket to the
+  resolved Vector Store with an hourly enabled sync schedule.
+
 ## 2026-06-06
 
 - Updated the streaming finalization specification to make post-stream retrieve
