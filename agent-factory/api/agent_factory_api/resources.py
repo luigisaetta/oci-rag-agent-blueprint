@@ -71,6 +71,9 @@ class VectorStoreConnectorClientProtocol(Protocol):
     def create_vector_store_connector(self, create_details: Any) -> Any:
         """Create a Vector Store connector and return the response."""
 
+    def get_vector_store_connector(self, connector_id: str) -> Any:
+        """Return a Vector Store connector by OCID."""
+
 
 @dataclass(frozen=True)
 class BucketResult:
@@ -509,6 +512,8 @@ class VectorStoreConnectorManager:
         """
 
         self._client = client
+        self._wait_interval_seconds = _resource_wait_interval_seconds()
+        self._wait_timeout_seconds = _resource_wait_timeout_seconds()
 
     def create_reuse_or_skip(
         self,
@@ -584,6 +589,11 @@ class VectorStoreConnectorManager:
                 raise ResourceProvisioningError(
                     f"Unable to create connector {connector_name}: {exc}"
                 ) from exc
+            connector = self._wait_for_connector_created(
+                compartment_id=compartment_id,
+                connector_name=connector_name,
+                fallback_connector=connector,
+            )
             return _connector_result(
                 connector,
                 fallback_name=connector_name,
@@ -591,6 +601,89 @@ class VectorStoreConnectorManager:
             )
 
         raise ResourceProvisioningError(f"Unsupported connector mode: {mode}")
+
+    def _wait_for_connector_created(
+        self,
+        *,
+        compartment_id: str,
+        connector_name: str,
+        fallback_connector: Any,
+    ) -> Any:
+        """Wait until a created connector can be verified by read APIs.
+
+        Args:
+            compartment_id: Compartment OCID containing the connector.
+            connector_name: Connector display name.
+            fallback_connector: Create response returned by OCI.
+
+        Returns:
+            Any: Verified connector model.
+
+        Raises:
+            ResourceProvisioningError: If the connector cannot be verified or
+                enters a failed state before the configured timeout.
+        """
+
+        connector_id = _optional_resource_attr(fallback_connector, "id")
+        deadline = time.monotonic() + self._wait_timeout_seconds
+        last_detail = _resource_state_label(fallback_connector) or "create response"
+
+        while True:
+            connector = self._read_connector_after_create(
+                compartment_id=compartment_id,
+                connector_id=str(connector_id) if connector_id else None,
+                connector_name=connector_name,
+            )
+            if connector is not None:
+                _raise_if_resource_failed(
+                    resource=connector,
+                    resource_label=f"Connector {connector_name}",
+                )
+                if _is_resource_ready(connector):
+                    return connector
+                last_detail = _resource_state_label(connector) or "not ready"
+
+            if time.monotonic() >= deadline:
+                raise ResourceProvisioningError(
+                    f"Connector {connector_name} was not verified after "
+                    f"{self._wait_timeout_seconds:g} seconds. Last state: "
+                    f"{last_detail}."
+                )
+            time.sleep(self._wait_interval_seconds)
+
+    def _read_connector_after_create(
+        self,
+        *,
+        compartment_id: str,
+        connector_id: str | None,
+        connector_name: str,
+    ) -> Any | None:
+        """Read a connector after creation using get first, then list.
+
+        Args:
+            compartment_id: Compartment OCID containing the connector.
+            connector_id: Connector OCID from the create response, if present.
+            connector_name: Connector display name.
+
+        Returns:
+            Any | None: Verified connector model or None.
+        """
+
+        if connector_id:
+            get_connector = getattr(self._client, "get_vector_store_connector", None)
+            if get_connector is not None:
+                try:
+                    return _response_data(get_connector(connector_id))
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    if _exception_status(exc) not in {404, 409}:
+                        raise ResourceProvisioningError(
+                            f"Unable to verify connector {connector_name}: {exc}"
+                        ) from exc
+
+        return self._find_connector_by_name(
+            compartment_id=compartment_id,
+            connector_name=connector_name,
+        )
 
     def _retrieve_connector(self, connector_id: str) -> Any:
         """Retrieve a connector by OCID when the SDK supports it.

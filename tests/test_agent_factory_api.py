@@ -654,6 +654,25 @@ def test_connector_manager_creates_object_storage_connector() -> None:
     assert client.created_details.schedule_config.state == "ENABLED"
 
 
+def test_connector_manager_requires_post_create_verification(monkeypatch) -> None:
+    """Test connector create fails when the connector cannot be verified."""
+
+    monkeypatch.setenv("AGENT_FACTORY_RESOURCE_WAIT_INTERVAL_SECONDS", "0.001")
+    monkeypatch.setenv("AGENT_FACTORY_RESOURCE_WAIT_TIMEOUT_SECONDS", "0.01")
+    client = UnverifiableConnectorClient()
+    manager = VectorStoreConnectorManager(client)
+
+    with pytest.raises(ResourceProvisioningError, match="was not verified"):
+        manager.create_reuse_or_skip(
+            compartment_id="ocid1.compartment.oc1..example",
+            connector_name="agent-factory-connector",
+            mode="create",
+            vector_store_id="ocid1.vectorstore.oc1..created",
+            namespace_name="test-namespace",
+            bucket_name="agent-factory-docs",
+        )
+
+
 def test_control_plane_auth_mode_defaults_to_user_principal() -> None:
     """Test control plane auth mode defaults to user principal."""
 
@@ -960,6 +979,7 @@ class FakeConnectorClient:
         """Initialize the fake client."""
 
         self.created_details: Any | None = None
+        self._created_connector: dict[str, str] | None = None
 
     def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
         """Return no existing connectors.
@@ -985,13 +1005,78 @@ class FakeConnectorClient:
         """
 
         self.created_details = create_details
+        self._created_connector = {
+            "id": "ocid1.vectorstoreconnector.oc1..created",
+            "display_name": "agent-factory-connector",
+            "lifecycle_state": "ACTIVE",
+        }
+        return FakeResponse(self._created_connector)
+
+    def get_vector_store_connector(self, connector_id: str) -> FakeResponse:
+        """Return the created connector by OCID.
+
+        Args:
+            connector_id: Connector OCID.
+
+        Returns:
+            FakeResponse: Connector response.
+
+        Raises:
+            FakeNotFoundError: If no connector has been created.
+        """
+
+        if self._created_connector is None:
+            raise FakeNotFoundError(connector_id)
+        assert connector_id == self._created_connector["id"]
+        return FakeResponse(self._created_connector)
+
+
+class UnverifiableConnectorClient:
+    """Fake connector client whose create response is never verifiable."""
+
+    def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
+        """Return no connectors.
+
+        Args:
+            compartment_id: Compartment OCID.
+
+        Returns:
+            FakeResponse: Empty connector list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        return FakeResponse(FakeListData([]))
+
+    def create_vector_store_connector(self, create_details: Any) -> FakeResponse:
+        """Return a create response for an unverifiable connector.
+
+        Args:
+            create_details: OCI SDK create connector details.
+
+        Returns:
+            FakeResponse: Connector create response.
+        """
+
+        _ = create_details
         return FakeResponse(
             {
-                "id": "ocid1.vectorstoreconnector.oc1..created",
+                "id": "ocid1.vectorstoreconnector.oc1..missing",
                 "display_name": "agent-factory-connector",
-                "lifecycle_state": "ACTIVE",
+                "lifecycle_state": "CREATING",
             }
         )
+
+    def get_vector_store_connector(self, connector_id: str) -> FakeResponse:
+        """Always report the connector as missing.
+
+        Args:
+            connector_id: Connector OCID.
+
+        Raises:
+            FakeNotFoundError: Always raised.
+        """
+
+        raise FakeNotFoundError(connector_id)
 
 
 class SequencedObjectStorageClient:
@@ -1159,6 +1244,7 @@ class SequencedConnectorClient:
         """
 
         self._events = events
+        self._created_connector: dict[str, str] | None = None
 
     def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
         """Return no existing connectors.
@@ -1187,13 +1273,30 @@ class SequencedConnectorClient:
         assert "wait_bucket" in self._events
         assert "wait_vector_store" in self._events
         self._events.append("create_connector")
-        return FakeResponse(
-            {
-                "id": "ocid1.vectorstoreconnector.oc1..created",
-                "display_name": _resource_display_name_from_details(create_details),
-                "lifecycle_state": "ACTIVE",
-            }
-        )
+        self._created_connector = {
+            "id": "ocid1.vectorstoreconnector.oc1..created",
+            "display_name": _resource_display_name_from_details(create_details),
+            "lifecycle_state": "ACTIVE",
+        }
+        return FakeResponse(self._created_connector)
+
+    def get_vector_store_connector(self, connector_id: str) -> FakeResponse:
+        """Return the created connector by OCID.
+
+        Args:
+            connector_id: Connector OCID.
+
+        Returns:
+            FakeResponse: Connector response.
+
+        Raises:
+            FakeNotFoundError: If no connector has been created.
+        """
+
+        if self._created_connector is None:
+            raise FakeNotFoundError(connector_id)
+        assert connector_id == self._created_connector["id"]
+        return FakeResponse(self._created_connector)
 
 
 def _resource_name_from_details(create_details: Any) -> str:

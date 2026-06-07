@@ -222,6 +222,10 @@ matches the shared `agent_hub/connectors/create_connector.py` example.
 The Data Sync Connector creation step must not start until both the Object
 Storage bucket and the Vector Store have been created or resolved and, for new
 resources, have been confirmed readable and outside known transitional states.
+After calling `create_vector_store_connector`, the backend must verify the
+connector exists through `get_vector_store_connector` when an OCID is returned,
+or by listing connectors by display name. The connector step must not be marked
+succeeded until that verification succeeds.
 
 ## UI Responsibilities
 

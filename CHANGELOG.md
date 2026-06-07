@@ -39,6 +39,8 @@ changes, or documentation updates are introduced.
 - Changed live Agent Factory deployments to return an initial running run,
   execute resource provisioning in the background, update step status as each
   resource phase completes, and poll those updates from the UI.
+- Added post-create verification for Data Sync Connectors so the connector step
+  is marked succeeded only after the connector can be retrieved or listed.
 
 ## 2026-06-06
 
