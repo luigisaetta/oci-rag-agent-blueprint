@@ -10,14 +10,26 @@ from __future__ import annotations
 # pylint: disable=too-few-public-methods,too-many-lines
 
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Mapping, Protocol
 
 CONTROL_PLANE_AUTH_MODES = {"session", "user_principal"}
 CONTROL_PLANE_API_PATH = "/20231130/openai/v1"
+DEFAULT_RESOURCE_WAIT_INTERVAL_SECONDS = 5.0
+DEFAULT_RESOURCE_WAIT_TIMEOUT_SECONDS = 300.0
 DEFAULT_OCI_PROFILE = "DEFAULT"
 OCI_AUTH_MODE_ENV_VAR = "OCI_AUTH_MODE"
+RESOURCE_WAIT_INTERVAL_ENV_VAR = "AGENT_FACTORY_RESOURCE_WAIT_INTERVAL_SECONDS"
+RESOURCE_WAIT_TIMEOUT_ENV_VAR = "AGENT_FACTORY_RESOURCE_WAIT_TIMEOUT_SECONDS"
+FAILED_RESOURCE_STATES = {"DELETED", "DELETING", "FAILED"}
+TRANSITIONAL_RESOURCE_STATES = {
+    "ACCEPTED",
+    "CREATING",
+    "IN_PROGRESS",
+    "UPDATING",
+}
 
 
 class ResourceProvisioningError(RuntimeError):
@@ -139,6 +151,8 @@ class ObjectStorageBucketManager:
         """
 
         self._client = client
+        self._wait_interval_seconds = _resource_wait_interval_seconds()
+        self._wait_timeout_seconds = _resource_wait_timeout_seconds()
 
     def create_or_reuse(
         self,
@@ -191,6 +205,11 @@ class ObjectStorageBucketManager:
                 raise ResourceProvisioningError(
                     f"Unable to create Object Storage bucket {bucket_name}: {exc}"
                 ) from exc
+            created_bucket = self._wait_for_bucket_ready(
+                namespace_name=namespace_name,
+                bucket_name=bucket_name,
+                fallback_bucket=created_bucket,
+            )
             return _bucket_result(created_bucket, namespace_name, created=True)
 
         raise ResourceProvisioningError(f"Unsupported bucket mode: {mode}")
@@ -220,6 +239,61 @@ class ObjectStorageBucketManager:
                 f"Unable to read Object Storage bucket {bucket_name}: {exc}"
             ) from exc
 
+    def _wait_for_bucket_ready(
+        self,
+        *,
+        namespace_name: str,
+        bucket_name: str,
+        fallback_bucket: Any,
+    ) -> Any:
+        """Wait until a newly created bucket is readable and non-transitional.
+
+        Args:
+            namespace_name: Object Storage namespace.
+            bucket_name: Bucket name to poll.
+            fallback_bucket: Create response used when no status is exposed.
+
+        Returns:
+            Any: The latest readable bucket model.
+
+        Raises:
+            ResourceProvisioningError: If the bucket enters a failed state or
+                does not become readable before the configured timeout.
+        """
+
+        deadline = time.monotonic() + self._wait_timeout_seconds
+        last_detail = _resource_state_label(fallback_bucket) or "create response"
+
+        while True:
+            try:
+                bucket = _response_data(
+                    self._client.get_bucket(namespace_name, bucket_name)
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                if _exception_status(exc) != 404:
+                    raise ResourceProvisioningError(
+                        f"Unable to read Object Storage bucket {bucket_name}: {exc}"
+                    ) from exc
+                bucket = None
+                last_detail = str(exc)
+
+            if bucket is not None:
+                _raise_if_resource_failed(
+                    resource=bucket,
+                    resource_label=f"Object Storage bucket {bucket_name}",
+                )
+                if _is_resource_ready(bucket):
+                    return bucket
+                last_detail = _resource_state_label(bucket) or "not ready"
+
+            if time.monotonic() >= deadline:
+                raise ResourceProvisioningError(
+                    f"Object Storage bucket {bucket_name} was not ready after "
+                    f"{self._wait_timeout_seconds:g} seconds. Last state: "
+                    f"{last_detail}."
+                )
+            time.sleep(self._wait_interval_seconds)
+
 
 class VectorStoreManager:
     """Create or reuse an OCI Enterprise AI Vector Store."""
@@ -232,6 +306,8 @@ class VectorStoreManager:
         """
 
         self._client = client
+        self._wait_interval_seconds = _resource_wait_interval_seconds()
+        self._wait_timeout_seconds = _resource_wait_timeout_seconds()
 
     def create_or_reuse(self, *, name_or_id: str, mode: str) -> VectorStoreResult:
         """Create or resolve a Vector Store.
@@ -292,6 +368,10 @@ class VectorStoreManager:
                 raise ResourceProvisioningError(
                     f"Unable to create Vector Store {name_or_id}: {exc}"
                 ) from exc
+            vector_store = self._wait_for_vector_store_ready(
+                vector_store_id=_resource_id(vector_store),
+                fallback_vector_store=vector_store,
+            )
             return VectorStoreResult(
                 vector_store_id=_resource_id(vector_store),
                 name=_resource_name(vector_store, fallback=name_or_id),
@@ -323,6 +403,61 @@ class VectorStoreManager:
             raise ResourceProvisioningError(
                 f"Unable to retrieve Vector Store {vector_store_id}: {exc}"
             ) from exc
+
+    def _wait_for_vector_store_ready(
+        self,
+        *,
+        vector_store_id: str,
+        fallback_vector_store: Any,
+    ) -> Any:
+        """Wait until a Vector Store is readable and non-transitional.
+
+        Args:
+            vector_store_id: Vector Store OCID to poll.
+            fallback_vector_store: Create response used when retrieve is absent.
+
+        Returns:
+            Any: The latest Vector Store resource.
+
+        Raises:
+            ResourceProvisioningError: If the Vector Store enters a failed state
+                or does not become ready before the configured timeout.
+        """
+
+        retrieve = getattr(self._client.vector_stores, "retrieve", None)
+        if retrieve is None:
+            _raise_if_resource_failed(
+                resource=fallback_vector_store,
+                resource_label=f"Vector Store {vector_store_id}",
+            )
+            return fallback_vector_store
+
+        deadline = time.monotonic() + self._wait_timeout_seconds
+        last_detail = _resource_state_label(fallback_vector_store) or "create response"
+
+        while True:
+            try:
+                vector_store = retrieve(vector_store_id)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                last_detail = str(exc)
+                vector_store = None
+
+            if vector_store is not None:
+                _raise_if_resource_failed(
+                    resource=vector_store,
+                    resource_label=f"Vector Store {vector_store_id}",
+                )
+                if _is_resource_ready(vector_store):
+                    return vector_store
+                last_detail = _resource_state_label(vector_store) or "not ready"
+
+            if time.monotonic() >= deadline:
+                raise ResourceProvisioningError(
+                    f"Vector Store {vector_store_id} was not ready after "
+                    f"{self._wait_timeout_seconds:g} seconds. Last state: "
+                    f"{last_detail}."
+                )
+            time.sleep(self._wait_interval_seconds)
 
     def _find_vector_store_by_name(
         self,
@@ -1221,6 +1356,120 @@ def _optional_resource_attr(resource: Any, name: str) -> Any | None:
     if isinstance(resource, dict):
         return resource.get(name)
     return getattr(resource, name, None)
+
+
+def _resource_wait_timeout_seconds() -> float:
+    """Return the configured OCI resource readiness timeout.
+
+    Returns:
+        float: Timeout in seconds.
+    """
+
+    return _positive_float_from_env(
+        env_var=RESOURCE_WAIT_TIMEOUT_ENV_VAR,
+        default=DEFAULT_RESOURCE_WAIT_TIMEOUT_SECONDS,
+    )
+
+
+def _resource_wait_interval_seconds() -> float:
+    """Return the configured OCI resource readiness poll interval.
+
+    Returns:
+        float: Poll interval in seconds.
+    """
+
+    return _positive_float_from_env(
+        env_var=RESOURCE_WAIT_INTERVAL_ENV_VAR,
+        default=DEFAULT_RESOURCE_WAIT_INTERVAL_SECONDS,
+    )
+
+
+def _positive_float_from_env(*, env_var: str, default: float) -> float:
+    """Read a positive float value from the environment.
+
+    Args:
+        env_var: Environment variable name.
+        default: Default value when unset or invalid.
+
+    Returns:
+        float: Parsed positive value or default.
+    """
+
+    raw_value = os.environ.get(env_var)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return default
+    if value <= 0:
+        return default
+    return value
+
+
+def _is_resource_ready(resource: Any) -> bool:
+    """Return whether a resource has left known transitional states.
+
+    Args:
+        resource: OCI or OpenAI-compatible resource model.
+
+    Returns:
+        bool: True when no transitional state is reported.
+    """
+
+    state = _resource_state(resource)
+    if state is None:
+        return True
+    return state not in TRANSITIONAL_RESOURCE_STATES
+
+
+def _raise_if_resource_failed(*, resource: Any, resource_label: str) -> None:
+    """Raise when a resource reports a known failed terminal state.
+
+    Args:
+        resource: OCI or OpenAI-compatible resource model.
+        resource_label: Human-readable resource name for the error message.
+
+    Raises:
+        ResourceProvisioningError: If the resource state is failed.
+    """
+
+    state = _resource_state(resource)
+    if state in FAILED_RESOURCE_STATES:
+        raise ResourceProvisioningError(
+            f"{resource_label} entered failed state {state}."
+        )
+
+
+def _resource_state(resource: Any) -> str | None:
+    """Return a normalized resource lifecycle or status value.
+
+    Args:
+        resource: OCI or OpenAI-compatible resource model.
+
+    Returns:
+        str | None: Upper-case state value, or None when absent.
+    """
+
+    state = _optional_resource_attr(resource, "lifecycle_state")
+    if state is None:
+        state = _optional_resource_attr(resource, "status")
+    if state is None:
+        return None
+    return str(state).strip().upper()
+
+
+def _resource_state_label(resource: Any) -> str | None:
+    """Return a printable resource state label.
+
+    Args:
+        resource: OCI or OpenAI-compatible resource model.
+
+    Returns:
+        str | None: Printable state value, or None when absent.
+    """
+
+    return _resource_state(resource)
 
 
 def _exception_status(exc: Exception) -> int | None:

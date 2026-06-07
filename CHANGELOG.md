@@ -33,6 +33,9 @@ changes, or documentation updates are introduced.
 - Fixed the Agent Factory control plane client endpoint to use the OCI
   OpenAI-compatible `/20231130/openai/v1` path from the local `agent_hub`
   examples, and kept Vector Store lookup failures visible before create/reuse.
+- Added explicit readiness waits after Object Storage bucket and Vector Store
+  creation so Data Sync Connector creation starts only after its dependencies
+  are readable and outside known transitional states.
 
 ## 2026-06-06
 

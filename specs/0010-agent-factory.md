@@ -202,6 +202,9 @@ and the shared `agent_hub/common/clients.py` example.
 Object Storage bucket creation and lookup must use `oci.object_storage`
 clients. The backend must resolve the Object Storage namespace before bucket
 lookup or creation.
+After creating an Object Storage bucket, the backend must poll the bucket with
+`get_bucket` until it is readable and no longer reports a transitional
+lifecycle state before starting dependent resources.
 
 Live resource provisioning must resolve a submitted compartment name to an OCID
 with the OCI Identity API before creating or reusing Object Storage buckets,
@@ -216,6 +219,9 @@ and an `OciObjectStorageConfiguration` containing the resolved Object Storage
 namespace and bucket name. The first implementation must create an hourly
 enabled interval schedule and start it shortly after connector creation. This
 matches the shared `agent_hub/connectors/create_connector.py` example.
+The Data Sync Connector creation step must not start until both the Object
+Storage bucket and the Vector Store have been created or resolved and, for new
+resources, have been confirmed readable and outside known transitional states.
 
 ## UI Responsibilities
 
@@ -326,18 +332,22 @@ Agent Factory must run the deployment workflow in the following order.
 2. Resolve the target compartment.
 3. Validate region and GenAI project input.
 4. Create or reuse the Object Storage bucket.
-5. Create or reuse the Vector Store.
-6. Create, reuse, or skip the Data Sync Connector.
-7. Build the RAG agent backend container image with Docker CLI.
-8. Create or reuse the OCI Container Registry repository.
-9. Authenticate Docker to OCI Container Registry.
-10. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
-11. Create the OCI Enterprise AI Hosted Application with OCI CLI.
-12. Create the deployment inside the Hosted Application with OCI CLI.
-13. Configure deployment runtime environment variables.
-14. Wait for deployment activation or readiness with OCI CLI.
-15. Validate the deployed `GET /health` endpoint when reachable.
-16. Return final deployment outputs.
+5. Wait for the Object Storage bucket to be readable and non-transitional when
+   it was created by this run.
+6. Create or reuse the Vector Store.
+7. Wait for the Vector Store to be readable and non-transitional when it was
+   created by this run.
+8. Create, reuse, or skip the Data Sync Connector.
+9. Build the RAG agent backend container image with Docker CLI.
+10. Create or reuse the OCI Container Registry repository.
+11. Authenticate Docker to OCI Container Registry.
+12. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
+13. Create the OCI Enterprise AI Hosted Application with OCI CLI.
+14. Create the deployment inside the Hosted Application with OCI CLI.
+15. Configure deployment runtime environment variables.
+16. Wait for deployment activation or readiness with OCI CLI.
+17. Validate the deployed `GET /health` endpoint when reachable.
+18. Return final deployment outputs.
 
 The backend must stop the sequence on the first unrecoverable failure.
 

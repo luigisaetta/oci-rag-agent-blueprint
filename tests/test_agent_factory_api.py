@@ -7,7 +7,7 @@ Description: Unit tests for the Agent Factory FastAPI skeleton.
 
 from __future__ import annotations
 
-# pylint: disable=too-few-public-methods
+# pylint: disable=too-few-public-methods,too-many-lines
 
 import sys
 from pathlib import Path
@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 AGENT_FACTORY_API_PATH = Path(__file__).resolve().parents[1] / "agent-factory" / "api"
 sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 
+import agent_factory_api.resources as factory_resources  # pylint: disable=wrong-import-position
 from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-position
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
@@ -37,6 +38,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     _resolve_compartment_name,
     _resolve_control_plane_auth_mode,
     _validate_oci_auth_config,
+    provision_foundation_resources,
 )
 
 
@@ -402,6 +404,51 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     }
 
 
+def test_foundation_resource_provisioning_waits_before_connector(monkeypatch) -> None:
+    """Test connector creation starts only after bucket and Vector Store are ready."""
+
+    events: list[str] = []
+    object_storage_client = SequencedObjectStorageClient(events)
+    control_plane_client = SequencedControlPlaneClient(events)
+    connector_client = SequencedConnectorClient(events)
+
+    monkeypatch.setattr(
+        factory_resources,
+        "resolve_compartment_id",
+        lambda *, compartment, region: "ocid1.compartment.oc1..example",
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_object_storage_client",
+        lambda *, region: object_storage_client,
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_control_plane_client",
+        lambda *, region, compartment_id: control_plane_client,
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_oci_genai_client",
+        lambda *, region: connector_client,
+    )
+
+    result = provision_foundation_resources(_valid_payload())
+
+    assert result.connector is not None
+    assert events == [
+        "get_namespace",
+        "get_bucket_missing",
+        "create_bucket",
+        "wait_bucket",
+        "list_vector_stores",
+        "create_vector_store",
+        "wait_vector_store",
+        "list_connector",
+        "create_connector",
+    ]
+
+
 def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
     """Test non-dry-run planning uses the live resolved compartment OCID."""
 
@@ -729,6 +776,7 @@ class FakeObjectStorageClient:
         """Initialize the fake client."""
 
         self.created_bucket_details: Any | None = None
+        self._created_bucket: dict[str, str] | None = None
 
     def get_namespace(self) -> FakeResponse:
         """Return a fake namespace response.
@@ -747,9 +795,11 @@ class FakeObjectStorageClient:
             bucket_name: Bucket name.
 
         Raises:
-            FakeNotFoundError: Always raised for this fake.
+            FakeNotFoundError: When the fake bucket has not been created yet.
         """
 
+        if self._created_bucket is not None:
+            return FakeResponse(self._created_bucket)
         raise FakeNotFoundError(f"{namespace_name}/{bucket_name}")
 
     def create_bucket(
@@ -766,13 +816,12 @@ class FakeObjectStorageClient:
         """
 
         self.created_bucket_details = create_bucket_details
-        return FakeResponse(
-            {
-                "name": "agent-factory-docs",
-                "namespace": namespace_name,
-                "lifecycle_state": "ACTIVE",
-            }
-        )
+        self._created_bucket = {
+            "name": "agent-factory-docs",
+            "namespace": namespace_name,
+            "lifecycle_state": "ACTIVE",
+        }
+        return FakeResponse(self._created_bucket)
 
 
 class FakeIdentityClient:
@@ -917,3 +966,235 @@ class FakeConnectorClient:
                 "lifecycle_state": "ACTIVE",
             }
         )
+
+
+class SequencedObjectStorageClient:
+    """Fake Object Storage client that records dependency order."""
+
+    def __init__(self, events: list[str]) -> None:
+        """Initialize the fake client.
+
+        Args:
+            events: Shared event list.
+        """
+
+        self._events = events
+        self._created = False
+
+    def get_namespace(self) -> FakeResponse:
+        """Return a fake namespace response.
+
+        Returns:
+            FakeResponse: Namespace response.
+        """
+
+        self._events.append("get_namespace")
+        return FakeResponse("test-namespace")
+
+    def get_bucket(self, namespace_name: str, bucket_name: str) -> FakeResponse:
+        """Return the bucket only after create has completed.
+
+        Args:
+            namespace_name: Object Storage namespace.
+            bucket_name: Bucket name.
+
+        Returns:
+            FakeResponse: Bucket response.
+
+        Raises:
+            FakeNotFoundError: If the bucket has not been created yet.
+        """
+
+        if not self._created:
+            self._events.append("get_bucket_missing")
+            raise FakeNotFoundError(f"{namespace_name}/{bucket_name}")
+        self._events.append("wait_bucket")
+        return FakeResponse(
+            {
+                "name": bucket_name,
+                "namespace": namespace_name,
+                "lifecycle_state": "ACTIVE",
+            }
+        )
+
+    def create_bucket(
+        self, namespace_name: str, create_bucket_details: Any
+    ) -> FakeResponse:
+        """Create the fake bucket.
+
+        Args:
+            namespace_name: Object Storage namespace.
+            create_bucket_details: OCI SDK create details.
+
+        Returns:
+            FakeResponse: Bucket response.
+        """
+
+        self._events.append("create_bucket")
+        self._created = True
+        return FakeResponse(
+            {
+                "name": _resource_name_from_details(create_bucket_details),
+                "namespace": namespace_name,
+                "lifecycle_state": "CREATING",
+            }
+        )
+
+
+class SequencedVectorStores:
+    """Fake Vector Store API that records dependency order."""
+
+    def __init__(self, events: list[str]) -> None:
+        """Initialize the fake API.
+
+        Args:
+            events: Shared event list.
+        """
+
+        self._events = events
+
+    def list(self) -> FakeResponse:
+        """Return no Vector Stores.
+
+        Returns:
+            FakeResponse: Empty Vector Store list response.
+        """
+
+        self._events.append("list_vector_stores")
+        return FakeResponse([])
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: str,
+        expires_after: dict[str, Any],
+        metadata: dict[str, str],
+    ) -> dict[str, str]:
+        """Create a fake Vector Store.
+
+        Args:
+            name: Vector Store name.
+            description: Vector Store description.
+            expires_after: Expiration policy.
+            metadata: Vector Store metadata.
+
+        Returns:
+            dict[str, str]: Fake Vector Store response.
+        """
+
+        _ = description, expires_after, metadata
+        self._events.append("create_vector_store")
+        return {
+            "id": "ocid1.vectorstore.oc1..created",
+            "name": name,
+            "status": "creating",
+        }
+
+    def retrieve(self, vector_store_id: str) -> dict[str, str]:
+        """Return a ready fake Vector Store.
+
+        Args:
+            vector_store_id: Vector Store OCID.
+
+        Returns:
+            dict[str, str]: Ready Vector Store response.
+        """
+
+        self._events.append("wait_vector_store")
+        return {
+            "id": vector_store_id,
+            "name": "agent-factory-vector-store",
+            "status": "completed",
+        }
+
+
+class SequencedControlPlaneClient:
+    """Fake control plane client that records dependency order."""
+
+    def __init__(self, events: list[str]) -> None:
+        """Initialize the fake client.
+
+        Args:
+            events: Shared event list.
+        """
+
+        self.vector_stores = SequencedVectorStores(events)
+
+
+class SequencedConnectorClient:
+    """Fake connector client that requires dependency readiness first."""
+
+    def __init__(self, events: list[str]) -> None:
+        """Initialize the fake client.
+
+        Args:
+            events: Shared event list.
+        """
+
+        self._events = events
+
+    def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
+        """Return no existing connectors.
+
+        Args:
+            compartment_id: Compartment OCID.
+
+        Returns:
+            FakeResponse: Empty connector list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        self._events.append("list_connector")
+        return FakeResponse(FakeListData([]))
+
+    def create_vector_store_connector(self, create_details: Any) -> FakeResponse:
+        """Create a connector only after dependencies are ready.
+
+        Args:
+            create_details: OCI SDK create connector details.
+
+        Returns:
+            FakeResponse: Connector response.
+        """
+
+        assert "wait_bucket" in self._events
+        assert "wait_vector_store" in self._events
+        self._events.append("create_connector")
+        return FakeResponse(
+            {
+                "id": "ocid1.vectorstoreconnector.oc1..created",
+                "display_name": _resource_display_name_from_details(create_details),
+                "lifecycle_state": "ACTIVE",
+            }
+        )
+
+
+def _resource_name_from_details(create_details: Any) -> str:
+    """Return a resource name from fake OCI details.
+
+    Args:
+        create_details: OCI details model or dictionary.
+
+    Returns:
+        str: Resource name.
+    """
+
+    if isinstance(create_details, dict):
+        return str(create_details["name"])
+    return str(create_details.name)
+
+
+def _resource_display_name_from_details(create_details: Any) -> str:
+    """Return a display name from fake OCI details.
+
+    Args:
+        create_details: OCI details model or dictionary.
+
+    Returns:
+        str: Resource display name.
+    """
+
+    if isinstance(create_details, dict):
+        return str(create_details["display_name"])
+    return str(create_details.display_name)
