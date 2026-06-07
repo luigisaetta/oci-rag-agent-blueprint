@@ -24,6 +24,9 @@ changes, or documentation updates are introduced.
 - Added Agent Factory Data Sync Connector provisioning through the OCI
   Generative AI Python SDK, linking the resolved Object Storage bucket to the
   resolved Vector Store with an hourly enabled sync schedule.
+- Fixed live Agent Factory resource provisioning so compartment names are
+  resolved through OCI Identity before bucket, Vector Store, and connector
+  operations receive a compartment OCID.
 
 ## 2026-06-06
 

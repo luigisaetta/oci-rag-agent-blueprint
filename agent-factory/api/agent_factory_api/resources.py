@@ -36,6 +36,13 @@ class ObjectStorageClientProtocol(Protocol):
         """Create an Object Storage bucket and return the response."""
 
 
+class IdentityClientProtocol(Protocol):
+    """Minimal OCI Identity client behavior used by Agent Factory."""
+
+    def list_compartments(self, compartment_id: str, **kwargs: Any) -> Any:
+        """Return compartments visible under a tenancy or parent compartment."""
+
+
 class VectorStoreClientProtocol(Protocol):
     """Minimal control plane client behavior used by Agent Factory."""
 
@@ -108,11 +115,13 @@ class FoundationResourcesResult:
     """Provisioning result for resources created before deployment planning.
 
     Attributes:
+        compartment_id: Resolved compartment OCID used by all resources.
         bucket: Object Storage bucket result.
         vector_store: Vector Store result.
         connector: Data Sync Connector result, or None when skipped.
     """
 
+    compartment_id: str
     bucket: BucketResult
     vector_store: VectorStoreResult
     connector: ConnectorResult | None
@@ -495,11 +504,10 @@ def provision_foundation_resources(
         ResourceProvisioningError: If required resource provisioning fails.
     """
 
-    compartment_id = str(payload["compartment"])
-    if not compartment_id.startswith("ocid1.compartment."):
-        raise ResourceProvisioningError(
-            "Live resource provisioning requires compartment to be an OCID."
-        )
+    compartment_id = resolve_compartment_id(
+        compartment=str(payload["compartment"]),
+        region=str(payload["region"]),
+    )
 
     bucket = ObjectStorageBucketManager(
         create_object_storage_client(region=str(payload["region"]))
@@ -528,10 +536,105 @@ def provision_foundation_resources(
         bucket_name=bucket.bucket_name,
     )
     return FoundationResourcesResult(
+        compartment_id=compartment_id,
         bucket=bucket,
         vector_store=vector_store,
         connector=connector,
     )
+
+
+def resolve_compartment_id(*, compartment: str, region: str) -> str:
+    """Resolve a compartment name or OCID to a compartment OCID.
+
+    Args:
+        compartment: Compartment OCID or display name.
+        region: OCI region for the Identity client.
+
+    Returns:
+        str: Resolved compartment OCID.
+
+    Raises:
+        ResourceProvisioningError: If the compartment name cannot be resolved
+            uniquely.
+    """
+
+    if compartment.startswith("ocid1.compartment."):
+        return compartment
+
+    try:
+        import oci  # pylint: disable=import-outside-toplevel
+    except ImportError as exc:
+        raise ResourceProvisioningError(
+            "The oci package is required for compartment resolution."
+        ) from exc
+
+    profile_name = os.environ.get("OCI_PROFILE", DEFAULT_OCI_PROFILE)
+    config = oci.config.from_file(profile_name=profile_name)
+    config["region"] = region
+    identity_client = oci.identity.IdentityClient(config)
+    tenancy_id = str(config.get("tenancy") or "")
+    if not tenancy_id:
+        raise ResourceProvisioningError(
+            f"OCI profile '{profile_name}' does not include a tenancy OCID."
+        )
+    return _resolve_compartment_name(
+        identity_client=identity_client,
+        tenancy_id=tenancy_id,
+        compartment_name=compartment,
+    )
+
+
+def _resolve_compartment_name(
+    *,
+    identity_client: IdentityClientProtocol,
+    tenancy_id: str,
+    compartment_name: str,
+) -> str:
+    """Resolve a compartment name using OCI Identity.
+
+    Args:
+        identity_client: OCI Identity client.
+        tenancy_id: Tenancy OCID used as list root.
+        compartment_name: Compartment display name to resolve.
+
+    Returns:
+        str: Resolved compartment OCID.
+
+    Raises:
+        ResourceProvisioningError: If resolution fails or is ambiguous.
+    """
+
+    try:
+        compartments = _iter_resources(
+            identity_client.list_compartments(
+                tenancy_id,
+                compartment_id_in_subtree=True,
+                access_level="ANY",
+                lifecycle_state="ACTIVE",
+                name=compartment_name,
+            )
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise ResourceProvisioningError(
+            f"Unable to resolve compartment '{compartment_name}': {exc}"
+        ) from exc
+
+    matching_compartments = [
+        compartment
+        for compartment in compartments
+        if _resource_name(compartment, fallback="") == compartment_name
+    ]
+    if not matching_compartments:
+        raise ResourceProvisioningError(
+            f"Compartment not found: {compartment_name}. Provide a compartment OCID "
+            "or a unique visible compartment name."
+        )
+    if len(matching_compartments) > 1:
+        raise ResourceProvisioningError(
+            f"Multiple compartments named '{compartment_name}' were found. Provide "
+            "the compartment OCID."
+        )
+    return _resource_id(matching_compartments[0])
 
 
 def create_object_storage_client(*, region: str) -> Any:

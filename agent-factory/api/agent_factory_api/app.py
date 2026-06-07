@@ -166,6 +166,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     try:
         if not dry_run:
             resource_result = provision_foundation_resources(payload)
+            plan_payload["compartment"] = resource_result.compartment_id
             plan_payload["vector_store_name"] = (
                 resource_result.vector_store.vector_store_id
             )
@@ -209,6 +210,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
 
     if resource_result is not None:
         outputs["foundation_resources"] = {
+            "compartment_id": resource_result.compartment_id,
             "bucket": {
                 "bucket_name": resource_result.bucket.bucket_name,
                 "namespace_name": resource_result.bucket.namespace_name,
@@ -344,6 +346,8 @@ def _failed_resource_step_id(error_message: str) -> str:
     """
 
     normalized_error = error_message.lower()
+    if "compartment" in normalized_error:
+        return "resolve-compartment"
     if "bucket" in normalized_error:
         return "bucket"
     if "connector" in normalized_error:

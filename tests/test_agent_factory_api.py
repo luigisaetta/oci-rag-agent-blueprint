@@ -30,6 +30,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     VectorStoreConnectorManager,
     VectorStoreManager,
     VectorStoreResult,
+    _resolve_compartment_name,
     _resolve_control_plane_auth_mode,
     _validate_oci_auth_config,
 )
@@ -277,6 +278,7 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     monkeypatch.setattr(
         "agent_factory_api.app.provision_foundation_resources",
         lambda payload: FoundationResourcesResult(
+            compartment_id=payload["compartment"],
             bucket=BucketResult(
                 bucket_name=payload["bucket_name"],
                 namespace_name="test-namespace",
@@ -336,6 +338,7 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
         assert payload["bucket_name"] == "agent-factory-docs"
         assert payload["vector_store_name"] == "agent-factory-vector-store"
         return FoundationResourcesResult(
+            compartment_id="ocid1.compartment.oc1..example",
             bucket=BucketResult(
                 bucket_name="agent-factory-docs",
                 namespace_name="test-namespace",
@@ -365,6 +368,9 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     assert response.status_code == 201
     payload = response.json()
     assert payload["status"] == "succeeded"
+    assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
+        "ocid1.compartment.oc1..example"
+    )
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
         "ocid1.vectorstore.oc1..created"
     )
@@ -373,6 +379,9 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     )
     assert payload["outputs"]["resolved_identifiers"]["connector_id"] == (
         "ocid1.vectorstoreconnector.oc1..created"
+    )
+    assert payload["outputs"]["foundation_resources"]["compartment_id"] == (
+        "ocid1.compartment.oc1..example"
     )
     assert payload["outputs"]["foundation_resources"]["bucket"] == {
         "bucket_name": "agent-factory-docs",
@@ -387,6 +396,61 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
         "created": True,
         "skipped": False,
     }
+
+
+def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
+    """Test non-dry-run planning uses the live resolved compartment OCID."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["dry_run"] = False
+    request_payload["compartment"] = "lsaetta"
+
+    def fake_provision(payload: dict[str, Any]) -> FoundationResourcesResult:
+        assert payload["compartment"] == "lsaetta"
+        return FoundationResourcesResult(
+            compartment_id="ocid1.compartment.oc1..resolved",
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="ocid1.vectorstore.oc1..created",
+                name=payload["vector_store_name"],
+                created=True,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..created",
+                name=payload["connector_name"],
+                lifecycle_state="ACTIVE",
+                created=True,
+            ),
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
+        "ocid1.compartment.oc1..resolved"
+    )
+    assert payload["outputs"]["runtime_environment"]["OCI_COMPARTMENT_ID"] == (
+        "ocid1.compartment.oc1..resolved"
+    )
+    assert (
+        payload["outputs"]["dry_run_artifacts"]["create-hosted-application.json"][
+            "compartmentId"
+        ]
+        == "ocid1.compartment.oc1..resolved"
+    )
 
 
 def test_object_storage_bucket_manager_creates_missing_bucket() -> None:
@@ -493,6 +557,30 @@ def test_control_plane_auth_config_rejects_session_profile_for_user_principal() 
         assert "Use OCI_AUTH_MODE=session" in str(exc)
     else:
         raise AssertionError("Expected session profile validation to fail.")
+
+
+def test_resolve_compartment_name_returns_unique_active_match() -> None:
+    """Test compartment name resolution returns the matching OCID."""
+
+    client = FakeIdentityClient(
+        [
+            {"id": "ocid1.compartment.oc1..resolved", "name": "lsaetta"},
+        ]
+    )
+
+    compartment_id = _resolve_compartment_name(
+        identity_client=client,
+        tenancy_id="ocid1.tenancy.oc1..example",
+        compartment_name="lsaetta",
+    )
+
+    assert compartment_id == "ocid1.compartment.oc1..resolved"
+    assert client.list_kwargs == {
+        "compartment_id_in_subtree": True,
+        "access_level": "ANY",
+        "lifecycle_state": "ACTIVE",
+        "name": "lsaetta",
+    }
 
 
 def _valid_payload() -> dict[str, Any]:
@@ -611,6 +699,35 @@ class FakeObjectStorageClient:
                 "lifecycle_state": "ACTIVE",
             }
         )
+
+
+class FakeIdentityClient:
+    """Fake OCI Identity client used by compartment resolver tests."""
+
+    def __init__(self, compartments: list[dict[str, str]]) -> None:
+        """Initialize the fake client.
+
+        Args:
+            compartments: Compartments returned by list calls.
+        """
+
+        self.compartments = compartments
+        self.list_kwargs: dict[str, Any] | None = None
+
+    def list_compartments(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+        """Return fake compartments.
+
+        Args:
+            compartment_id: Tenancy OCID.
+            kwargs: List filter arguments.
+
+        Returns:
+            FakeResponse: Compartment list response.
+        """
+
+        assert compartment_id == "ocid1.tenancy.oc1..example"
+        self.list_kwargs = kwargs
+        return FakeResponse(self.compartments)
 
 
 class FakeVectorStores:

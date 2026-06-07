@@ -203,6 +203,12 @@ Object Storage bucket creation and lookup must use `oci.object_storage`
 clients. The backend must resolve the Object Storage namespace before bucket
 lookup or creation.
 
+Live resource provisioning must resolve a submitted compartment name to an OCID
+with the OCI Identity API before creating or reusing Object Storage buckets,
+Vector Stores, or Data Sync Connectors. If multiple visible compartments share
+the submitted name, the backend must fail with an actionable error and ask for a
+compartment OCID.
+
 Data Sync Connector creation must use the OCI Generative AI Python SDK control
 plane client. The backend must construct `CreateVectorStoreConnectorDetails`
 with the resolved compartment OCID, Vector Store OCID, connector display name,
