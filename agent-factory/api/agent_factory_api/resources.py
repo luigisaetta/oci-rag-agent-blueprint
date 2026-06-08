@@ -235,6 +235,43 @@ class ObjectStorageBucketManager:
 
         raise ResourceProvisioningError(f"Unsupported bucket mode: {mode}")
 
+    def preflight(self, *, bucket_name: str, mode: str) -> BucketResult:
+        """Resolve namespace and validate bucket inputs without OCI writes.
+
+        Args:
+            bucket_name: Bucket name to create or reuse.
+            mode: Resource mode, either `create` or `reuse`.
+
+        Returns:
+            BucketResult: Existing bucket details or planned bucket details.
+
+        Raises:
+            ResourceProvisioningError: If a reused bucket does not exist or the
+                mode is unsupported.
+        """
+
+        namespace_name = _response_data(self._client.get_namespace())
+        existing_bucket = self._get_bucket_if_exists(namespace_name, bucket_name)
+
+        if mode == "reuse":
+            if existing_bucket is None:
+                raise ResourceProvisioningError(
+                    f"Object Storage bucket not found: {bucket_name}"
+                )
+            return _bucket_result(existing_bucket, namespace_name, created=False)
+
+        if mode == "create":
+            if existing_bucket is not None:
+                return _bucket_result(existing_bucket, namespace_name, created=False)
+            return BucketResult(
+                bucket_name=bucket_name,
+                namespace_name=namespace_name,
+                lifecycle_state=None,
+                created=False,
+            )
+
+        raise ResourceProvisioningError(f"Unsupported bucket mode: {mode}")
+
     def _get_bucket_if_exists(
         self, namespace_name: str, bucket_name: str
     ) -> Any | None:
@@ -398,6 +435,52 @@ class VectorStoreManager:
                 name=_resource_name(vector_store, fallback=name_or_id),
                 created=True,
             )
+
+        raise ResourceProvisioningError(f"Unsupported Vector Store mode: {mode}")
+
+    def preflight(self, *, name_or_id: str, mode: str) -> VectorStoreResult:
+        """Resolve or validate a Vector Store without OCI writes.
+
+        Args:
+            name_or_id: Vector Store name or OCID.
+            mode: Resource mode, either `create` or `reuse`.
+
+        Returns:
+            VectorStoreResult: Existing Vector Store or planned placeholder.
+
+        Raises:
+            ResourceProvisioningError: If a reused Vector Store does not exist
+                or the mode is unsupported.
+        """
+
+        if name_or_id.startswith("ocid1."):
+            vector_store = self._retrieve_vector_store(name_or_id)
+            return VectorStoreResult(
+                vector_store_id=_resource_id(vector_store, fallback=name_or_id),
+                name=_resource_name(vector_store, fallback=name_or_id),
+                created=False,
+            )
+
+        existing_vector_store = self._find_vector_store_by_name(
+            name_or_id,
+            required=True,
+        )
+        if existing_vector_store is not None:
+            return VectorStoreResult(
+                vector_store_id=_resource_id(existing_vector_store),
+                name=_resource_name(existing_vector_store, fallback=name_or_id),
+                created=False,
+            )
+
+        if mode == "create":
+            return VectorStoreResult(
+                vector_store_id="<created-or-resolved-vector-store-ocid>",
+                name=name_or_id,
+                created=False,
+            )
+
+        if mode == "reuse":
+            raise ResourceProvisioningError(f"Vector Store not found: {name_or_id}")
 
         raise ResourceProvisioningError(f"Unsupported Vector Store mode: {mode}")
 
@@ -617,6 +700,61 @@ class VectorStoreConnectorManager:
                 fallback_name=connector_name,
                 created=True,
             )
+
+        raise ResourceProvisioningError(f"Unsupported connector mode: {mode}")
+
+    def preflight(
+        self,
+        *,
+        compartment_id: str,
+        connector_name: str | None,
+        mode: str,
+    ) -> ConnectorResult | None:
+        """Resolve or validate a Data Sync Connector without OCI writes.
+
+        Args:
+            compartment_id: Compartment OCID containing the connector.
+            connector_name: Connector display name or OCID.
+            mode: Connector mode, `create`, `reuse`, or `skip`.
+
+        Returns:
+            ConnectorResult | None: Existing connector, planned placeholder, or
+            None when skipped.
+
+        Raises:
+            ResourceProvisioningError: If a reused connector does not exist or
+                the mode is unsupported.
+        """
+
+        if mode == "skip":
+            return None
+
+        if not connector_name:
+            raise ResourceProvisioningError(
+                "Connector name is required when connector mode is active."
+            )
+
+        if connector_name.startswith("ocid1."):
+            connector = self._retrieve_connector(connector_name)
+            return _connector_result(connector, fallback_name=connector_name)
+
+        existing_connector = self._find_connector_by_name(
+            compartment_id=compartment_id,
+            connector_name=connector_name,
+        )
+        if existing_connector is not None:
+            return _connector_result(existing_connector, fallback_name=connector_name)
+
+        if mode == "create":
+            return ConnectorResult(
+                connector_id="<created-or-resolved-data-sync-connector-ocid>",
+                name=connector_name,
+                lifecycle_state=None,
+                created=False,
+            )
+
+        if mode == "reuse":
+            raise ResourceProvisioningError(f"Connector not found: {connector_name}")
 
         raise ResourceProvisioningError(f"Unsupported connector mode: {mode}")
 
@@ -867,6 +1005,124 @@ def provision_foundation_resources(
             }
         ),
     )
+    return FoundationResourcesResult(
+        compartment_id=compartment_id,
+        project=project,
+        bucket=bucket,
+        vector_store=vector_store,
+        connector=connector,
+    )
+
+
+def preflight_foundation_resources(
+    payload: dict[str, Any],
+    progress_callback: Callable[[str, str, dict[str, Any] | None], None] | None = None,
+) -> FoundationResourcesResult:
+    """Resolve and validate foundation resources without OCI writes.
+
+    Args:
+        payload: Normalized Agent Factory deployment payload.
+        progress_callback: Optional callback receiving step id, status, and
+            non-secret step outputs as checks progress.
+
+    Returns:
+        FoundationResourcesResult: Resolved resource details and placeholders
+        for resources that would be created by a live run.
+
+    Raises:
+        ResourceProvisioningError: If required read-only checks fail.
+    """
+
+    _notify_progress(progress_callback, "resolve-compartment", "running")
+    compartment_id = resolve_compartment_id(
+        compartment=str(payload["compartment"]),
+        region=str(payload["region"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "resolve-compartment",
+        "succeeded",
+        {"compartment_id": compartment_id},
+    )
+
+    genai_client = create_oci_genai_client(region=str(payload["region"]))
+    _notify_progress(progress_callback, "resolve-genai-project", "running")
+    project = resolve_genai_project(
+        client=genai_client,
+        compartment_id=compartment_id,
+        project=str(payload["genai_project"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "resolve-genai-project",
+        "succeeded",
+        {"genai_project_id": project.project_id, "name": project.name},
+    )
+
+    _notify_progress(progress_callback, "bucket", "running")
+    bucket = ObjectStorageBucketManager(
+        create_object_storage_client(region=str(payload["region"]))
+    ).preflight(
+        bucket_name=str(payload["bucket_name"]),
+        mode=str(payload["bucket_mode"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "bucket",
+        "succeeded",
+        {
+            "bucket_name": bucket.bucket_name,
+            "namespace_name": bucket.namespace_name,
+            "created": False,
+        },
+    )
+
+    _notify_progress(progress_callback, "vector-store", "running")
+    vector_store = VectorStoreManager(
+        create_control_plane_client(
+            region=str(payload["region"]),
+            compartment_id=compartment_id,
+        )
+    ).preflight(
+        name_or_id=str(payload["vector_store_name"]),
+        mode=str(payload["vector_store_mode"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "vector-store",
+        "succeeded",
+        {
+            "vector_store_id": vector_store.vector_store_id,
+            "name": vector_store.name,
+            "created": False,
+        },
+    )
+
+    connector_status = (
+        "skipped" if str(payload["connector_mode"]) == "skip" else "running"
+    )
+    _notify_progress(progress_callback, "data-sync-connector", connector_status)
+    connector = VectorStoreConnectorManager(genai_client).preflight(
+        compartment_id=compartment_id,
+        connector_name=payload.get("connector_name"),
+        mode=str(payload["connector_mode"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "data-sync-connector",
+        "skipped" if connector is None else "succeeded",
+        (
+            {"skipped": True}
+            if connector is None
+            else {
+                "connector_id": connector.connector_id,
+                "name": connector.name,
+                "created": False,
+                "skipped": connector.skipped,
+            }
+        ),
+    )
+
     return FoundationResourcesResult(
         compartment_id=compartment_id,
         project=project,

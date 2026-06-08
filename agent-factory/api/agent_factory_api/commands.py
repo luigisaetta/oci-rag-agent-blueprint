@@ -123,6 +123,7 @@ def _build_dry_run_commands(
     """
 
     compartment_id = resolved_identifiers["compartment_id"]
+    namespace_name = resolved_identifiers["object_storage_namespace"]
     ocir_registry = build_ocir_registry(payload)
     connector_command = [
         "python",
@@ -150,7 +151,7 @@ def _build_dry_run_commands(
             "bucket",
             "get",
             "--namespace-name",
-            "<object-storage-namespace>",
+            namespace_name,
             "--bucket-name",
             payload["bucket_name"],
         ],
@@ -192,11 +193,7 @@ def _build_dry_run_commands(
             payload["container_repository_name"],
             "--all",
         ],
-        [
-            "docker",
-            "login",
-            ocir_registry,
-        ],
+        _build_docker_login_command(payload, ocir_registry),
         [
             "docker",
             "manifest",
@@ -375,11 +372,7 @@ def _build_apply_commands(
             "--compartment-id",
             compartment_id,
         ],
-        [
-            "docker",
-            "login",
-            ocir_registry,
-        ],
+        _build_docker_login_command(payload, ocir_registry),
         [
             "docker",
             "push",
@@ -620,6 +613,7 @@ def build_resolved_identifiers(payload: dict[str, Any]) -> dict[str, str]:
     return {
         "compartment_id": _resolved_compartment_id(payload),
         "genai_project_id": _resolved_genai_project_id(payload),
+        "object_storage_namespace": _resolved_object_storage_namespace(payload),
         "vector_store_id": _resolved_vector_store_id(payload),
         "connector_id": _resolved_connector_id(payload),
     }
@@ -671,6 +665,19 @@ def _resolved_genai_project_id(payload: dict[str, Any]) -> str:
     if project.startswith(GENAI_PROJECT_OCID_PREFIX):
         return project
     return "<resolved-genai-project-ocid>"
+
+
+def _resolved_object_storage_namespace(payload: dict[str, Any]) -> str:
+    """Return the Object Storage namespace or the placeholder from resolution.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Object Storage namespace for bucket commands and connector setup.
+    """
+
+    return str(payload.get("object_storage_namespace") or "<resolved-namespace>")
 
 
 def _resolved_connector_id(payload: dict[str, Any]) -> str:
@@ -729,6 +736,30 @@ def _build_compartment_resolution_command(payload: dict[str, Any]) -> list[str]:
         "ANY",
         "--include-root",
         "--all",
+    ]
+
+
+def _build_docker_login_command(
+    payload: dict[str, Any], ocir_registry: str
+) -> list[str]:
+    """Build the Docker login command for OCI Container Registry.
+
+    Args:
+        payload: Normalized deployment payload.
+        ocir_registry: Target OCIR registry hostname.
+
+    Returns:
+        list[str]: Docker login command arguments with the password redacted.
+    """
+
+    return [
+        "docker",
+        "login",
+        ocir_registry,
+        "--username",
+        str(payload["ocir_username"]),
+        "--password",
+        "********",
     ]
 
 

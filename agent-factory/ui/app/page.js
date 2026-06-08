@@ -27,6 +27,8 @@ const INITIAL_FORM = {
   stream_finalization_mode: "never",
   container_repository_name: "oci-rag-agent-blueprint-agent",
   container_image_tag: "",
+  ocir_username: "",
+  ocir_password: "",
   dry_run: true
 };
 
@@ -51,6 +53,8 @@ const REQUIRED_FIELDS = [
   "genai_project",
   "model_id",
   "openai_api_key",
+  "ocir_username",
+  "ocir_password",
   "container_repository_name",
   "container_image_tag"
 ];
@@ -279,6 +283,25 @@ export default function Home() {
           <p>
             Dry run returns validation commands and writes nothing to OCI.
           </p>
+        </div>
+
+        <div className="modePanel">
+          <span>OCIR login</span>
+          <Field
+            label="Username"
+            name="ocir_username"
+            value={form.ocir_username}
+            onChange={updateField}
+            error={fieldErrors.ocir_username}
+          />
+          <Field
+            label="Password"
+            name="ocir_password"
+            type="password"
+            value={form.ocir_password}
+            onChange={updateField}
+            error={fieldErrors.ocir_password}
+          />
         </div>
 
         <div className="summaryPanel">

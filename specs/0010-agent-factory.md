@@ -254,18 +254,20 @@ The UI must disable workflow submission while required inputs are invalid.
 The UI must display secret fields as password inputs and must not reveal secrets
 after submission.
 
-Dry-run results must include the generated command plan and the Hosted
-Application JSON artifacts that can be rendered before OCI write operations. The
-artifact shapes should follow the existing `oci-enterprise-ai-deployer`
-implementation wherever equivalent behavior already exists.
+Dry-run results must perform all safe read-only checks available before returning
+the generated command plan and Hosted Application JSON artifacts. At minimum,
+dry-run must resolve compartment names, resolve GenAI project names inside the
+resolved compartment, resolve the Object Storage namespace, validate reused
+resources, and check for existing resources when create mode can reuse or would
+conflict. Dry-run must not create, update, push, or delete OCI resources.
 
 When the user supplies a name for a resource that is later required as an OCID,
 the backend must include an explicit resolution step and all downstream commands
 and generated JSON artifacts must use the resolved OCID. Dry-run output may use a
 clear placeholder such as `<resolved-compartment-ocid>`,
 `<resolved-genai-project-ocid>`, or
-`<created-or-resolved-vector-store-ocid>` for values that require live OCI
-resolution.
+`<resolved-namespace>`, or `<created-or-resolved-vector-store-ocid>` for values
+that cannot be known until live OCI creation.
 
 ## Deployment Inputs
 
@@ -296,6 +298,8 @@ Agent Factory must collect the following inputs.
 | Stream finalization mode | No | Optional runtime tuning value for `STREAM_FINALIZATION_MODE`; default is `never`. |
 | Container repository name | Yes | OCI Container Registry repository where the agent backend image is pushed. |
 | Container image tag | Yes | Non-floating image tag used for the deployment. |
+| OCIR username | Yes | Username used by Docker login before pushing the agent backend image. |
+| OCIR password | Yes | Password or auth token used by Docker login before pushing the agent backend image. Must be treated as a secret. |
 
 The first implementation must not allow users to select:
 
@@ -347,7 +351,8 @@ Agent Factory must run the deployment workflow in the following order.
 8. Create, reuse, or skip the Data Sync Connector.
 9. Build the RAG agent backend container image with Docker CLI.
 10. Create or reuse the OCI Container Registry repository.
-11. Authenticate Docker to OCI Container Registry.
+11. Authenticate Docker to OCI Container Registry using the submitted OCIR
+    username and password.
 12. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
 13. Create the OCI Enterprise AI Hosted Application with OCI CLI.
 14. Create the deployment inside the Hosted Application with OCI CLI.

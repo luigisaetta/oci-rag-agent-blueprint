@@ -39,6 +39,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     _resolve_compartment_name,
     _resolve_control_plane_auth_mode,
     _validate_oci_auth_config,
+    preflight_foundation_resources,
     provision_foundation_resources,
     resolve_genai_project,
 )
@@ -55,11 +56,12 @@ def test_agent_factory_health_endpoint() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
+def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:
     """Test dry-run deployment planning without secret exposure."""
 
     RUNS.clear()
     client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
 
     response = client.post("/factory/deployments", json=_valid_payload())
 
@@ -68,7 +70,9 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert payload["dry_run"] is True
     assert payload["status"] == "succeeded"
     assert payload["request"]["openai_api_key"] == "********"
+    assert payload["request"]["ocir_password"] == "********"
     assert "test-api-key" not in response.text
+    assert "test-ocir-password" not in response.text
     assert "docker build --platform linux/amd64" in payload["commands_text"]
     assert "docker manifest inspect" in payload["commands_text"]
     assert "hosted-application-collection list-hosted-applications" in (
@@ -85,6 +89,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert payload["outputs"]["resolved_identifiers"] == {
         "compartment_id": "ocid1.compartment.oc1..example",
         "genai_project_id": "ocid1.generativeaiproject.oc1..example",
+        "object_storage_namespace": "test-namespace",
         "vector_store_id": "<created-or-resolved-vector-store-ocid>",
         "connector_id": "<created-or-resolved-data-sync-connector-ocid>",
     }
@@ -130,11 +135,16 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert any(step["step_id"] == "runtime-environment" for step in payload["steps"])
 
 
-def test_agent_factory_resolves_names_before_downstream_commands() -> None:
+def test_agent_factory_resolves_names_before_downstream_commands(monkeypatch) -> None:
     """Test names are converted to OCID placeholders for downstream commands."""
 
     RUNS.clear()
     client = TestClient(app)
+    _install_fake_preflight(
+        monkeypatch,
+        compartment_id="ocid1.compartment.oc1..resolved",
+        project_id="ocid1.generativeaiproject.oc1..resolved",
+    )
     request_payload = _valid_payload()
     request_payload["compartment"] = "lsaetta"
     request_payload["genai_project"] = "agent-factory-project"
@@ -152,42 +162,49 @@ def test_agent_factory_resolves_names_before_downstream_commands() -> None:
         "json",
         "iam",
         "compartment",
-        "list",
-        "--name",
-        "lsaetta",
-        "--compartment-id-in-subtree",
-        "true",
-        "--access-level",
-        "ANY",
-        "--include-root",
-        "--all",
+        "get",
+        "--compartment-id",
+        "ocid1.compartment.oc1..resolved",
+    ]
+    assert commands[1] == [
+        "oci",
+        "--region",
+        "eu-frankfurt-1",
+        "--output",
+        "json",
+        "generative-ai",
+        "project",
+        "get",
+        "--project-id",
+        "ocid1.generativeaiproject.oc1..resolved",
     ]
     assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
-        "<resolved-compartment-ocid>"
+        "ocid1.compartment.oc1..resolved"
     )
     assert payload["outputs"]["resolved_identifiers"]["genai_project_id"] == (
-        "<resolved-genai-project-ocid>"
+        "ocid1.generativeaiproject.oc1..resolved"
     )
     assert payload["outputs"]["runtime_environment"]["OCI_COMPARTMENT_ID"] == (
-        "<resolved-compartment-ocid>"
+        "ocid1.compartment.oc1..resolved"
     )
     assert payload["outputs"]["runtime_environment"]["OCI_PROJECT_ID"] == (
-        "<resolved-genai-project-ocid>"
+        "ocid1.generativeaiproject.oc1..resolved"
     )
     assert (
         payload["outputs"]["dry_run_artifacts"]["create-hosted-application.json"][
             "compartmentId"
         ]
-        == "<resolved-compartment-ocid>"
+        == "ocid1.compartment.oc1..resolved"
     )
     assert (
         payload["outputs"]["dry_run_artifacts"]["create-hosted-deployment.json"][
             "compartmentId"
         ]
-        == "<resolved-compartment-ocid>"
+        == "ocid1.compartment.oc1..resolved"
     )
-    assert "--compartment-id '<resolved-compartment-ocid>'" in (
-        payload["commands_text"]
+    assert "--namespace-name test-namespace" in payload["commands_text"]
+    assert (
+        "--compartment-id ocid1.compartment.oc1..resolved" in payload["commands_text"]
     )
 
 
@@ -228,11 +245,12 @@ def test_agent_factory_rejects_unknown_region_and_model() -> None:
     )
 
 
-def test_agent_factory_uses_region_key_for_ocir_registry() -> None:
+def test_agent_factory_uses_region_key_for_ocir_registry(monkeypatch) -> None:
     """Test OCIR image references use the OCI region key, not region name."""
 
     RUNS.clear()
     client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
     request_payload = _valid_payload()
     request_payload["region"] = "us-chicago-1"
     request_payload["model_id"] = "google.gemini-2.5-pro"
@@ -244,7 +262,9 @@ def test_agent_factory_uses_region_key_for_ocir_registry() -> None:
     assert payload["outputs"]["image_reference"] == (
         "ord.ocir.io/<tenancy-namespace>/oci-rag-agent-blueprint-agent:0.1.0"
     )
-    assert "docker login ord.ocir.io" in payload["commands_text"]
+    assert "docker login ord.ocir.io --username test-ocir-user" in (
+        payload["commands_text"]
+    )
     assert payload["outputs"]["runtime_environment"]["OCI_REGION"] == "us-chicago-1"
     assert payload["outputs"]["runtime_environment"]["OCI_MODEL_ID"] == (
         "google.gemini-2.5-pro"
@@ -264,11 +284,12 @@ def test_agent_factory_rejects_connector_without_name() -> None:
     assert "connector_name" in response.json()["field_errors"]
 
 
-def test_agent_factory_returns_saved_run_and_commands() -> None:
+def test_agent_factory_returns_saved_run_and_commands(monkeypatch) -> None:
     """Test deployment run status and command script endpoints."""
 
     RUNS.clear()
     client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
 
     create_response = client.post("/factory/deployments", json=_valid_payload())
     deployment_run_id = create_response.json()["deployment_run_id"]
@@ -491,6 +512,59 @@ def test_foundation_resource_provisioning_waits_before_connector(monkeypatch) ->
         "wait_vector_store",
         "list_connector",
         "create_connector",
+    ]
+
+
+def test_dry_run_preflight_resolves_read_only_resources(monkeypatch) -> None:
+    """Test dry-run preflight resolves names and namespace without writes."""
+
+    events: list[str] = []
+    object_storage_client = SequencedObjectStorageClient(events)
+    control_plane_client = SequencedControlPlaneClient(events)
+    connector_client = SequencedConnectorClient(events)
+
+    monkeypatch.setattr(
+        factory_resources,
+        "resolve_compartment_id",
+        lambda *, compartment, region: "ocid1.compartment.oc1..example",
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_object_storage_client",
+        lambda *, region: object_storage_client,
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_control_plane_client",
+        lambda *, region, compartment_id: control_plane_client,
+    )
+    monkeypatch.setattr(
+        factory_resources,
+        "create_oci_genai_client",
+        lambda *, region: connector_client,
+    )
+
+    request_payload = _valid_payload()
+    request_payload["genai_project"] = "agent-factory-project"
+
+    result = preflight_foundation_resources(request_payload)
+
+    assert result.compartment_id == "ocid1.compartment.oc1..example"
+    assert result.project.project_id == "ocid1.generativeaiproject.oc1..example"
+    assert result.bucket.namespace_name == "test-namespace"
+    assert result.vector_store.vector_store_id == (
+        "<created-or-resolved-vector-store-ocid>"
+    )
+    assert result.connector is not None
+    assert result.connector.connector_id == (
+        "<created-or-resolved-data-sync-connector-ocid>"
+    )
+    assert events == [
+        "list_projects",
+        "get_namespace",
+        "get_bucket_missing",
+        "list_vector_stores",
+        "list_connector",
     ]
 
 
@@ -834,6 +908,8 @@ def _valid_payload() -> dict[str, Any]:
         "genai_project": "ocid1.generativeaiproject.oc1..example",
         "model_id": "openai.gpt-5.4",
         "openai_api_key": "test-api-key",
+        "ocir_username": "test-ocir-user",
+        "ocir_password": "test-ocir-password",
         "file_search_max_num_results": 10,
         "responses_timeout_seconds": 60,
         "stream_finalization_mode": "never",
@@ -1451,6 +1527,58 @@ def _fetch_run(client: TestClient, deployment_run_id: str) -> dict[str, Any]:
     response = client.get(f"/factory/deployments/{deployment_run_id}")
     assert response.status_code == 200
     return response.json()
+
+
+def _install_fake_preflight(
+    monkeypatch,
+    *,
+    compartment_id: str = "ocid1.compartment.oc1..example",
+    project_id: str = "ocid1.generativeaiproject.oc1..example",
+    namespace_name: str = "test-namespace",
+) -> None:
+    """Install a fake read-only dry-run preflight.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        compartment_id: Compartment OCID reported by the fake resolver.
+        project_id: GenAI project OCID reported by the fake resolver.
+        namespace_name: Object Storage namespace reported by the fake resolver.
+    """
+
+    def fake_preflight(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
+        _ = progress_callback
+        return FoundationResourcesResult(
+            compartment_id=compartment_id,
+            project=ProjectResult(
+                project_id=project_id,
+                name="agent-factory-project",
+            ),
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name=namespace_name,
+                lifecycle_state=None,
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="<created-or-resolved-vector-store-ocid>",
+                name=payload["vector_store_name"],
+                created=False,
+            ),
+            connector=ConnectorResult(
+                connector_id="<created-or-resolved-data-sync-connector-ocid>",
+                name=payload["connector_name"],
+                lifecycle_state=None,
+                created=False,
+            ),
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.preflight_foundation_resources",
+        fake_preflight,
+    )
 
 
 def _notify_fake_resource_progress(

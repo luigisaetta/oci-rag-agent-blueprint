@@ -8,6 +8,12 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-08
 
+- Changed Agent Factory dry runs to perform read-only OCI preflight checks,
+  resolving compartment names, GenAI project names, and Object Storage
+  namespaces before generating command plans.
+- Added explicit OCIR username and password inputs to Agent Factory and changed
+  Docker login planning to use those credentials instead of assuming a prior
+  local login.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

@@ -31,6 +31,7 @@ from agent_factory_api.models import (
 from agent_factory_api.resources import (
     FoundationResourcesResult,
     ResourceProvisioningError,
+    preflight_foundation_resources,
     provision_foundation_resources,
 )
 
@@ -174,10 +175,16 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     plan_payload = dict(payload)
 
     try:
-        if not dry_run:
+        if dry_run:
+            resource_result = preflight_foundation_resources(payload)
+        else:
             resource_result = provision_foundation_resources(payload)
+        if resource_result is not None:
             plan_payload["compartment"] = resource_result.compartment_id
             plan_payload["genai_project"] = resource_result.project.project_id
+            plan_payload["object_storage_namespace"] = (
+                resource_result.bucket.namespace_name
+            )
             plan_payload["vector_store_name"] = (
                 resource_result.vector_store.vector_store_id
             )
@@ -293,6 +300,7 @@ def _execute_live_run(deployment_run_id: str, payload: dict[str, Any]) -> None:
     plan_payload = dict(payload)
     plan_payload["compartment"] = resource_result.compartment_id
     plan_payload["genai_project"] = resource_result.project.project_id
+    plan_payload["object_storage_namespace"] = resource_result.bucket.namespace_name
     plan_payload["vector_store_name"] = resource_result.vector_store.vector_store_id
     if resource_result.connector is not None:
         plan_payload["connector_name"] = resource_result.connector.connector_id
@@ -342,7 +350,7 @@ def _build_run_outputs(
         "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
         "dry_run_artifacts": plan["artifacts"],
         "note": (
-            "Dry run completed without OCI writes."
+            "Dry run completed with read-only OCI checks and without OCI writes."
             if dry_run
             else (
                 "Object Storage bucket, Vector Store, and Data Sync Connector "

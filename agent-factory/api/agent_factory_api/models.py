@@ -213,6 +213,8 @@ def redact_payload(payload: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(payload)
     if redacted.get("openai_api_key"):
         redacted["openai_api_key"] = "********"
+    if redacted.get("ocir_password"):
+        redacted["ocir_password"] = "********"
     return redacted
 
 
@@ -279,6 +281,8 @@ def _required_fields() -> tuple[str, ...]:
         "genai_project",
         "model_id",
         "openai_api_key",
+        "ocir_username",
+        "ocir_password",
         "container_repository_name",
         "container_image_tag",
     )
