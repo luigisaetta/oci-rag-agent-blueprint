@@ -28,6 +28,7 @@ from agent_factory_api.executor import (
 from agent_factory_api.models import (
     DeploymentRun,
     FactoryStep,
+    SUPPORTED_REGIONS,
     format_commands,
     redact_payload,
     utc_now,
@@ -62,6 +63,72 @@ def health() -> dict[str, str]:
     """
 
     return {"status": "ok"}
+
+
+@app.post("/factory/ocir-login/check")
+async def check_ocir_login(request: Request) -> JSONResponse:
+    """Validate submitted OCIR Docker credentials without creating resources.
+
+    Args:
+        request: FastAPI request containing region and OCIR credentials.
+
+    Returns:
+        JSONResponse: Validation status or structured field errors.
+    """
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload.", "field_errors": {}},
+            status_code=400,
+        )
+
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            {"error": "Payload must be a JSON object.", "field_errors": {}},
+            status_code=400,
+        )
+
+    validation_errors = _validate_ocir_login_check_payload(payload)
+    if validation_errors:
+        return JSONResponse(
+            {
+                "error": "OCIR credential validation input failed.",
+                "field_errors": validation_errors,
+            },
+            status_code=400,
+        )
+
+    normalized_payload = {
+        "region": str(payload["region"]).strip(),
+        "ocir_username": str(payload["ocir_username"]).strip(),
+        "ocir_password": str(payload["ocir_password"]).strip(),
+    }
+    try:
+        result = validate_ocir_login(
+            registry=build_ocir_registry(normalized_payload),
+            username=normalized_payload["ocir_username"],
+            password=normalized_payload["ocir_password"],
+        )
+    except ResourceProvisioningError as exc:
+        return JSONResponse(
+            {
+                "status": "failed",
+                "error": str(exc),
+                "field_errors": {},
+            },
+            status_code=400,
+        )
+
+    return JSONResponse(
+        {
+            "status": "succeeded",
+            "message": "OCIR Docker login succeeded.",
+            "ocir_registry": result["ocir_registry"],
+            "ocir_username": result["ocir_username"],
+        }
+    )
 
 
 @app.post("/factory/deployments")
@@ -113,6 +180,30 @@ async def create_deployment(
         )
     RUNS[deployment_run.deployment_run_id] = deployment_run
     return JSONResponse(deployment_run.to_dict(), status_code=201)
+
+
+def _validate_ocir_login_check_payload(payload: dict[str, Any]) -> dict[str, str]:
+    """Validate the minimal payload required for OCIR login checks.
+
+    Args:
+        payload: Raw JSON payload.
+
+    Returns:
+        dict[str, str]: Validation errors keyed by field name.
+    """
+
+    errors: dict[str, str] = {}
+    for field_name in ("region", "ocir_username", "ocir_password"):
+        value = payload.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            errors[field_name] = "This field is required."
+
+    region = str(payload.get("region", "")).strip()
+    if region and region not in SUPPORTED_REGIONS:
+        accepted = ", ".join(sorted(SUPPORTED_REGIONS))
+        errors["region"] = f"Expected one of: {accepted}."
+
+    return errors
 
 
 @app.get("/factory/deployments/{deployment_run_id}")

@@ -167,6 +167,8 @@ export default function Home() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [run, setRun] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingOcirLogin, setIsCheckingOcirLogin] = useState(false);
+  const [ocirLoginCheck, setOcirLoginCheck] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
 
@@ -180,6 +182,11 @@ export default function Home() {
   );
 
   const canSubmit = missingRequiredFields.length === 0 && !isSubmitting && !isRunActive;
+  const canCheckOcirLogin =
+    Boolean(form.region?.trim()) &&
+    Boolean(form.ocir_username?.trim()) &&
+    Boolean(form.ocir_password?.trim()) &&
+    !isCheckingOcirLogin;
 
   useEffect(() => {
     if (!run?.deployment_run_id || !isRunActive) {
@@ -224,6 +231,51 @@ export default function Home() {
       [name]: type === "checkbox" ? checked : normalizeValue(name, value)
     }));
     setFieldErrors((currentErrors) => ({ ...currentErrors, [name]: "" }));
+    if (["region", "ocir_username", "ocir_password"].includes(name)) {
+      setOcirLoginCheck(null);
+    }
+  }
+
+  async function checkOcirLogin() {
+    if (!canCheckOcirLogin) {
+      return;
+    }
+
+    setIsCheckingOcirLogin(true);
+    setOcirLoginCheck(null);
+
+    try {
+      const response = await fetch(ocirLoginCheckUrl(backendUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          region: form.region,
+          ocir_username: form.ocir_username,
+          ocir_password: form.ocir_password
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setOcirLoginCheck({
+          status: "failed",
+          message: payload.error ?? `Backend returned HTTP ${response.status}`
+        });
+        return;
+      }
+
+      setOcirLoginCheck({
+        status: "succeeded",
+        message: payload.message ?? "OCIR Docker login succeeded."
+      });
+    } catch (error) {
+      setOcirLoginCheck({
+        status: "failed",
+        message: error.message || "Unable to check OCIR Docker login."
+      });
+    } finally {
+      setIsCheckingOcirLogin(false);
+    }
   }
 
   async function submitFactoryRun(event) {
@@ -322,6 +374,19 @@ export default function Home() {
             error={fieldErrors.ocir_password}
             autoComplete="new-password"
           />
+          <button
+            className="secondaryAction"
+            disabled={!canCheckOcirLogin}
+            onClick={checkOcirLogin}
+            type="button"
+          >
+            {isCheckingOcirLogin ? "Checking..." : "Check credentials"}
+          </button>
+          {ocirLoginCheck ? (
+            <p className={`checkStatus ${ocirLoginCheck.status}`}>
+              {ocirLoginCheck.message}
+            </p>
+          ) : null}
         </div>
 
         <div className="summaryPanel">
@@ -649,4 +714,8 @@ function normalizeValue(name, value) {
 
 function deploymentStatusUrl(baseUrl, deploymentRunId) {
   return `${baseUrl.replace(/\/$/, "")}/${deploymentRunId}`;
+}
+
+function ocirLoginCheckUrl(baseUrl) {
+  return `${baseUrl.replace(/\/factory\/deployments\/?$/, "")}/factory/ocir-login/check`;
 }

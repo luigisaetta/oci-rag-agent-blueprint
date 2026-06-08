@@ -162,6 +162,8 @@ Supported model IDs are:
 The Agent Factory backend must provide an API for:
 
 - Validating deployment input.
+- Validating submitted OCIR Docker credentials independently from deployment
+  runs.
 - Starting an Agent Factory deployment run.
 - Returning deployment run status.
 - Returning step-level progress and errors.
@@ -272,6 +274,8 @@ than a marketing page. The initial screen must be the deployment workflow itself
 The UI must allow users to:
 
 - Enter deployment inputs.
+- Validate OCIR Docker login credentials directly from the sidebar before
+  starting a dry-run or live deployment.
 - Choose whether to create or reuse optional resources.
 - Review the planned actions before starting the deployment.
 - Start the deployment run.
@@ -548,6 +552,15 @@ GET /factory/health
 ```
 
 Returns backend health.
+
+```http
+POST /factory/ocir-login/check
+```
+
+Validates the submitted OCIR region, username, and password or auth token by
+attempting `docker login` with a temporary Docker configuration. This endpoint
+must not create OCI resources, must not write to the default Docker
+configuration, and must not return the submitted secret.
 
 The first implementation may run the workflow synchronously if deployment times
 are acceptable for local validation, but the API contract must be compatible with

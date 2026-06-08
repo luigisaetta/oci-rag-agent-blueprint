@@ -114,6 +114,88 @@ def test_agent_factory_ui_derives_remote_backend_url() -> None:
     assert "LOCAL_BACKEND_URL" in page_source
 
 
+def test_agent_factory_ui_exposes_ocir_login_check() -> None:
+    """Test UI exposes a direct OCIR credential check action."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Check credentials" in page_source
+    assert "/factory/ocir-login/check" in page_source
+    assert "ocirLoginCheck" in page_source
+
+
+def test_agent_factory_checks_ocir_login_credentials(monkeypatch) -> None:
+    """Test OCIR login check endpoint validates Docker credentials directly."""
+
+    client = TestClient(app)
+
+    def fake_validate_ocir_login(**kwargs: Any) -> dict[str, str]:
+        return {
+            "ocir_registry": str(kwargs["registry"]),
+            "ocir_username": str(kwargs["username"]),
+        }
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_ocir_login",
+        fake_validate_ocir_login,
+    )
+
+    response = client.post(
+        "/factory/ocir-login/check",
+        json={
+            "region": "eu-frankfurt-1",
+            "ocir_username": " test-ocir-user ",
+            "ocir_password": " test-ocir-password ",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "status": "succeeded",
+        "message": "OCIR Docker login succeeded.",
+        "ocir_registry": "fra.ocir.io",
+        "ocir_username": "test-ocir-user",
+    }
+    assert "test-ocir-password" not in response.text
+
+
+def test_agent_factory_ocir_login_check_returns_actionable_failure(
+    monkeypatch,
+) -> None:
+    """Test OCIR login check endpoint returns sanitized login failures."""
+
+    client = TestClient(app)
+
+    def fake_validate_ocir_login(**kwargs: Any) -> dict[str, str]:
+        _ = kwargs
+        raise ResourceProvisioningError(
+            "OCIR Docker login failed for fra.ocir.io: unauthorized"
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_ocir_login",
+        fake_validate_ocir_login,
+    )
+
+    response = client.post(
+        "/factory/ocir-login/check",
+        json={
+            "region": "eu-frankfurt-1",
+            "ocir_username": "test-ocir-user",
+            "ocir_password": "test-ocir-password",
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["error"] == "OCIR Docker login failed for fra.ocir.io: unauthorized"
+    assert "test-ocir-password" not in response.text
+
+
 def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:
     """Test dry-run deployment planning without secret exposure."""
 

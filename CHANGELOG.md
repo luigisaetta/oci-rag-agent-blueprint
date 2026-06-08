@@ -65,6 +65,8 @@ changes, or documentation updates are introduced.
 - Normalized pasted Agent Factory text inputs and disabled browser autofill for
   secret fields so OCIR auth tokens are not submitted with accidental whitespace
   or stale autofilled values.
+- Added a direct Agent Factory OCIR credential check action in the sidebar,
+  backed by a non-mutating Docker login validation endpoint.
 
 ## 2026-06-07
 
