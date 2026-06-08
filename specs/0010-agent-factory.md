@@ -96,6 +96,9 @@ The local Docker Compose deployment must include:
 - Root-level helper scripts named `start_factory.sh` and `stop_factory.sh`.
 - Docker CLI installed in the Agent Factory API image, because the backend
   performs Docker login, build, and push operations.
+- OCI CLI installed in the Agent Factory API image, because Hosted Application
+  creation, deployment creation, and deployment polling are executed with OCI
+  CLI commands.
 - A read-only bind mount of the repository root into the API container, exposed
   through `AGENT_FACTORY_REPO_ROOT`, so live deployments can build the RAG agent
   backend image from the root `Dockerfile`.
@@ -596,9 +599,10 @@ For local Docker Compose runs, the Agent Factory API container must receive the
 OCI SDK configuration through a read-only mount of the user's `.oci` directory.
 The container must support `OCI_CONFIG_FILE`, `OCI_PROFILE`, and `OCI_AUTH_MODE`
 so local tests can select the intended OCI profile and authentication mode.
-The Agent Factory API container must also have Docker CLI available and access
+The Agent Factory API container must also have Docker CLI, OCI CLI, and access
 to the host Docker daemon through `/var/run/docker.sock` for local dry-run OCIR
-credential validation and live image build/push operations.
+credential validation, live image build/push operations, and live Hosted
+Application operations.
 
 The API key field must be treated as a secret.
 

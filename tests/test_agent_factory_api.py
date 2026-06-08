@@ -66,6 +66,9 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     api_dockerfile = (PROJECT_ROOT / "agent-factory" / "api" / "Dockerfile").read_text(
         encoding="utf-8"
     )
+    api_requirements = (
+        PROJECT_ROOT / "agent-factory" / "api" / "requirements.txt"
+    ).read_text(encoding="utf-8")
     compose_file = (PROJECT_ROOT / "agent-factory" / "docker-compose.yml").read_text(
         encoding="utf-8"
     )
@@ -73,6 +76,7 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     stop_script = (PROJECT_ROOT / "stop_factory.sh").read_text(encoding="utf-8")
 
     assert "docker.io docker-cli" in api_dockerfile
+    assert "oci-cli" in api_requirements
     assert compose_file.startswith('version: "2.4"')
     assert not compose_file.startswith("name:")
     assert ":-" not in compose_file

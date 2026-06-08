@@ -39,6 +39,8 @@ changes, or documentation updates are introduced.
   commands as completed.
 - Mounted the repository root into the Agent Factory API container so live Docker
   builds can use the root RAG agent backend `Dockerfile`.
+- Added OCI CLI to the Agent Factory API dependencies so live Hosted Application
+  and deployment steps can execute inside the container.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.
