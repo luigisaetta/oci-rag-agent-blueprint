@@ -41,6 +41,8 @@ changes, or documentation updates are introduced.
   builds can use the root RAG agent backend `Dockerfile`.
 - Added OCI CLI to the Agent Factory API dependencies so live Hosted Application
   and deployment steps can execute inside the container.
+- Changed the Agent Factory UI default backend endpoint to use the browser host
+  on port `8081` when the UI is opened from a non-localhost machine.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

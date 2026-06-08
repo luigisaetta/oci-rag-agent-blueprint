@@ -99,6 +99,18 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     assert "up -d --build --force-recreate" in start_script
 
 
+def test_agent_factory_ui_derives_remote_backend_url() -> None:
+    """Test UI can target the host that served it instead of localhost only."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "window.location.hostname" in page_source
+    assert ":8081/factory/deployments" in page_source
+    assert "LOCAL_BACKEND_URL" in page_source
+
+
 def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:
     """Test dry-run deployment planning without secret exposure."""
 

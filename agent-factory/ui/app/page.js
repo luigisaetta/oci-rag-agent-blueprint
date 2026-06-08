@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const DEFAULT_BACKEND_URL =
   process.env.NEXT_PUBLIC_FACTORY_API_URL ?? "http://localhost:8081/factory/deployments";
+const LOCAL_BACKEND_URL = "http://localhost:8081/factory/deployments";
 
 const INITIAL_FORM = {
   compartment: "",
@@ -161,6 +162,22 @@ export default function Home() {
   );
 
   const canSubmit = missingRequiredFields.length === 0 && !isSubmitting && !isRunActive;
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      process.env.NEXT_PUBLIC_FACTORY_API_URL ||
+      backendUrl !== LOCAL_BACKEND_URL
+    ) {
+      return;
+    }
+
+    if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+      setBackendUrl(
+        `${window.location.protocol}//${window.location.hostname}:8081/factory/deployments`
+      );
+    }
+  }, [backendUrl]);
 
   useEffect(() => {
     if (!run?.deployment_run_id || !isRunActive) {

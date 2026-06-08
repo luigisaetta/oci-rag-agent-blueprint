@@ -125,6 +125,9 @@ The default local ports must be:
 
 The UI container must be configurable with the backend API endpoint used by the
 browser. The local default must point to `http://localhost:8081/factory/deployments`.
+When the UI is opened from a non-localhost browser host, and no explicit backend
+URL is configured, the UI must default the backend API endpoint to the current
+browser hostname on port `8081`.
 
 ## Guided Region And Model Choices
 
