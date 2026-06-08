@@ -16,6 +16,8 @@ changes, or documentation updates are introduced.
   local login.
 - Added dry-run validation of OCIR Docker credentials using temporary Docker
   configuration so invalid registry credentials fail before deployment.
+- Fixed GenAI project name resolution to call the OCI SDK
+  `list_generative_ai_projects` method exposed by `GenerativeAiClient`.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

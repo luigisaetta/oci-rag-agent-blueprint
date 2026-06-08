@@ -908,6 +908,20 @@ def test_resolve_genai_project_returns_unique_match() -> None:
     assert client.project_list_kwargs == {"display_name": "agent-factory-project"}
 
 
+def test_resolve_genai_project_supports_legacy_list_projects_alias() -> None:
+    """Test project resolution still supports clients exposing the old alias."""
+
+    client = LegacyProjectListClient()
+
+    result = resolve_genai_project(
+        client=client,
+        compartment_id="ocid1.compartment.oc1..example",
+        project="agent-factory-project",
+    )
+
+    assert result.project_id == "ocid1.generativeaiproject.oc1..legacy"
+
+
 def test_load_oci_config_reports_missing_config_as_provisioning_error(
     monkeypatch,
 ) -> None:
@@ -1165,7 +1179,9 @@ class FakeConnectorClient:
         ]
         self.project_list_kwargs: dict[str, Any] | None = None
 
-    def list_projects(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+    def list_generative_ai_projects(
+        self, compartment_id: str, **kwargs: Any
+    ) -> FakeResponse:
         """Return fake GenAI projects.
 
         Args:
@@ -1445,7 +1461,9 @@ class SequencedConnectorClient:
         self._events = events
         self._created_connector: dict[str, str] | None = None
 
-    def list_projects(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+    def list_generative_ai_projects(
+        self, compartment_id: str, **kwargs: Any
+    ) -> FakeResponse:
         """Return a matching GenAI project and record resolution order.
 
         Args:
@@ -1521,6 +1539,34 @@ class SequencedConnectorClient:
             raise FakeNotFoundError(connector_id)
         assert connector_id == self._created_connector["id"]
         return FakeResponse(self._created_connector)
+
+
+class LegacyProjectListClient:
+    """Fake GenAI client exposing the legacy project list alias."""
+
+    def list_projects(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+        """Return fake projects through the legacy alias.
+
+        Args:
+            compartment_id: Compartment OCID.
+            kwargs: List filter arguments.
+
+        Returns:
+            FakeResponse: Project list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        assert kwargs == {"display_name": "agent-factory-project"}
+        return FakeResponse(
+            FakeListData(
+                [
+                    {
+                        "id": "ocid1.generativeaiproject.oc1..legacy",
+                        "display_name": "agent-factory-project",
+                    }
+                ]
+            )
+        )
 
 
 def _resource_name_from_details(create_details: Any) -> str:

@@ -69,7 +69,7 @@ class VectorStoreClientProtocol(Protocol):
 class VectorStoreConnectorClientProtocol(Protocol):
     """Minimal OCI Generative AI client behavior used for connectors."""
 
-    def list_projects(self, compartment_id: str, **kwargs: Any) -> Any:
+    def list_generative_ai_projects(self, compartment_id: str, **kwargs: Any) -> Any:
         """Return GenAI projects in a compartment."""
 
     def list_vector_store_connectors(self, compartment_id: str) -> Any:
@@ -1261,7 +1261,8 @@ def resolve_genai_project(
 
     try:
         projects = _iter_resources(
-            client.list_projects(
+            _list_genai_projects(
+                client=client,
                 compartment_id=compartment_id,
                 display_name=project,
             )
@@ -1291,6 +1292,40 @@ def resolve_genai_project(
     return ProjectResult(
         project_id=_resource_id(resolved_project),
         name=_resource_display_name(resolved_project, fallback=project),
+    )
+
+
+def _list_genai_projects(
+    *,
+    client: VectorStoreConnectorClientProtocol,
+    compartment_id: str,
+    display_name: str,
+) -> Any:
+    """List GenAI projects using the OCI SDK method name available at runtime.
+
+    Args:
+        client: OCI Generative AI client.
+        compartment_id: Compartment OCID containing the project.
+        display_name: Project display name filter.
+
+    Returns:
+        Any: OCI SDK list response.
+
+    Raises:
+        ResourceProvisioningError: If the client does not expose project list
+            support.
+    """
+
+    list_projects = getattr(client, "list_generative_ai_projects", None)
+    if list_projects is None:
+        list_projects = getattr(client, "list_projects", None)
+    if list_projects is None:
+        raise ResourceProvisioningError(
+            "OCI Generative AI client does not support project listing."
+        )
+    return list_projects(
+        compartment_id=compartment_id,
+        display_name=display_name,
     )
 
 

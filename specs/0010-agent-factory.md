@@ -257,11 +257,12 @@ after submission.
 Dry-run results must perform all safe read-only checks available before returning
 the generated command plan and Hosted Application JSON artifacts. At minimum,
 dry-run must resolve compartment names, resolve GenAI project names inside the
-resolved compartment, resolve the Object Storage namespace, validate reused
-resources, and check for existing resources when create mode can reuse or would
-conflict. Dry-run must also validate the submitted OCIR username and password by
-attempting Docker login against the target OCIR registry using temporary Docker
-configuration. Dry-run must not create, update, push, or delete OCI resources.
+resolved compartment through the OCI SDK `list_generative_ai_projects` API,
+resolve the Object Storage namespace, validate reused resources, and check for
+existing resources when create mode can reuse or would conflict. Dry-run must
+also validate the submitted OCIR username and password by attempting Docker login
+against the target OCIR registry using temporary Docker configuration. Dry-run
+must not create, update, push, or delete OCI resources.
 
 When the user supplies a name for a resource that is later required as an OCID,
 the backend must include an explicit resolution step and all downstream commands
