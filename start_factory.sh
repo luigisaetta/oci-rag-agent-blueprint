@@ -4,9 +4,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/agent-factory/docker-compose.yml"
-COMPOSE_CMD="docker-compose"
 COMPOSE_PROJECT_NAME="agent-factory"
 BUILD_FLAG=""
+
+export OCI_PROFILE="${OCI_PROFILE:-DEFAULT}"
+export OCI_AUTH_MODE="${OCI_AUTH_MODE:-user_principal}"
+
+if command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker-compose)
+elif docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker compose)
+else
+  echo "Docker Compose is required. Install docker-compose or Docker Compose v2." >&2
+  exit 1
+fi
+
+compose() {
+  "${COMPOSE_CMD[@]}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" "$@"
+}
 
 usage() {
   cat <<EOF
@@ -42,14 +57,14 @@ cd "${SCRIPT_DIR}"
 
 echo "Starting Agent Factory..."
 if [[ -n "${BUILD_FLAG}" ]]; then
-  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" build --no-cache factory-api
-  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d --build --force-recreate
+  compose build --no-cache factory-api
+  compose up -d --build --force-recreate
 else
-  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d
+  compose up -d
 fi
 
 echo
-"${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" ps
+compose ps
 echo
 echo "Agent Factory API: http://localhost:8081/factory/health"
 echo "Agent Factory UI:  http://localhost:3100"

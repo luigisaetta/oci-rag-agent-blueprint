@@ -1,3 +1,5 @@
+version: "2.4"
+
 services:
   factory-api:
     image: oci-rag-agent-factory-api
@@ -6,8 +8,8 @@ services:
       dockerfile: Dockerfile
     environment:
       OCI_CONFIG_FILE: /root/.oci/config
-      OCI_PROFILE: ${OCI_PROFILE:-DEFAULT}
-      OCI_AUTH_MODE: ${OCI_AUTH_MODE:-user_principal}
+      OCI_PROFILE: ${OCI_PROFILE}
+      OCI_AUTH_MODE: ${OCI_AUTH_MODE}
     volumes:
       - ${HOME}/.oci:/root/.oci:ro
       - ${HOME}/.oci:${HOME}/.oci:ro
