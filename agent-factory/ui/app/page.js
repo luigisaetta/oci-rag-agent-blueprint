@@ -19,7 +19,7 @@ const INITIAL_FORM = {
   jwt_protection_enabled: false,
   endpoint_visibility: "public",
   network_mode: "oracle_managed",
-  genai_project_ocid: "",
+  genai_project: "",
   model_id: "openai.gpt-5.4",
   openai_api_key: "",
   file_search_max_num_results: 10,
@@ -48,7 +48,7 @@ const REQUIRED_FIELDS = [
   "vector_store_name",
   "hosted_application_name",
   "deployment_name",
-  "genai_project_ocid",
+  "genai_project",
   "model_id",
   "openai_api_key",
   "container_repository_name",
@@ -335,11 +335,11 @@ export default function Home() {
                   ))}
                 </SelectField>
                 <Field
-                  label="GenAI project OCID"
-                  name="genai_project_ocid"
-                  value={form.genai_project_ocid}
+                  label="GenAI project name or OCID"
+                  name="genai_project"
+                  value={form.genai_project}
                   onChange={updateField}
-                  error={fieldErrors.genai_project_ocid}
+                  error={fieldErrors.genai_project}
                 />
                 <SelectField
                   label="Model"
@@ -548,6 +548,8 @@ export default function Home() {
                   <dd>{run.outputs?.endpoint_url ?? "Pending real deployment"}</dd>
                   <dt>Compartment ID</dt>
                   <dd>{run.outputs?.resolved_identifiers?.compartment_id ?? "n/a"}</dd>
+                  <dt>GenAI Project ID</dt>
+                  <dd>{run.outputs?.resolved_identifiers?.genai_project_id ?? "n/a"}</dd>
                   <dt>Vector Store ID</dt>
                   <dd>{run.outputs?.resolved_identifiers?.vector_store_id ?? "n/a"}</dd>
                 </dl>

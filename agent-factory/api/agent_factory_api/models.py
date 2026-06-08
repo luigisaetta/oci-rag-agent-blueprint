@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-08
 License: MIT
 Description: Data models and validation helpers for Agent Factory deployment runs.
 """
@@ -257,6 +257,8 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("responses_timeout_seconds", 60)
     normalized.setdefault("stream_finalization_mode", "never")
     normalized.setdefault("dry_run", True)
+    if "genai_project" not in normalized and "genai_project_ocid" in normalized:
+        normalized["genai_project"] = normalized["genai_project_ocid"]
     return normalized
 
 
@@ -274,7 +276,7 @@ def _required_fields() -> tuple[str, ...]:
         "vector_store_name",
         "hosted_application_name",
         "deployment_name",
-        "genai_project_ocid",
+        "genai_project",
         "model_id",
         "openai_api_key",
         "container_repository_name",

@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-07
+Date last modified: 2026-06-08
 License: MIT
 Description: FastAPI backend skeleton for Agent Factory deployment orchestration.
 """
@@ -177,6 +177,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
         if not dry_run:
             resource_result = provision_foundation_resources(payload)
             plan_payload["compartment"] = resource_result.compartment_id
+            plan_payload["genai_project"] = resource_result.project.project_id
             plan_payload["vector_store_name"] = (
                 resource_result.vector_store.vector_store_id
             )
@@ -291,6 +292,7 @@ def _execute_live_run(deployment_run_id: str, payload: dict[str, Any]) -> None:
 
     plan_payload = dict(payload)
     plan_payload["compartment"] = resource_result.compartment_id
+    plan_payload["genai_project"] = resource_result.project.project_id
     plan_payload["vector_store_name"] = resource_result.vector_store.vector_store_id
     if resource_result.connector is not None:
         plan_payload["connector_name"] = resource_result.connector.connector_id
@@ -353,6 +355,10 @@ def _build_run_outputs(
     if resource_result is not None:
         outputs["foundation_resources"] = {
             "compartment_id": resource_result.compartment_id,
+            "genai_project": {
+                "project_id": resource_result.project.project_id,
+                "name": resource_result.project.name,
+            },
             "bucket": {
                 "bucket_name": resource_result.bucket.bucket_name,
                 "namespace_name": resource_result.bucket.namespace_name,
@@ -484,6 +490,11 @@ def _attach_resource_outputs(
                 "namespace_name": resource_result.bucket.namespace_name,
                 "created": resource_result.bucket.created,
             }
+        if step.step_id == "resolve-genai-project":
+            step.outputs = {
+                "genai_project_id": resource_result.project.project_id,
+                "name": resource_result.project.name,
+            }
         if step.step_id == "vector-store":
             step.outputs = {
                 "vector_store_id": resource_result.vector_store.vector_store_id,
@@ -598,6 +609,8 @@ def _failed_resource_step_id(error_message: str) -> str:
     normalized_error = error_message.lower()
     if "compartment" in normalized_error:
         return "resolve-compartment"
+    if "project" in normalized_error:
+        return "resolve-genai-project"
     if "bucket" in normalized_error:
         return "bucket"
     if "connector" in normalized_error:
@@ -628,64 +641,69 @@ def _build_steps(
             command=commands[0],
         ),
         FactoryStep(
+            "resolve-genai-project",
+            "Resolve GenAI project",
+            command=commands[1],
+        ),
+        FactoryStep(
             "bucket",
             "Create or reuse Object Storage bucket",
-            command=commands[1],
+            command=commands[2],
         ),
         FactoryStep(
             "vector-store",
             "Create or reuse Vector Store",
-            command=commands[2],
+            command=commands[3],
         ),
         FactoryStep(
             "data-sync-connector",
             "Create, reuse, or skip Data Sync Connector",
             status=connector_status,
-            command=commands[3],
+            command=commands[4],
         ),
         FactoryStep(
             "docker-build",
             "Build RAG agent backend image",
-            command=commands[4],
+            command=commands[5],
         ),
         FactoryStep(
             "registry",
             "Check or prepare OCI Container Registry",
-            command=commands[5],
+            command=commands[6],
         ),
         FactoryStep(
             "registry-login",
             "Authenticate Docker to OCI Container Registry",
-            command=commands[6],
+            command=commands[7],
         ),
         FactoryStep(
             "docker-push",
             "Push image to OCI Container Registry",
-            command=commands[7],
+            command=commands[8],
         ),
         FactoryStep(
             "hosted-application",
             "Create OCI Enterprise AI Hosted Application",
-            command=commands[8],
+            command=commands[9],
         ),
         FactoryStep(
             "runtime-environment",
             "Generate Hosted Application runtime environment",
-            command=commands[9],
+            command=commands[10],
         ),
         FactoryStep(
             "hosted-deployment",
             "Create Hosted Application deployment",
-            command=commands[10],
+            command=commands[11],
         ),
         FactoryStep(
             "deployment-readiness",
             "Wait for Hosted Application deployment readiness",
-            command=commands[11],
+            command=commands[12],
         ),
         FactoryStep(
             "health",
             "Validate deployed health endpoint",
-            command=commands[12],
+            command=commands[13],
         ),
     ]

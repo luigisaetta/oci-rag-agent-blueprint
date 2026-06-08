@@ -262,7 +262,8 @@ implementation wherever equivalent behavior already exists.
 When the user supplies a name for a resource that is later required as an OCID,
 the backend must include an explicit resolution step and all downstream commands
 and generated JSON artifacts must use the resolved OCID. Dry-run output may use a
-clear placeholder such as `<resolved-compartment-ocid>` or
+clear placeholder such as `<resolved-compartment-ocid>`,
+`<resolved-genai-project-ocid>`, or
 `<created-or-resolved-vector-store-ocid>` for values that require live OCI
 resolution.
 
@@ -287,7 +288,7 @@ Agent Factory must collect the following inputs.
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
 | Custom network | No | Reserved for future private/custom networking support. |
-| GenAI project OCID | Yes | OCI Enterprise AI project OCID passed to the deployed RAG agent. |
+| GenAI project name or OCID | Yes | OCI Enterprise AI project used by the deployed RAG agent. If a name is provided, the backend must resolve it inside the resolved compartment before setting `OCI_PROJECT_ID`. |
 | Model ID | Yes | Model identifier used by the deployed RAG agent. Must be selected from the supported model list. |
 | OpenAI-compatible API key | Yes | API key used by the deployed RAG agent to call OCI Enterprise AI. |
 | File search max results | No | Optional runtime tuning value for `FILE_SEARCH_MAX_NUM_RESULTS`. |
@@ -336,7 +337,7 @@ Agent Factory must run the deployment workflow in the following order.
 
 1. Validate all submitted inputs.
 2. Resolve the target compartment.
-3. Validate region and GenAI project input.
+3. Validate region and resolve the GenAI project input.
 4. Create or reuse the Object Storage bucket.
 5. Wait for the Object Storage bucket to be readable and non-transitional when
    it was created by this run.
@@ -404,7 +405,7 @@ At minimum, Agent Factory must set:
 | --- | --- |
 | `OCI_REGION` | Submitted region. |
 | `OCI_COMPARTMENT_ID` | Resolved compartment OCID. |
-| `OCI_PROJECT_ID` | Submitted GenAI project OCID. |
+| `OCI_PROJECT_ID` | Resolved GenAI project OCID. |
 | `OCI_MODEL_ID` | Submitted model ID. |
 | `OCI_VECTOR_STORE_ID` | Created or resolved Vector Store identifier. |
 | `OPENAI_API_KEY` | Submitted API key. |
@@ -627,7 +628,8 @@ Live OCI integration tests must not be required for the default test suite.
 - The backend creates a deployment inside the Hosted Application with OCI CLI.
 - The deployed agent receives the selected Vector Store identifier through
   `OCI_VECTOR_STORE_ID`.
-- The deployed agent receives the submitted GenAI project OCID and API key.
+- The deployed agent receives the resolved GenAI project OCID and submitted API
+  key.
 - The UI displays step-by-step progress and final outputs.
 - The backend does not return secrets in deployment status responses.
 - Unit tests cover validation, workflow ordering, status transitions, and

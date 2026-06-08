@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-07
+Date last modified: 2026-06-08
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -29,6 +29,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     ConnectorResult,
     FoundationResourcesResult,
     ObjectStorageBucketManager,
+    ProjectResult,
     ResourceProvisioningError,
     VectorStoreConnectorManager,
     VectorStoreManager,
@@ -39,6 +40,7 @@ from agent_factory_api.resources import (  # pylint: disable=wrong-import-positi
     _resolve_control_plane_auth_mode,
     _validate_oci_auth_config,
     provision_foundation_resources,
+    resolve_genai_project,
 )
 
 
@@ -82,6 +84,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan() -> None:
     assert set(runtime_environment) == set(AGENT_RUNTIME_ENVIRONMENT_VARIABLES)
     assert payload["outputs"]["resolved_identifiers"] == {
         "compartment_id": "ocid1.compartment.oc1..example",
+        "genai_project_id": "ocid1.generativeaiproject.oc1..example",
         "vector_store_id": "<created-or-resolved-vector-store-ocid>",
         "connector_id": "<created-or-resolved-data-sync-connector-ocid>",
     }
@@ -134,6 +137,7 @@ def test_agent_factory_resolves_names_before_downstream_commands() -> None:
     client = TestClient(app)
     request_payload = _valid_payload()
     request_payload["compartment"] = "lsaetta"
+    request_payload["genai_project"] = "agent-factory-project"
 
     response = client.post("/factory/deployments", json=request_payload)
 
@@ -161,8 +165,14 @@ def test_agent_factory_resolves_names_before_downstream_commands() -> None:
     assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
         "<resolved-compartment-ocid>"
     )
+    assert payload["outputs"]["resolved_identifiers"]["genai_project_id"] == (
+        "<resolved-genai-project-ocid>"
+    )
     assert payload["outputs"]["runtime_environment"]["OCI_COMPARTMENT_ID"] == (
         "<resolved-compartment-ocid>"
+    )
+    assert payload["outputs"]["runtime_environment"]["OCI_PROJECT_ID"] == (
+        "<resolved-genai-project-ocid>"
     )
     assert (
         payload["outputs"]["dry_run_artifacts"]["create-hosted-application.json"][
@@ -289,6 +299,10 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
         _ = progress_callback
         return FoundationResourcesResult(
             compartment_id=payload["compartment"],
+            project=ProjectResult(
+                project_id=payload["genai_project"],
+                name="agent-factory-project",
+            ),
             bucket=BucketResult(
                 bucket_name=payload["bucket_name"],
                 namespace_name="test-namespace",
@@ -359,6 +373,10 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
         _notify_fake_resource_progress(progress_callback)
         return FoundationResourcesResult(
             compartment_id="ocid1.compartment.oc1..example",
+            project=ProjectResult(
+                project_id="ocid1.generativeaiproject.oc1..example",
+                name="agent-factory-project",
+            ),
             bucket=BucketResult(
                 bucket_name="agent-factory-docs",
                 namespace_name="test-namespace",
@@ -393,6 +411,9 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     assert payload["outputs"]["resolved_identifiers"]["compartment_id"] == (
         "ocid1.compartment.oc1..example"
     )
+    assert payload["outputs"]["resolved_identifiers"]["genai_project_id"] == (
+        "ocid1.generativeaiproject.oc1..example"
+    )
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
         "ocid1.vectorstore.oc1..created"
     )
@@ -405,6 +426,10 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     assert payload["outputs"]["foundation_resources"]["compartment_id"] == (
         "ocid1.compartment.oc1..example"
     )
+    assert payload["outputs"]["foundation_resources"]["genai_project"] == {
+        "project_id": "ocid1.generativeaiproject.oc1..example",
+        "name": "agent-factory-project",
+    }
     assert payload["outputs"]["foundation_resources"]["bucket"] == {
         "bucket_name": "agent-factory-docs",
         "namespace_name": "test-namespace",
@@ -449,10 +474,14 @@ def test_foundation_resource_provisioning_waits_before_connector(monkeypatch) ->
         lambda *, region: connector_client,
     )
 
-    result = provision_foundation_resources(_valid_payload())
+    request_payload = _valid_payload()
+    request_payload["genai_project"] = "agent-factory-project"
+
+    result = provision_foundation_resources(request_payload)
 
     assert result.connector is not None
     assert events == [
+        "list_projects",
         "get_namespace",
         "get_bucket_missing",
         "create_bucket",
@@ -485,6 +514,10 @@ def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
         )
         return FoundationResourcesResult(
             compartment_id="ocid1.compartment.oc1..resolved",
+            project=ProjectResult(
+                project_id="ocid1.generativeaiproject.oc1..resolved",
+                name="agent-factory-project",
+            ),
             bucket=BucketResult(
                 bucket_name=payload["bucket_name"],
                 namespace_name="test-namespace",
@@ -521,6 +554,9 @@ def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
     )
     assert payload["outputs"]["runtime_environment"]["OCI_COMPARTMENT_ID"] == (
         "ocid1.compartment.oc1..resolved"
+    )
+    assert payload["outputs"]["runtime_environment"]["OCI_PROJECT_ID"] == (
+        "ocid1.generativeaiproject.oc1..resolved"
     )
     assert (
         payload["outputs"]["dry_run_artifacts"]["create-hosted-application.json"][
@@ -733,6 +769,31 @@ def test_resolve_compartment_name_returns_unique_active_match() -> None:
     }
 
 
+def test_resolve_genai_project_returns_unique_match() -> None:
+    """Test GenAI project name resolution returns the matching OCID."""
+
+    client = FakeConnectorClient(
+        projects=[
+            {
+                "id": "ocid1.generativeaiproject.oc1..resolved",
+                "display_name": "agent-factory-project",
+            }
+        ]
+    )
+
+    result = resolve_genai_project(
+        client=client,
+        compartment_id="ocid1.compartment.oc1..example",
+        project="agent-factory-project",
+    )
+
+    assert result == ProjectResult(
+        project_id="ocid1.generativeaiproject.oc1..resolved",
+        name="agent-factory-project",
+    )
+    assert client.project_list_kwargs == {"display_name": "agent-factory-project"}
+
+
 def test_load_oci_config_reports_missing_config_as_provisioning_error(
     monkeypatch,
 ) -> None:
@@ -770,7 +831,7 @@ def _valid_payload() -> dict[str, Any]:
         "jwt_protection_enabled": False,
         "endpoint_visibility": "public",
         "network_mode": "oracle_managed",
-        "genai_project_ocid": "ocid1.generativeaiproject.oc1..example",
+        "genai_project": "ocid1.generativeaiproject.oc1..example",
         "model_id": "openai.gpt-5.4",
         "openai_api_key": "test-api-key",
         "file_search_max_num_results": 10,
@@ -975,11 +1036,33 @@ class FakeControlPlaneClient:
 class FakeConnectorClient:
     """Fake OCI Generative AI client used by connector manager tests."""
 
-    def __init__(self) -> None:
+    def __init__(self, projects: list[dict[str, str]] | None = None) -> None:
         """Initialize the fake client."""
 
         self.created_details: Any | None = None
         self._created_connector: dict[str, str] | None = None
+        self._projects = projects or [
+            {
+                "id": "ocid1.generativeaiproject.oc1..example",
+                "display_name": "agent-factory-project",
+            }
+        ]
+        self.project_list_kwargs: dict[str, Any] | None = None
+
+    def list_projects(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+        """Return fake GenAI projects.
+
+        Args:
+            compartment_id: Compartment OCID.
+            kwargs: List filter arguments.
+
+        Returns:
+            FakeResponse: Project list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        self.project_list_kwargs = kwargs
+        return FakeResponse(FakeListData(self._projects))
 
     def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
         """Return no existing connectors.
@@ -1246,6 +1329,31 @@ class SequencedConnectorClient:
         self._events = events
         self._created_connector: dict[str, str] | None = None
 
+    def list_projects(self, compartment_id: str, **kwargs: Any) -> FakeResponse:
+        """Return a matching GenAI project and record resolution order.
+
+        Args:
+            compartment_id: Compartment OCID.
+            kwargs: List filter arguments.
+
+        Returns:
+            FakeResponse: Project list response.
+        """
+
+        assert compartment_id == "ocid1.compartment.oc1..example"
+        assert kwargs == {"display_name": "agent-factory-project"}
+        self._events.append("list_projects")
+        return FakeResponse(
+            FakeListData(
+                [
+                    {
+                        "id": "ocid1.generativeaiproject.oc1..example",
+                        "display_name": "agent-factory-project",
+                    }
+                ]
+            )
+        )
+
     def list_vector_store_connectors(self, compartment_id: str) -> FakeResponse:
         """Return no existing connectors.
 
@@ -1363,6 +1471,14 @@ def _notify_fake_resource_progress(
         "resolve-compartment",
         "succeeded",
         {"compartment_id": compartment_id},
+    )
+    progress_callback(
+        "resolve-genai-project",
+        "succeeded",
+        {
+            "genai_project_id": "ocid1.generativeaiproject.oc1..example",
+            "name": "agent-factory-project",
+        },
     )
     progress_callback(
         "bucket",

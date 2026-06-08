@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-07
+Date last modified: 2026-06-08
 License: MIT
 Description: OCI resource managers for Agent Factory knowledge base setup.
 """
@@ -65,6 +65,9 @@ class VectorStoreClientProtocol(Protocol):
 class VectorStoreConnectorClientProtocol(Protocol):
     """Minimal OCI Generative AI client behavior used for connectors."""
 
+    def list_projects(self, compartment_id: str, **kwargs: Any) -> Any:
+        """Return GenAI projects in a compartment."""
+
     def list_vector_store_connectors(self, compartment_id: str) -> Any:
         """Return Vector Store connectors in a compartment."""
 
@@ -127,17 +130,32 @@ class ConnectorResult:
 
 
 @dataclass(frozen=True)
+class ProjectResult:
+    """GenAI project resolution result.
+
+    Attributes:
+        project_id: Resolved GenAI project OCID.
+        name: Project display name when available.
+    """
+
+    project_id: str
+    name: str
+
+
+@dataclass(frozen=True)
 class FoundationResourcesResult:
     """Provisioning result for resources created before deployment planning.
 
     Attributes:
         compartment_id: Resolved compartment OCID used by all resources.
+        project: Resolved GenAI project.
         bucket: Object Storage bucket result.
         vector_store: Vector Store result.
         connector: Data Sync Connector result, or None when skipped.
     """
 
     compartment_id: str
+    project: ProjectResult
     bucket: BucketResult
     vector_store: VectorStoreResult
     connector: ConnectorResult | None
@@ -768,6 +786,20 @@ def provision_foundation_resources(
         {"compartment_id": compartment_id},
     )
 
+    genai_client = create_oci_genai_client(region=str(payload["region"]))
+    _notify_progress(progress_callback, "resolve-genai-project", "running")
+    project = resolve_genai_project(
+        client=genai_client,
+        compartment_id=compartment_id,
+        project=str(payload["genai_project"]),
+    )
+    _notify_progress(
+        progress_callback,
+        "resolve-genai-project",
+        "succeeded",
+        {"genai_project_id": project.project_id, "name": project.name},
+    )
+
     _notify_progress(progress_callback, "bucket", "running")
     bucket = ObjectStorageBucketManager(
         create_object_storage_client(region=str(payload["region"]))
@@ -812,9 +844,7 @@ def provision_foundation_resources(
         "skipped" if str(payload["connector_mode"]) == "skip" else "running"
     )
     _notify_progress(progress_callback, "data-sync-connector", connector_status)
-    connector = VectorStoreConnectorManager(
-        create_oci_genai_client(region=str(payload["region"]))
-    ).create_reuse_or_skip(
+    connector = VectorStoreConnectorManager(genai_client).create_reuse_or_skip(
         compartment_id=compartment_id,
         connector_name=payload.get("connector_name"),
         mode=str(payload["connector_mode"]),
@@ -839,6 +869,7 @@ def provision_foundation_resources(
     )
     return FoundationResourcesResult(
         compartment_id=compartment_id,
+        project=project,
         bucket=bucket,
         vector_store=vector_store,
         connector=connector,
@@ -882,6 +913,62 @@ def resolve_compartment_id(*, compartment: str, region: str) -> str:
         identity_client=identity_client,
         tenancy_id=tenancy_id,
         compartment_name=compartment,
+    )
+
+
+def resolve_genai_project(
+    *, client: VectorStoreConnectorClientProtocol, compartment_id: str, project: str
+) -> ProjectResult:
+    """Resolve a GenAI project name or OCID to a project OCID.
+
+    Args:
+        client: OCI Generative AI client.
+        compartment_id: Compartment OCID containing the project.
+        project: Project OCID or display name.
+
+    Returns:
+        ProjectResult: Resolved project details.
+
+    Raises:
+        ResourceProvisioningError: If the project name cannot be resolved
+            uniquely.
+    """
+
+    if project.startswith("ocid1.generativeaiproject."):
+        return ProjectResult(project_id=project, name=project)
+
+    try:
+        projects = _iter_resources(
+            client.list_projects(
+                compartment_id=compartment_id,
+                display_name=project,
+            )
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise ResourceProvisioningError(
+            f"Unable to resolve GenAI project '{project}': {exc}"
+        ) from exc
+
+    matching_projects = [
+        item
+        for item in projects
+        if _resource_display_name(item, fallback="") == project
+    ]
+    if not matching_projects:
+        raise ResourceProvisioningError(
+            f"GenAI project not found: {project}. Provide a project OCID "
+            "or a unique project name in the selected compartment."
+        )
+    if len(matching_projects) > 1:
+        raise ResourceProvisioningError(
+            f"Multiple GenAI projects named '{project}' were found in the "
+            "selected compartment. Provide the project OCID."
+        )
+
+    resolved_project = matching_projects[0]
+    return ProjectResult(
+        project_id=_resource_id(resolved_project),
+        name=_resource_display_name(resolved_project, fallback=project),
     )
 
 

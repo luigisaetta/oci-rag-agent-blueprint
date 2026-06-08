@@ -6,6 +6,14 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-08
+
+- Updated Agent Factory to accept a GenAI project name or OCID, resolving names
+  inside the selected compartment before setting the deployed agent
+  `OCI_PROJECT_ID` runtime environment variable.
+- Updated the Agent Factory UI and specification to describe GenAI project
+  name-or-OCID input and show the resolved project identifier in run outputs.
+
 ## 2026-06-07
 
 - Added Agent Factory resource managers for creating or reusing Object Storage

@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-08
 License: MIT
 Description: Command planning helpers for Agent Factory deployment runs.
 """
@@ -14,6 +14,7 @@ from typing import Any
 DEFAULT_WAIT_STATE = "SUCCEEDED"
 GENERATED_ARTIFACT_DIR = "agent-factory/generated"
 COMPARTMENT_OCID_PREFIX = "ocid1.compartment."
+GENAI_PROJECT_OCID_PREFIX = "ocid1.generativeaiproject."
 REGION_KEYS = {
     "eu-frankfurt-1": "fra",
     "us-chicago-1": "ord",
@@ -138,6 +139,7 @@ def _build_dry_run_commands(
 
     return [
         _build_compartment_resolution_command(payload),
+        _build_genai_project_resolution_command(payload, compartment_id),
         [
             "oci",
             "--region",
@@ -323,6 +325,7 @@ def _build_apply_commands(
 
     return [
         _build_compartment_resolution_command(payload),
+        _build_genai_project_resolution_command(payload, compartment_id),
         [
             "oci",
             "os",
@@ -578,7 +581,7 @@ def build_agent_runtime_environment(
     return {
         "OCI_REGION": str(payload["region"]),
         "OCI_COMPARTMENT_ID": identifiers["compartment_id"],
-        "OCI_PROJECT_ID": str(payload["genai_project_ocid"]),
+        "OCI_PROJECT_ID": identifiers["genai_project_id"],
         "OCI_MODEL_ID": str(payload["model_id"]),
         "OCI_VECTOR_STORE_ID": identifiers["vector_store_id"],
         "OPENAI_API_KEY": str(payload["openai_api_key"]),
@@ -616,6 +619,7 @@ def build_resolved_identifiers(payload: dict[str, Any]) -> dict[str, str]:
 
     return {
         "compartment_id": _resolved_compartment_id(payload),
+        "genai_project_id": _resolved_genai_project_id(payload),
         "vector_store_id": _resolved_vector_store_id(payload),
         "connector_id": _resolved_connector_id(payload),
     }
@@ -651,6 +655,22 @@ def _resolved_vector_store_id(payload: dict[str, Any]) -> str:
     if vector_store_name.startswith("ocid1."):
         return vector_store_name
     return "<created-or-resolved-vector-store-ocid>"
+
+
+def _resolved_genai_project_id(payload: dict[str, Any]) -> str:
+    """Return the GenAI project OCID or the placeholder produced by resolution.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: GenAI project OCID value for the deployed agent environment.
+    """
+
+    project = str(payload["genai_project"])
+    if project.startswith(GENAI_PROJECT_OCID_PREFIX):
+        return project
+    return "<resolved-genai-project-ocid>"
 
 
 def _resolved_connector_id(payload: dict[str, Any]) -> str:
@@ -708,6 +728,47 @@ def _build_compartment_resolution_command(payload: dict[str, Any]) -> list[str]:
         "--access-level",
         "ANY",
         "--include-root",
+        "--all",
+    ]
+
+
+def _build_genai_project_resolution_command(
+    payload: dict[str, Any], compartment_id: str
+) -> list[str]:
+    """Build the command that resolves a GenAI project name or validates an OCID.
+
+    Args:
+        payload: Normalized deployment payload.
+        compartment_id: Resolved compartment OCID or dry-run placeholder.
+
+    Returns:
+        list[str]: OCI CLI command arguments.
+    """
+
+    project = str(payload["genai_project"])
+    command = [
+        "oci",
+        "--region",
+        payload["region"],
+        "--output",
+        "json",
+        "generative-ai",
+        "project",
+    ]
+    if project.startswith(GENAI_PROJECT_OCID_PREFIX):
+        return [
+            *command,
+            "get",
+            "--project-id",
+            project,
+        ]
+    return [
+        *command,
+        "list",
+        "--compartment-id",
+        compartment_id,
+        "--display-name",
+        project,
         "--all",
     ]
 
