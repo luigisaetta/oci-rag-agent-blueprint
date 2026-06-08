@@ -562,6 +562,42 @@ def test_agent_factory_extracts_hosted_application_id_from_work_request() -> Non
     )
 
 
+def test_agent_factory_extracts_direct_hosted_application_id() -> None:
+    """Test Hosted Application ID extraction ignores compartment IDs."""
+
+    command_output = {
+        "data": {
+            "compartment-id": "ocid1.compartment.oc1..example",
+            "id": "ocid1.generativeaihostedapplication.oc1..example",
+            "lifecycle-state": "ACTIVE",
+        }
+    }
+
+    assert (
+        _extract_identifier(command_output, entity_type="HOSTED_APPLICATION")
+        == "ocid1.generativeaihostedapplication.oc1..example"
+    )
+
+
+def test_agent_factory_extracts_direct_hosted_deployment_id() -> None:
+    """Test Hosted Deployment ID extraction ignores application IDs."""
+
+    command_output = {
+        "data": {
+            "hosted-application-id": (
+                "ocid1.generativeaihostedapplication.oc1..example"
+            ),
+            "id": "ocid1.generativeaihosteddeployment.oc1..example",
+            "compartment-id": "ocid1.compartment.oc1..example",
+        }
+    }
+
+    assert (
+        _extract_identifier(command_output, entity_type="HOSTED_DEPLOYMENT")
+        == "ocid1.generativeaihosteddeployment.oc1..example"
+    )
+
+
 def test_agent_factory_loads_oci_json_output_with_status_prefix() -> None:
     """Test OCI CLI JSON parsing tolerates informational text prefixes."""
 

@@ -495,9 +495,12 @@ through OCI CLI commands.
 When OCI CLI Hosted Application or Hosted Deployment creation returns a work
 request, the backend must extract the created resource identifier from the work
 request `resources` entry whose `entity-type` matches the requested resource,
-for example `HOSTED_APPLICATION` or `HOSTED_DEPLOYMENT`. The backend must not
-use unrelated OCIDs from the same response, such as the compartment OCID or work
-request OCID, as the created resource identifier.
+for example `HOSTED_APPLICATION` or `HOSTED_DEPLOYMENT`. When creation returns
+the resource object directly, the backend must prefer an OCID with the expected
+resource prefix, such as `ocid1.generativeaihostedapplication.` or
+`ocid1.generativeaihosteddeployment.`. The backend must not use unrelated OCIDs
+from the same response, such as the compartment OCID or work request OCID, as
+the created resource identifier.
 
 Hosted Application and Hosted Deployment create commands must not rely on OCI
 CLI wait output as their primary synchronization mechanism, because wait

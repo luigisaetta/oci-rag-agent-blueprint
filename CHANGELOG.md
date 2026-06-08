@@ -74,6 +74,9 @@ changes, or documentation updates are introduced.
   create commands, keeping readiness in the dedicated deployment-readiness step
   and allowing the executor to parse OCI JSON output with informational
   prefixes.
+- Fixed Hosted Application and Hosted Deployment ID extraction for direct OCI
+  resource responses so compartment or parent application OCIDs are not passed
+  to dependent deployment commands.
 
 ## 2026-06-07
 

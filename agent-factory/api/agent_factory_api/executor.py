@@ -23,6 +23,10 @@ from agent_factory_api.commands import (
 )
 
 ProgressCallback = Callable[[str, str, dict[str, Any] | None], None]
+ENTITY_OCID_PREFIXES = {
+    "HOSTED_APPLICATION": "ocid1.generativeaihostedapplication.",
+    "HOSTED_DEPLOYMENT": "ocid1.generativeaihosteddeployment.",
+}
 
 
 class CommandExecutionError(RuntimeError):
@@ -506,6 +510,12 @@ def _extract_identifier(
         )
         if resource_identifier:
             return resource_identifier
+        prefixed_identifier = _extract_prefixed_identifier(
+            command_output,
+            prefix=ENTITY_OCID_PREFIXES.get(entity_type.upper()),
+        )
+        if prefixed_identifier:
+            return prefixed_identifier
 
     for value in _walk_values(command_output):
         if isinstance(value, str) and value.startswith("ocid1."):
@@ -538,6 +548,27 @@ def _extract_work_request_resource_identifier(
         identifier = resource.get("identifier")
         if isinstance(identifier, str) and identifier.startswith("ocid1."):
             return identifier
+    return None
+
+
+def _extract_prefixed_identifier(
+    command_output: dict[str, Any], *, prefix: str | None
+) -> str | None:
+    """Extract the first OCID with the expected resource prefix.
+
+    Args:
+        command_output: OCI CLI JSON response.
+        prefix: Expected OCI resource OCID prefix.
+
+    Returns:
+        str | None: Matching OCID, if present.
+    """
+
+    if not prefix:
+        return None
+    for value in _walk_values(command_output):
+        if isinstance(value, str) and value.startswith(prefix):
+            return value
     return None
 
 
