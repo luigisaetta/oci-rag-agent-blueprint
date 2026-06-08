@@ -34,6 +34,11 @@ changes, or documentation updates are introduced.
   the Compose file, and supporting both `docker-compose` and `docker compose`.
 - Changed the Agent Factory helper scripts to prefer Docker Compose v2
   (`docker compose`) over older `docker-compose` clients.
+- Fixed live Agent Factory deployments so Docker, OCIR, and Hosted Application
+  steps are executed and failures stop the run instead of marking planned
+  commands as completed.
+- Mounted the repository root into the Agent Factory API container so live Docker
+  builds can use the root RAG agent backend `Dockerfile`.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

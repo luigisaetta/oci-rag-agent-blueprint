@@ -10,7 +10,9 @@ services:
       OCI_CONFIG_FILE: /root/.oci/config
       OCI_PROFILE: ${OCI_PROFILE}
       OCI_AUTH_MODE: ${OCI_AUTH_MODE}
+      AGENT_FACTORY_REPO_ROOT: /workspace
     volumes:
+      - ..:/workspace:ro
       - ${HOME}/.oci:/root/.oci:ro
       - ${HOME}/.oci:${HOME}/.oci:ro
       - /var/run/docker.sock:/var/run/docker.sock

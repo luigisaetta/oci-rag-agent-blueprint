@@ -21,6 +21,10 @@ from agent_factory_api.commands import (
     build_ocir_registry,
     redact_runtime_environment,
 )
+from agent_factory_api.executor import (
+    CommandExecutionError,
+    execute_live_deployment_commands,
+)
 from agent_factory_api.models import (
     DeploymentRun,
     FactoryStep,
@@ -318,16 +322,24 @@ def _execute_live_run(deployment_run_id: str, payload: dict[str, Any]) -> None:
 
     plan = build_deployment_plan(plan_payload, dry_run=False)
     deployment_run.commands = plan["commands"]
-    _refresh_step_commands(
-        deployment_run.steps, _build_steps(plan_payload, plan["commands"])
-    )
-    _complete_planned_steps(deployment_run.steps, timestamp=utc_now())
+    planned_steps = _build_steps(plan_payload, plan["commands"])
+    _refresh_step_commands(deployment_run.steps, planned_steps)
     _attach_resource_outputs(deployment_run.steps, resource_result)
+    try:
+        execution_outputs = execute_live_deployment_commands(
+            plan_payload,
+            _commands_by_step_id(planned_steps),
+            update_progress,
+        )
+    except CommandExecutionError as exc:
+        _mark_live_run_failed(deployment_run, plan_payload, str(exc), exc.step_id)
+        return
     deployment_run.outputs = _build_run_outputs(
         plan_payload=plan_payload,
         plan=plan,
         resource_result=resource_result,
         dry_run=False,
+        execution_outputs=execution_outputs,
     )
     deployment_run.status = "succeeded"
     deployment_run.completed_at = utc_now()
@@ -339,6 +351,7 @@ def _build_run_outputs(
     plan: dict[str, Any],
     resource_result: FoundationResourcesResult | None,
     dry_run: bool,
+    execution_outputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build non-secret deployment run outputs.
 
@@ -347,6 +360,7 @@ def _build_run_outputs(
         plan: Generated command plan.
         resource_result: Live resource provisioning result, if any.
         dry_run: Whether this was a dry run.
+        execution_outputs: Non-secret outputs from live command execution.
 
     Returns:
         dict[str, Any]: Run outputs safe for API responses.
@@ -364,12 +378,19 @@ def _build_run_outputs(
             "Dry run completed with read-only OCI checks and without OCI writes."
             if dry_run
             else (
-                "Object Storage bucket, Vector Store, and Data Sync Connector "
-                "were provisioned; "
-                "remaining deployment actions are still planned only."
+                "Deployment workflow completed with live Docker, OCIR, and "
+                "Hosted Application operations."
             )
         ),
     }
+    if execution_outputs:
+        outputs.update(
+            {
+                "endpoint_url": execution_outputs.get("endpoint_url"),
+                "hosted_application_id": execution_outputs.get("hosted_application_id"),
+                "hosted_deployment_id": execution_outputs.get("hosted_deployment_id"),
+            }
+        )
 
     if resource_result is not None:
         outputs["foundation_resources"] = {
@@ -457,7 +478,10 @@ def _failed_resource_run(
 
 
 def _mark_live_run_failed(
-    deployment_run: DeploymentRun, payload: dict[str, Any], error_message: str
+    deployment_run: DeploymentRun,
+    payload: dict[str, Any],
+    error_message: str,
+    failed_step_id: str | None = None,
 ) -> None:
     """Mark a live deployment run as failed.
 
@@ -465,10 +489,11 @@ def _mark_live_run_failed(
         deployment_run: Run state to update.
         payload: Normalized deployment payload.
         error_message: Sanitized provisioning error.
+        failed_step_id: Explicit failed step identifier, if known.
     """
 
     timestamp = utc_now()
-    failed_step_id = _failed_resource_step_id(error_message)
+    failed_step_id = failed_step_id or _failed_resource_step_id(error_message)
     _set_step_status(
         deployment_run.steps,
         failed_step_id,
@@ -487,9 +512,25 @@ def _mark_live_run_failed(
         "resolved_identifiers": plan["resolved_identifiers"],
         "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
         "dry_run_artifacts": plan["artifacts"],
-        "note": "Resource provisioning failed before deployment planning.",
+        "note": (
+            "Live deployment failed before completion. Previously completed "
+            "steps may have created resources."
+        ),
     }
     deployment_run.error = error_message
+
+
+def _commands_by_step_id(steps: list[FactoryStep]) -> dict[str, list[str]]:
+    """Return commands keyed by workflow step identifier.
+
+    Args:
+        steps: Workflow steps with attached commands.
+
+    Returns:
+        dict[str, list[str]]: Command arguments keyed by step identifier.
+    """
+
+    return {step.step_id: step.command for step in steps if step.command is not None}
 
 
 def _attach_resource_outputs(
@@ -580,19 +621,6 @@ def _set_step_status(  # pylint: disable=too-many-arguments
         step.outputs = outputs
     if error is not None:
         step.error = error
-
-
-def _complete_planned_steps(steps: list[FactoryStep], *, timestamp: str) -> None:
-    """Mark planned-only remaining steps as completed.
-
-    Args:
-        steps: Workflow steps for the run.
-        timestamp: Completion timestamp.
-    """
-
-    for step in steps:
-        if step.status == "pending":
-            _set_step_status(steps, step.step_id, "succeeded", timestamp=timestamp)
 
 
 def _refresh_step_commands(

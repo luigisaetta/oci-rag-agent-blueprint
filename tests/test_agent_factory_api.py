@@ -25,6 +25,9 @@ from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-posi
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
 )
+from agent_factory_api.executor import (  # pylint: disable=wrong-import-position
+    CommandExecutionError,
+)
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
     BucketResult,
     ConnectorResult,
@@ -73,6 +76,8 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     assert compose_file.startswith('version: "2.4"')
     assert not compose_file.startswith("name:")
     assert ":-" not in compose_file
+    assert "AGENT_FACTORY_REPO_ROOT: /workspace" in compose_file
+    assert "- ..:/workspace:ro" in compose_file
     assert "/var/run/docker.sock:/var/run/docker.sock" in compose_file
     assert '-p "${COMPOSE_PROJECT_NAME}"' in start_script
     assert '-p "${COMPOSE_PROJECT_NAME}"' in stop_script
@@ -115,9 +120,10 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     assert "hosted-deployment create" in payload["commands_text"]
     assert "--active-artifact" in payload["commands_text"]
     assert (
-        payload["outputs"]["image_reference"] == "fra.ocir.io/<tenancy-namespace>/"
+        payload["outputs"]["image_reference"] == "fra.ocir.io/test-namespace/"
         "oci-rag-agent-blueprint-agent:0.1.0"
     )
+    assert "<tenancy-namespace>" not in payload["commands_text"]
     runtime_environment = payload["outputs"]["runtime_environment"]
     assert set(runtime_environment) == set(AGENT_RUNTIME_ENVIRONMENT_VARIABLES)
     assert payload["outputs"]["resolved_identifiers"] == {
@@ -160,9 +166,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     }
     assert dry_run_artifacts["hosted-deployment-active-artifact.json"] == {
         "artifactType": "SIMPLE_DOCKER_ARTIFACT",
-        "containerUri": (
-            "fra.ocir.io/<tenancy-namespace>/oci-rag-agent-blueprint-agent"
-        ),
+        "containerUri": "fra.ocir.io/test-namespace/oci-rag-agent-blueprint-agent",
         "tag": "0.1.0",
     }
     assert any(step["step_id"] == "docker-build" for step in payload["steps"])
@@ -334,7 +338,7 @@ def test_agent_factory_uses_region_key_for_ocir_registry(monkeypatch) -> None:
     assert response.status_code == 201
     payload = response.json()
     assert payload["outputs"]["image_reference"] == (
-        "ord.ocir.io/<tenancy-namespace>/oci-rag-agent-blueprint-agent:0.1.0"
+        "ord.ocir.io/test-namespace/oci-rag-agent-blueprint-agent:0.1.0"
     )
     assert "docker login ord.ocir.io --username test-ocir-user" in (
         payload["commands_text"]
@@ -386,6 +390,7 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
     request_payload["vector_store_name"] = "ocid1.vectorstore.oc1..example"
+    _install_fake_live_executor(monkeypatch)
 
     def fake_provision(
         payload: dict[str, Any],
@@ -458,6 +463,7 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     client = TestClient(app)
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
+    _install_fake_live_executor(monkeypatch)
 
     def fake_provision(
         payload: dict[str, Any],
@@ -538,6 +544,83 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
         "created": True,
         "skipped": False,
     }
+    assert payload["outputs"]["hosted_application_id"] == (
+        "ocid1.generativeaihostedapplication.oc1..example"
+    )
+    assert payload["outputs"]["hosted_deployment_id"] == (
+        "ocid1.generativeaihosteddeployment.oc1..example"
+    )
+
+
+def test_agent_factory_apply_fails_when_live_command_execution_fails(
+    monkeypatch,
+) -> None:
+    """Test live deployments do not mark planned commands as completed."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["dry_run"] = False
+
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
+        _notify_fake_resource_progress(progress_callback)
+        return FoundationResourcesResult(
+            compartment_id="ocid1.compartment.oc1..example",
+            project=ProjectResult(
+                project_id="ocid1.generativeaiproject.oc1..example",
+                name="agent-factory-project",
+            ),
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="ocid1.vectorstore.oc1..example",
+                name=payload["vector_store_name"],
+                created=False,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..example",
+                name=payload["connector_name"],
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+        )
+
+    def fake_execute(
+        payload: dict[str, Any],
+        commands_by_step_id: dict[str, list[str]],
+        progress_callback: Any,
+    ) -> dict[str, Any]:
+        _ = payload
+        assert "docker-build" in commands_by_step_id
+        progress_callback("docker-build", "running", None)
+        raise CommandExecutionError("docker-build", "docker build failed")
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
+    )
+    monkeypatch.setattr(
+        "agent_factory_api.app.execute_live_deployment_commands",
+        fake_execute,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = _fetch_run(client, response.json()["deployment_run_id"])
+    steps_by_id = {step["step_id"]: step for step in payload["steps"]}
+    assert payload["status"] == "failed"
+    assert payload["error"] == "docker build failed"
+    assert steps_by_id["docker-build"]["status"] == "failed"
+    assert steps_by_id["registry"]["status"] == "pending"
+    assert payload["outputs"]["note"].startswith("Live deployment failed")
 
 
 def test_foundation_resource_provisioning_waits_before_connector(monkeypatch) -> None:
@@ -650,6 +733,7 @@ def test_agent_factory_apply_uses_resolved_compartment_id(monkeypatch) -> None:
     request_payload = _valid_payload()
     request_payload["dry_run"] = False
     request_payload["compartment"] = "lsaetta"
+    _install_fake_live_executor(monkeypatch)
 
     def fake_provision(
         payload: dict[str, Any],
@@ -1709,6 +1793,45 @@ def _install_fake_preflight(
     monkeypatch.setattr(
         "agent_factory_api.app.validate_ocir_login",
         fake_validate_ocir_login,
+    )
+
+
+def _install_fake_live_executor(monkeypatch) -> None:
+    """Install a fake live executor that simulates final deployment outputs.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+    """
+
+    def fake_execute(
+        payload: dict[str, Any],
+        commands_by_step_id: dict[str, list[str]],
+        progress_callback: Any,
+    ) -> dict[str, Any]:
+        _ = payload
+        for step_id in (
+            "docker-build",
+            "registry",
+            "registry-login",
+            "docker-push",
+            "runtime-environment",
+            "hosted-application",
+            "hosted-deployment",
+            "deployment-readiness",
+            "health",
+        ):
+            assert step_id in commands_by_step_id
+            progress_callback(step_id, "running", None)
+            progress_callback(step_id, "succeeded", {"mocked": True})
+        return {
+            "hosted_application_id": "ocid1.generativeaihostedapplication.oc1..example",
+            "hosted_deployment_id": "ocid1.generativeaihosteddeployment.oc1..example",
+            "endpoint_url": "https://agent.example.test",
+        }
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.execute_live_deployment_commands",
+        fake_execute,
     )
 
 

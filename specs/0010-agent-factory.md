@@ -96,6 +96,9 @@ The local Docker Compose deployment must include:
 - Root-level helper scripts named `start_factory.sh` and `stop_factory.sh`.
 - Docker CLI installed in the Agent Factory API image, because the backend
   performs Docker login, build, and push operations.
+- A read-only bind mount of the repository root into the API container, exposed
+  through `AGENT_FACTORY_REPO_ROOT`, so live deployments can build the RAG agent
+  backend image from the root `Dockerfile`.
 - A bind mount of the host Docker socket at `/var/run/docker.sock` for local
   Compose runs, so the API container can use the host Docker daemon.
 
@@ -387,6 +390,9 @@ Agent Factory must run the deployment workflow in the following order.
 18. Return final deployment outputs.
 
 The backend must stop the sequence on the first unrecoverable failure.
+Non-dry-run deployments must not mark planned Docker, OCIR, or Hosted
+Application commands as succeeded unless those commands were actually executed
+successfully.
 
 The backend must persist or retain enough run state to show which steps
 completed before a failure.

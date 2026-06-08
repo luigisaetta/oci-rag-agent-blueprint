@@ -457,9 +457,12 @@ def build_image_reference(payload: dict[str, Any]) -> str:
     """
 
     repository = payload["container_repository_name"].strip("/")
+    tenancy_namespace = str(
+        payload.get("object_storage_namespace") or "<tenancy-namespace>"
+    )
     return (
         f"{build_ocir_registry(payload)}"
-        f"/<tenancy-namespace>/{repository}:"
+        f"/{tenancy_namespace}/{repository}:"
         f"{payload['container_image_tag']}"
     )
 
