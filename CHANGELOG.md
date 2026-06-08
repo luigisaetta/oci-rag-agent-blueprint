@@ -67,6 +67,13 @@ changes, or documentation updates are introduced.
   or stale autofilled values.
 - Added a direct Agent Factory OCIR credential check action in the sidebar,
   backed by a non-mutating Docker login validation endpoint.
+- Removed the confusing `python3 -m json.tool` runtime-environment command from
+  Agent Factory plans and made runtime environment generation a commandless
+  logical step before Hosted Application creation.
+- Removed OCI CLI wait flags from Hosted Application and Hosted Deployment
+  create commands, keeping readiness in the dedicated deployment-readiness step
+  and allowing the executor to parse OCI JSON output with informational
+  prefixes.
 
 ## 2026-06-07
 

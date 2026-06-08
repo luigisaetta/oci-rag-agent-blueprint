@@ -401,9 +401,13 @@ Agent Factory must run the deployment workflow in the following order.
     username and password. Dry-run must validate these credentials without
     writing to the user's default Docker configuration.
 12. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
-13. Create the OCI Enterprise AI Hosted Application with OCI CLI.
-14. Create the deployment inside the Hosted Application with OCI CLI.
-15. Configure deployment runtime environment variables.
+13. Generate Hosted Application runtime environment variable artifacts.
+14. Create the OCI Enterprise AI Hosted Application with OCI CLI, passing the
+    generated runtime environment variables. The create command must return
+    parseable JSON so the backend can capture the Hosted Application identifier.
+15. Create the deployment inside the Hosted Application with OCI CLI. The create
+    command must return parseable JSON so the backend can capture the Hosted
+    Deployment identifier.
 16. Wait for deployment activation or readiness with OCI CLI.
 17. Validate the deployed `GET /health` endpoint when reachable.
 18. Return final deployment outputs.
@@ -494,6 +498,13 @@ request `resources` entry whose `entity-type` matches the requested resource,
 for example `HOSTED_APPLICATION` or `HOSTED_DEPLOYMENT`. The backend must not
 use unrelated OCIDs from the same response, such as the compartment OCID or work
 request OCID, as the created resource identifier.
+
+Hosted Application and Hosted Deployment create commands must not rely on OCI
+CLI wait output as their primary synchronization mechanism, because wait
+progress text can make the command output unsuitable for JSON parsing. The
+backend must keep deployment activation checks in the dedicated readiness step
+and must tolerate non-JSON informational text before the JSON object returned by
+OCI CLI commands.
 
 The first implementation must create only public endpoint deployments.
 
@@ -668,6 +679,8 @@ Unit tests must cover:
 - Docker CLI command argument construction for build and push.
 - OCI CLI command argument construction for Hosted Application and deployment
   operations.
+- OCI CLI JSON output parsing when informational status text precedes the JSON
+  response.
 - Runtime environment variable construction for the deployed agent.
 - Workflow step ordering.
 - Stop-on-failure behavior.

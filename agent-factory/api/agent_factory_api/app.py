@@ -861,28 +861,27 @@ def _build_steps(
             command=commands[8],
         ),
         FactoryStep(
+            "runtime-environment",
+            "Generate Hosted Application runtime environment",
+        ),
+        FactoryStep(
             "hosted-application",
             "Create OCI Enterprise AI Hosted Application",
             command=commands[9],
         ),
         FactoryStep(
-            "runtime-environment",
-            "Generate Hosted Application runtime environment",
-            command=commands[10],
-        ),
-        FactoryStep(
             "hosted-deployment",
             "Create Hosted Application deployment",
-            command=commands[11],
+            command=commands[10],
         ),
         FactoryStep(
             "deployment-readiness",
             "Wait for Hosted Application deployment readiness",
-            command=commands[12],
+            command=commands[11],
         ),
         FactoryStep(
             "health",
             "Validate deployed health endpoint",
-            command=commands[13],
+            command=commands[12],
         ),
     ]

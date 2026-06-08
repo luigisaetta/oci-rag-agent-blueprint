@@ -268,13 +268,58 @@ def _run_json_step(
         cwd=cwd,
         secrets=secrets,
     )
+    return _load_json_output(step_id, result, secrets or [])
+
+
+def _load_json_output(
+    step_id: str,
+    result: subprocess.CompletedProcess[str],
+    secrets: list[str],
+) -> dict[str, Any]:
+    """Load JSON output from a command result, allowing OCI CLI status prefixes.
+
+    Args:
+        step_id: Workflow step identifier.
+        result: Completed command result.
+        secrets: Secret values to redact from diagnostic messages.
+
+    Returns:
+        dict[str, Any]: Parsed JSON object, or an empty object for empty stdout.
+
+    Raises:
+        CommandExecutionError: If stdout does not contain a JSON object.
+    """
+
+    output = (result.stdout or "").strip()
+    if not output:
+        return {}
+
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(output):
+        if character != "{":
+            continue
+        try:
+            decoded, _ = decoder.raw_decode(output[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return decoded
+
+    sanitized_output = _sanitize_text(output, secrets)
+    if len(sanitized_output) > 500:
+        sanitized_output = f"{sanitized_output[:500]}..."
+    detail = f" Output was: {sanitized_output}" if sanitized_output else ""
     try:
-        return json.loads(result.stdout or "{}")
+        json.loads(output)
     except json.JSONDecodeError as exc:
         raise CommandExecutionError(
             step_id,
-            f"{step_id} did not return valid JSON.",
+            f"{step_id} did not return valid JSON.{detail}",
         ) from exc
+    raise CommandExecutionError(
+        step_id,
+        f"{step_id} returned JSON that was not an object.{detail}",
+    )
 
 
 def _run_docker_login(

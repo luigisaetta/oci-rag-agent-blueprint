@@ -10,6 +10,7 @@ from __future__ import annotations
 # pylint: disable=too-few-public-methods,too-many-lines
 
 import sys
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from agent_factory_api.commands import (  # pylint: disable=wrong-import-positio
 from agent_factory_api.executor import (  # pylint: disable=wrong-import-position
     CommandExecutionError,
     _extract_identifier,
+    _load_json_output,
 )
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
     BucketResult,
@@ -215,6 +217,8 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     assert "test-ocir-password" not in response.text
     assert "docker build --platform linux/amd64" in payload["commands_text"]
     assert "docker manifest inspect" in payload["commands_text"]
+    assert "json.tool" not in payload["commands_text"]
+    assert "--wait-for-state" not in payload["commands_text"]
     assert "hosted-application-collection list-hosted-applications" in (
         payload["commands_text"]
     )
@@ -271,7 +275,10 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
         "tag": "0.1.0",
     }
     assert any(step["step_id"] == "docker-build" for step in payload["steps"])
-    assert any(step["step_id"] == "runtime-environment" for step in payload["steps"])
+    runtime_environment_step = next(
+        step for step in payload["steps"] if step["step_id"] == "runtime-environment"
+    )
+    assert runtime_environment_step["command"] is None
     registry_login_step = next(
         step for step in payload["steps"] if step["step_id"] == "registry-login"
     )
@@ -555,6 +562,23 @@ def test_agent_factory_extracts_hosted_application_id_from_work_request() -> Non
     )
 
 
+def test_agent_factory_loads_oci_json_output_with_status_prefix() -> None:
+    """Test OCI CLI JSON parsing tolerates informational text prefixes."""
+
+    result = subprocess.CompletedProcess(
+        ["oci"],
+        0,
+        stdout='Action completed. Waiting briefly...\n{"data": {"id": "ocid1.test"}}',
+        stderr="",
+    )
+
+    assert _load_json_output(
+        "hosted-deployment",
+        result,
+        secrets=[],
+    ) == {"data": {"id": "ocid1.test"}}
+
+
 def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     monkeypatch,
 ) -> None:
@@ -611,6 +635,7 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     assert "--environment-variables" in payload["commands_text"]
     assert "hosted-application-environment-variables.json" in (payload["commands_text"])
     assert "hosted-deployment create" in payload["commands_text"]
+    assert "--wait-for-state" not in payload["commands_text"]
     runtime_environment = payload["outputs"]["runtime_environment"]
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
         "ocid1.vectorstore.oc1..example"
@@ -2109,7 +2134,6 @@ def _install_fake_live_executor(monkeypatch) -> None:
             "registry",
             "registry-login",
             "docker-push",
-            "runtime-environment",
             "hosted-application",
             "hosted-deployment",
             "deployment-readiness",
@@ -2118,6 +2142,8 @@ def _install_fake_live_executor(monkeypatch) -> None:
             assert step_id in commands_by_step_id
             progress_callback(step_id, "running", None)
             progress_callback(step_id, "succeeded", {"mocked": True})
+        progress_callback("runtime-environment", "running", None)
+        progress_callback("runtime-environment", "succeeded", {"mocked": True})
         return {
             "hosted_application_id": "ocid1.generativeaihostedapplication.oc1..example",
             "hosted_deployment_id": "ocid1.generativeaihosteddeployment.oc1..example",
