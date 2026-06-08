@@ -56,6 +56,10 @@ This specification does not cover:
 - [Document Loading](0008-document-loading.md)
 - [Agent Runtime Tuning](0009-agent-runtime-tuning.md)
 
+## Official References
+
+- [OCI Generative AI Hosted Applications and Deployments](https://docs.oracle.com/en-us/iaas/Content/generative-ai/applications-deployments.htm)
+
 ## Application Structure
 
 Agent Factory must be implemented as a separate application from the RAG agent

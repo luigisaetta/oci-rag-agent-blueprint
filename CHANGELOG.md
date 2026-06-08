@@ -25,6 +25,8 @@ changes, or documentation updates are introduced.
   longer provide the `docker` client binary through `docker.io` alone.
 - Changed `start_factory.sh --build` to rebuild the API image without cache and
   force-recreate services so runtime tool changes are picked up.
+- Added the official OCI Generative AI Hosted Applications and Deployments
+  documentation link to the Agent Factory specification.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.
