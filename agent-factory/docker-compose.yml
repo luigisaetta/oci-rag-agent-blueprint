@@ -1,5 +1,3 @@
-name: agent-factory
-
 services:
   factory-api:
     image: oci-rag-agent-factory-api

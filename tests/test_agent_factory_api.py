@@ -67,9 +67,13 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
         encoding="utf-8"
     )
     start_script = (PROJECT_ROOT / "start_factory.sh").read_text(encoding="utf-8")
+    stop_script = (PROJECT_ROOT / "stop_factory.sh").read_text(encoding="utf-8")
 
     assert "docker.io docker-cli" in api_dockerfile
+    assert not compose_file.startswith("name:")
     assert "/var/run/docker.sock:/var/run/docker.sock" in compose_file
+    assert '-p "${COMPOSE_PROJECT_NAME}"' in start_script
+    assert '-p "${COMPOSE_PROJECT_NAME}"' in stop_script
     assert "build --no-cache factory-api" in start_script
     assert "up -d --build --force-recreate" in start_script
 

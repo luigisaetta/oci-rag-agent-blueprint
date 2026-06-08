@@ -87,8 +87,10 @@ The local Docker Compose deployment must include:
 
 - A FastAPI backend container for the Agent Factory API.
 - A Next.js frontend container for the Agent Factory UI.
-- A dedicated Compose project name so it can be started and stopped without
-  affecting the RAG agent demo deployment.
+- A dedicated Compose project name passed by the helper scripts with
+  `docker-compose -p agent-factory`, so it can be started and stopped without
+  affecting the RAG agent demo deployment while remaining compatible with
+  Docker Compose v1 on Linux.
 - Root-level helper scripts named `start_factory.sh` and `stop_factory.sh`.
 - Docker CLI installed in the Agent Factory API image, because the backend
   performs Docker login, build, and push operations.

@@ -27,6 +27,8 @@ changes, or documentation updates are introduced.
   force-recreate services so runtime tool changes are picked up.
 - Added the official OCI Generative AI Hosted Applications and Deployments
   documentation link to the Agent Factory specification.
+- Made the Agent Factory Compose project name compatible with Docker Compose v1
+  by moving it from the Compose file to the helper script `-p` option.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

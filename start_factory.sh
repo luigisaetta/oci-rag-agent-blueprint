@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/agent-factory/docker-compose.yml"
 COMPOSE_CMD="docker-compose"
+COMPOSE_PROJECT_NAME="agent-factory"
 BUILD_FLAG=""
 
 usage() {
@@ -41,14 +42,14 @@ cd "${SCRIPT_DIR}"
 
 echo "Starting Agent Factory..."
 if [[ -n "${BUILD_FLAG}" ]]; then
-  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" build --no-cache factory-api
-  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" up -d --build --force-recreate
+  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" build --no-cache factory-api
+  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d --build --force-recreate
 else
-  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" up -d
+  "${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d
 fi
 
 echo
-"${COMPOSE_CMD}" -f "${COMPOSE_FILE}" ps
+"${COMPOSE_CMD}" -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" ps
 echo
 echo "Agent Factory API: http://localhost:8081/factory/health"
 echo "Agent Factory UI:  http://localhost:3100"
