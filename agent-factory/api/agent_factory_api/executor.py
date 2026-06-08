@@ -65,6 +65,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
 
     repo_root = _repo_root()
     resolved_identifiers = build_resolved_identifiers(payload)
+    _ensure_live_identifiers_resolved(resolved_identifiers)
     runtime_environment = build_agent_runtime_environment(payload, resolved_identifiers)
     artifacts = build_hosted_application_artifacts(
         payload,
@@ -420,6 +421,29 @@ def _require_executable(executable: str, step_id: str) -> None:
 
     if shutil.which(executable) is None:
         raise CommandExecutionError(step_id, f"{executable} CLI is required.")
+
+
+def _ensure_live_identifiers_resolved(resolved_identifiers: dict[str, str]) -> None:
+    """Reject live deployments that still contain planning placeholders.
+
+    Args:
+        resolved_identifiers: Identifiers used by Hosted Application artifacts.
+
+    Raises:
+        CommandExecutionError: If a required live identifier is unresolved.
+    """
+
+    unresolved = {
+        name: value
+        for name, value in resolved_identifiers.items()
+        if value.startswith("<") and value.endswith(">")
+    }
+    if unresolved:
+        unresolved_names = ", ".join(sorted(unresolved))
+        raise CommandExecutionError(
+            "hosted-application",
+            f"Live deployment has unresolved identifiers: {unresolved_names}.",
+        )
 
 
 def _repo_root() -> Path:

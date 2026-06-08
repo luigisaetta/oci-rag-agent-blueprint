@@ -61,6 +61,16 @@ Agent Factory API: http://localhost:8081/factory/health
 Agent Factory UI:  http://localhost:3100
 ```
 
-The first implementation is a skeleton. It validates input, generates dry-run
-commands, tracks step status, and returns command scripts without creating OCI
-resources.
+When the UI is opened from a browser on a different machine, the Factory API
+endpoint field must use the hostname or IP address of the machine that runs the
+Agent Factory API backend. For example, when the backend runs on a host named
+`proxima`, set the field to:
+
+```text
+http://proxima:8081/factory/deployments
+```
+
+Dry runs validate inputs and generate command plans without creating OCI
+resources. Non-dry-run deployments create or reuse the configured OCI resources,
+build and push the RAG agent backend image, and create the Hosted Application
+deployment.

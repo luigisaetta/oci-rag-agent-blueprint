@@ -43,6 +43,10 @@ changes, or documentation updates are introduced.
   and deployment steps can execute inside the container.
 - Changed the Agent Factory UI default backend endpoint to use the browser host
   on port `8081` when the UI is opened from a non-localhost machine.
+- Documented how to set the Agent Factory backend endpoint field when the UI is
+  opened from a browser on a different machine.
+- Added a live deployment guard that fails before Hosted Application creation if
+  any required resource identifier still contains a planning placeholder.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

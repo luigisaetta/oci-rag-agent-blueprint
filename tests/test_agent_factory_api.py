@@ -537,6 +537,18 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     assert payload["outputs"]["runtime_environment"]["OCI_VECTOR_STORE_ID"] == (
         "ocid1.vectorstore.oc1..created"
     )
+    environment_by_name = {
+        item["name"]: item
+        for item in payload["outputs"]["dry_run_artifacts"][
+            "hosted-application-environment-variables.json"
+        ]
+    }
+    assert environment_by_name["OCI_VECTOR_STORE_ID"]["value"] == (
+        "ocid1.vectorstore.oc1..created"
+    )
+    assert "<created-or-resolved-vector-store-ocid>" not in str(
+        payload["outputs"]["dry_run_artifacts"]
+    )
     assert payload["outputs"]["resolved_identifiers"]["connector_id"] == (
         "ocid1.vectorstoreconnector.oc1..created"
     )

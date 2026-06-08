@@ -128,6 +128,9 @@ browser. The local default must point to `http://localhost:8081/factory/deployme
 When the UI is opened from a non-localhost browser host, and no explicit backend
 URL is configured, the UI must default the backend API endpoint to the current
 browser hostname on port `8081`.
+The Agent Factory documentation must instruct users running the UI from a remote
+browser to set the backend endpoint field to the hostname or IP address of the
+machine that runs the Agent Factory API backend.
 
 ## Guided Region And Model Choices
 
