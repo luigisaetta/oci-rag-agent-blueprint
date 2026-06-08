@@ -33,6 +33,10 @@ http://localhost:3100
 
 ## Docker Compose
 
+The Agent Factory API container uses the host Docker daemon to validate OCIR
+credentials, build the RAG agent backend image, and push it to OCIR. Make sure
+Docker is running on the host before starting Agent Factory.
+
 Start the Agent Factory deployment from the repository root:
 
 ```bash

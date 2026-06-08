@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 AGENT_FACTORY_API_PATH = Path(__file__).resolve().parents[1] / "agent-factory" / "api"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 
 import agent_factory_api.resources as factory_resources  # pylint: disable=wrong-import-position
@@ -54,6 +55,20 @@ def test_agent_factory_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_agent_factory_compose_api_container_can_use_docker() -> None:
+    """Test Agent Factory API image and Compose expose Docker CLI access."""
+
+    api_dockerfile = (PROJECT_ROOT / "agent-factory" / "api" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    compose_file = (PROJECT_ROOT / "agent-factory" / "docker-compose.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "docker.io" in api_dockerfile
+    assert "/var/run/docker.sock:/var/run/docker.sock" in compose_file
 
 
 def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:

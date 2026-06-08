@@ -18,6 +18,9 @@ changes, or documentation updates are introduced.
   configuration so invalid registry credentials fail before deployment.
 - Fixed GenAI project name resolution to call the OCI SDK
   `list_generative_ai_projects` method exposed by `GenerativeAiClient`.
+- Added Docker CLI to the Agent Factory API container and mounted the host
+  Docker socket in the local Compose deployment so dry-run OCIR validation and
+  live image build/push operations can run inside the container.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.
