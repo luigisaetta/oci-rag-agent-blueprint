@@ -10,10 +10,10 @@ BUILD_FLAG=""
 export OCI_PROFILE="${OCI_PROFILE:-DEFAULT}"
 export OCI_AUTH_MODE="${OCI_AUTH_MODE:-user_principal}"
 
-if command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD=(docker-compose)
-elif docker compose version >/dev/null 2>&1; then
+if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD=(docker-compose)
 else
   echo "Docker Compose is required. Install docker-compose or Docker Compose v2." >&2
   exit 1

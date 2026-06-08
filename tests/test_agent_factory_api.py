@@ -78,6 +78,12 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     assert '-p "${COMPOSE_PROJECT_NAME}"' in stop_script
     assert "docker compose version" in start_script
     assert "docker compose version" in stop_script
+    assert start_script.index("docker compose version") < start_script.index(
+        "command -v docker-compose"
+    )
+    assert stop_script.index("docker compose version") < stop_script.index(
+        "command -v docker-compose"
+    )
     assert 'export OCI_PROFILE="${OCI_PROFILE:-DEFAULT}"' in start_script
     assert 'export OCI_AUTH_MODE="${OCI_AUTH_MODE:-user_principal}"' in start_script
     assert "build --no-cache factory-api" in start_script

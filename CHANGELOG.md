@@ -32,6 +32,8 @@ changes, or documentation updates are introduced.
 - Made the Agent Factory Compose scripts portable across Linux and macOS by
   declaring a Compose file version, avoiding default-value interpolation inside
   the Compose file, and supporting both `docker-compose` and `docker compose`.
+- Changed the Agent Factory helper scripts to prefer Docker Compose v2
+  (`docker compose`) over older `docker-compose` clients.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

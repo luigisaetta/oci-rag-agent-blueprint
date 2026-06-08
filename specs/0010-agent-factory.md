@@ -100,8 +100,9 @@ The local Docker Compose deployment must include:
   Compose runs, so the API container can use the host Docker daemon.
 
 The helper scripts must start and stop only the Agent Factory services.
-The helper scripts must use `docker-compose` when available and fall back to
-`docker compose` when only Docker Compose v2 is installed.
+The helper scripts must prefer `docker compose` v2 when available and fall back
+to `docker-compose` v1 only when the v2 plugin is not installed, because older
+`docker-compose` clients can fail against newer Docker daemons.
 The helper scripts must export default Compose interpolation variables before
 invoking Compose, instead of relying on shell default interpolation syntax inside
 the Compose file.
