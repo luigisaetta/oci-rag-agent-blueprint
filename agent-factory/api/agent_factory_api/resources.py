@@ -10,6 +10,9 @@ from __future__ import annotations
 # pylint: disable=too-few-public-methods,too-many-lines
 
 import os
+import shutil
+import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -23,6 +26,7 @@ DEFAULT_OCI_PROFILE = "DEFAULT"
 OCI_AUTH_MODE_ENV_VAR = "OCI_AUTH_MODE"
 RESOURCE_WAIT_INTERVAL_ENV_VAR = "AGENT_FACTORY_RESOURCE_WAIT_INTERVAL_SECONDS"
 RESOURCE_WAIT_TIMEOUT_ENV_VAR = "AGENT_FACTORY_RESOURCE_WAIT_TIMEOUT_SECONDS"
+OCIR_LOGIN_TIMEOUT_SECONDS = 60
 FAILED_RESOURCE_STATES = {"DELETED", "DELETING", "FAILED"}
 TRANSITIONAL_RESOURCE_STATES = {
     "ACCEPTED",
@@ -1132,6 +1136,68 @@ def preflight_foundation_resources(
     )
 
 
+def validate_ocir_login(
+    *, registry: str, username: str, password: str
+) -> dict[str, str]:
+    """Validate OCIR credentials with Docker login using temporary config.
+
+    Args:
+        registry: OCIR registry hostname.
+        username: OCIR username.
+        password: OCIR password or auth token.
+
+    Returns:
+        dict[str, str]: Non-secret validation details.
+
+    Raises:
+        ResourceProvisioningError: If Docker is unavailable or login fails.
+    """
+
+    docker_path = shutil.which("docker")
+    if docker_path is None:
+        raise ResourceProvisioningError(
+            "Docker CLI is required to validate OCIR credentials."
+        )
+
+    with tempfile.TemporaryDirectory(prefix="agent-factory-docker-") as docker_config:
+        environment = dict(os.environ)
+        environment["DOCKER_CONFIG"] = docker_config
+        try:
+            result = subprocess.run(
+                [
+                    docker_path,
+                    "login",
+                    registry,
+                    "--username",
+                    username,
+                    "--password-stdin",
+                ],
+                input=f"{password}\n",
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=OCIR_LOGIN_TIMEOUT_SECONDS,
+                env=environment,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ResourceProvisioningError(
+                f"OCIR Docker login timed out for {registry}."
+            ) from exc
+
+    if result.returncode != 0:
+        detail = _sanitize_secret(
+            " ".join(part.strip() for part in (result.stderr, result.stdout) if part),
+            password,
+        )
+        detail = detail or f"docker login exited with status {result.returncode}"
+        raise ResourceProvisioningError(
+            f"OCIR Docker login failed for {registry}: {detail}"
+        )
+
+    return {"ocir_registry": registry, "ocir_username": username}
+
+
 def resolve_compartment_id(*, compartment: str, region: str) -> str:
     """Resolve a compartment name or OCID to a compartment OCID.
 
@@ -1991,3 +2057,19 @@ def _exception_status(exc: Exception) -> int | None:
     """
 
     return getattr(exc, "status", None) or getattr(exc, "status_code", None)
+
+
+def _sanitize_secret(message: str, secret: str) -> str:
+    """Remove a secret value from an error message.
+
+    Args:
+        message: Error message that may contain a secret.
+        secret: Secret value to remove.
+
+    Returns:
+        str: Sanitized message.
+    """
+
+    if not secret:
+        return message
+    return message.replace(secret, "********")

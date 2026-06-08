@@ -133,6 +133,13 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     }
     assert any(step["step_id"] == "docker-build" for step in payload["steps"])
     assert any(step["step_id"] == "runtime-environment" for step in payload["steps"])
+    registry_login_step = next(
+        step for step in payload["steps"] if step["step_id"] == "registry-login"
+    )
+    assert registry_login_step["outputs"] == {
+        "ocir_registry": "fra.ocir.io",
+        "ocir_username": "test-ocir-user",
+    }
 
 
 def test_agent_factory_resolves_names_before_downstream_commands(monkeypatch) -> None:
@@ -224,6 +231,39 @@ def test_agent_factory_rejects_unsupported_options() -> None:
     assert "jwt_protection_enabled" in field_errors
     assert "endpoint_visibility" in field_errors
     assert "network_mode" in field_errors
+
+
+def test_agent_factory_dry_run_fails_on_invalid_ocir_credentials(monkeypatch) -> None:
+    """Test dry-run validates OCIR Docker credentials."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
+
+    def fake_validate_ocir_login(**kwargs: Any) -> dict[str, str]:
+        _ = kwargs
+        raise ResourceProvisioningError(
+            "OCIR Docker login failed for fra.ocir.io: unauthorized"
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_ocir_login",
+        fake_validate_ocir_login,
+    )
+
+    response = client.post("/factory/deployments", json=_valid_payload())
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["error"] == (
+        "OCIR Docker login failed for fra.ocir.io: unauthorized"
+    )
+    registry_login_step = next(
+        step for step in payload["steps"] if step["step_id"] == "registry-login"
+    )
+    assert registry_login_step["status"] == "failed"
+    assert "test-ocir-password" not in response.text
 
 
 def test_agent_factory_rejects_unknown_region_and_model() -> None:
@@ -1578,6 +1618,17 @@ def _install_fake_preflight(
     monkeypatch.setattr(
         "agent_factory_api.app.preflight_foundation_resources",
         fake_preflight,
+    )
+
+    def fake_validate_ocir_login(**kwargs: Any) -> dict[str, str]:
+        return {
+            "ocir_registry": str(kwargs["registry"]),
+            "ocir_username": str(kwargs["username"]),
+        }
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_ocir_login",
+        fake_validate_ocir_login,
     )
 
 

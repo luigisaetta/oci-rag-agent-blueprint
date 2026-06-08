@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from agent_factory_api.commands import (
     build_deployment_plan,
+    build_ocir_registry,
     redact_runtime_environment,
 )
 from agent_factory_api.models import (
@@ -33,6 +34,7 @@ from agent_factory_api.resources import (
     ResourceProvisioningError,
     preflight_foundation_resources,
     provision_foundation_resources,
+    validate_ocir_login,
 )
 
 RUNS: dict[str, DeploymentRun] = {}
@@ -172,6 +174,7 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
     dry_run = bool(payload["dry_run"])
     now = utc_now()
     resource_result: FoundationResourcesResult | None = None
+    ocir_login_result: dict[str, str] | None = None
     plan_payload = dict(payload)
 
     try:
@@ -190,6 +193,12 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
             )
             if resource_result.connector is not None:
                 plan_payload["connector_name"] = resource_result.connector.connector_id
+        if dry_run:
+            ocir_login_result = validate_ocir_login(
+                registry=build_ocir_registry(plan_payload),
+                username=str(plan_payload["ocir_username"]),
+                password=str(plan_payload["ocir_password"]),
+            )
     except ResourceProvisioningError as exc:
         return _failed_resource_run(payload, dry_run, now, str(exc))
 
@@ -206,6 +215,8 @@ def _create_run(payload: dict[str, Any]) -> DeploymentRun:
 
     if resource_result is not None:
         _attach_resource_outputs(steps, resource_result)
+    if ocir_login_result is not None:
+        _attach_ocir_login_outputs(steps, ocir_login_result)
 
     return DeploymentRun(
         deployment_run_id=str(uuid4()),
@@ -522,6 +533,21 @@ def _attach_resource_outputs(
             )
 
 
+def _attach_ocir_login_outputs(
+    steps: list[FactoryStep], ocir_login_result: dict[str, str]
+) -> None:
+    """Attach OCIR login validation outputs to workflow steps.
+
+    Args:
+        steps: Workflow steps for the run.
+        ocir_login_result: Non-secret Docker login validation result.
+    """
+
+    step = _find_step(steps, "registry-login")
+    if step is not None:
+        step.outputs = ocir_login_result
+
+
 def _set_step_status(  # pylint: disable=too-many-arguments
     steps: list[FactoryStep],
     step_id: str,
@@ -623,6 +649,8 @@ def _failed_resource_step_id(error_message: str) -> str:
         return "bucket"
     if "connector" in normalized_error:
         return "data-sync-connector"
+    if "ocir" in normalized_error or "docker" in normalized_error:
+        return "registry-login"
     return "vector-store"
 
 

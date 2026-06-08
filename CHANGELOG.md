@@ -14,6 +14,8 @@ changes, or documentation updates are introduced.
 - Added explicit OCIR username and password inputs to Agent Factory and changed
   Docker login planning to use those credentials instead of assuming a prior
   local login.
+- Added dry-run validation of OCIR Docker credentials using temporary Docker
+  configuration so invalid registry credentials fail before deployment.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

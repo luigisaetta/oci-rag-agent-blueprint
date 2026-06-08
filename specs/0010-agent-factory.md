@@ -259,7 +259,9 @@ the generated command plan and Hosted Application JSON artifacts. At minimum,
 dry-run must resolve compartment names, resolve GenAI project names inside the
 resolved compartment, resolve the Object Storage namespace, validate reused
 resources, and check for existing resources when create mode can reuse or would
-conflict. Dry-run must not create, update, push, or delete OCI resources.
+conflict. Dry-run must also validate the submitted OCIR username and password by
+attempting Docker login against the target OCIR registry using temporary Docker
+configuration. Dry-run must not create, update, push, or delete OCI resources.
 
 When the user supplies a name for a resource that is later required as an OCID,
 the backend must include an explicit resolution step and all downstream commands
@@ -352,7 +354,8 @@ Agent Factory must run the deployment workflow in the following order.
 9. Build the RAG agent backend container image with Docker CLI.
 10. Create or reuse the OCI Container Registry repository.
 11. Authenticate Docker to OCI Container Registry using the submitted OCIR
-    username and password.
+    username and password. Dry-run must validate these credentials without
+    writing to the user's default Docker configuration.
 12. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
 13. Create the OCI Enterprise AI Hosted Application with OCI CLI.
 14. Create the deployment inside the Hosted Application with OCI CLI.
