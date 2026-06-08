@@ -47,6 +47,12 @@ changes, or documentation updates are introduced.
   opened from a browser on a different machine.
 - Added a live deployment guard that fails before Hosted Application creation if
   any required resource identifier still contains a planning placeholder.
+- Fixed live Hosted Application and Hosted Deployment identifier extraction so
+  OCI CLI work-request responses use the matching resource identifier instead of
+  unrelated OCIDs from the same response.
+- Treated OCI Vector Store service identifiers such as `vs_fra_...` as resolved
+  runtime values so live deployments propagate the real Vector Store identifier
+  instead of the planning placeholder.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

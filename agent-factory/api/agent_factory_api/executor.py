@@ -128,7 +128,10 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             cwd=repo_root,
             secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
         )
-        hosted_application_id = _extract_identifier(hosted_application_output)
+        hosted_application_id = _extract_identifier(
+            hosted_application_output,
+            entity_type="HOSTED_APPLICATION",
+        )
         if not hosted_application_id:
             raise CommandExecutionError(
                 "hosted-application",
@@ -150,7 +153,10 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             cwd=repo_root,
             secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
         )
-        hosted_deployment_id = _extract_identifier(hosted_deployment_output)
+        hosted_deployment_id = _extract_identifier(
+            hosted_deployment_output,
+            entity_type="HOSTED_DEPLOYMENT",
+        )
         if not hosted_deployment_id:
             raise CommandExecutionError(
                 "hosted-deployment",
@@ -363,12 +369,58 @@ def _command(commands_by_step_id: dict[str, list[str]], step_id: str) -> list[st
     return list(command)
 
 
-def _extract_identifier(command_output: dict[str, Any]) -> str | None:
-    """Extract the first OCID-looking identifier from OCI CLI JSON output."""
+def _extract_identifier(
+    command_output: dict[str, Any], *, entity_type: str | None = None
+) -> str | None:
+    """Extract a resource identifier from OCI CLI JSON output.
+
+    Args:
+        command_output: OCI CLI JSON response.
+        entity_type: Optional work-request resource entity type to prefer.
+
+    Returns:
+        str | None: Matching OCID, if one can be found.
+    """
+
+    if entity_type:
+        resource_identifier = _extract_work_request_resource_identifier(
+            command_output,
+            entity_type=entity_type,
+        )
+        if resource_identifier:
+            return resource_identifier
 
     for value in _walk_values(command_output):
         if isinstance(value, str) and value.startswith("ocid1."):
             return value
+    return None
+
+
+def _extract_work_request_resource_identifier(
+    command_output: dict[str, Any], *, entity_type: str
+) -> str | None:
+    """Extract a matching resource identifier from OCI work-request output.
+
+    Args:
+        command_output: OCI CLI JSON response.
+        entity_type: Expected resource entity type.
+
+    Returns:
+        str | None: Matching work-request resource identifier, if present.
+    """
+
+    resources = command_output.get("data", {}).get("resources", [])
+    if not isinstance(resources, list):
+        return None
+
+    for resource in resources:
+        if not isinstance(resource, dict):
+            continue
+        if str(resource.get("entity-type", "")).upper() != entity_type:
+            continue
+        identifier = resource.get("identifier")
+        if isinstance(identifier, str) and identifier.startswith("ocid1."):
+            return identifier
     return None
 
 

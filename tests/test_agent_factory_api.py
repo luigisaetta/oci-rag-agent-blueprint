@@ -24,9 +24,11 @@ import agent_factory_api.resources as factory_resources  # pylint: disable=wrong
 from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-position
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
+    build_resolved_identifiers,
 )
 from agent_factory_api.executor import (  # pylint: disable=wrong-import-position
     CommandExecutionError,
+    _extract_identifier,
 )
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
     BucketResult,
@@ -396,6 +398,39 @@ def test_agent_factory_returns_saved_run_and_commands(monkeypatch) -> None:
     assert commands_response.text.startswith("#!/usr/bin/env bash")
 
 
+def test_agent_factory_treats_vector_store_service_id_as_resolved() -> None:
+    """Test Vector Store service IDs are valid runtime identifiers."""
+
+    request_payload = _valid_payload()
+    request_payload["vector_store_name"] = "vs_fra_1234567890"
+
+    identifiers = build_resolved_identifiers(request_payload)
+
+    assert identifiers["vector_store_id"] == "vs_fra_1234567890"
+
+
+def test_agent_factory_extracts_hosted_application_id_from_work_request() -> None:
+    """Test Hosted Application ID extraction skips unrelated OCIDs."""
+
+    command_output = {
+        "data": {
+            "compartment-id": "ocid1.compartment.oc1..example",
+            "id": "ocid1.generativeaiworkrequest.oc1..example",
+            "resources": [
+                {
+                    "entity-type": "HOSTED_APPLICATION",
+                    "identifier": "ocid1.generativeaihostedapplication.oc1..example",
+                }
+            ],
+        }
+    }
+
+    assert (
+        _extract_identifier(command_output, entity_type="HOSTED_APPLICATION")
+        == "ocid1.generativeaihostedapplication.oc1..example"
+    )
+
+
 def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     monkeypatch,
 ) -> None:
@@ -501,7 +536,7 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
                 created=True,
             ),
             vector_store=VectorStoreResult(
-                vector_store_id="ocid1.vectorstore.oc1..created",
+                vector_store_id="vs_fra_created",
                 name="agent-factory-vector-store",
                 created=True,
             ),
@@ -532,10 +567,10 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
         "ocid1.generativeaiproject.oc1..example"
     )
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
-        "ocid1.vectorstore.oc1..created"
+        "vs_fra_created"
     )
     assert payload["outputs"]["runtime_environment"]["OCI_VECTOR_STORE_ID"] == (
-        "ocid1.vectorstore.oc1..created"
+        "vs_fra_created"
     )
     environment_by_name = {
         item["name"]: item
@@ -543,9 +578,7 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
             "hosted-application-environment-variables.json"
         ]
     }
-    assert environment_by_name["OCI_VECTOR_STORE_ID"]["value"] == (
-        "ocid1.vectorstore.oc1..created"
-    )
+    assert environment_by_name["OCI_VECTOR_STORE_ID"]["value"] == ("vs_fra_created")
     assert "<created-or-resolved-vector-store-ocid>" not in str(
         payload["outputs"]["dry_run_artifacts"]
     )

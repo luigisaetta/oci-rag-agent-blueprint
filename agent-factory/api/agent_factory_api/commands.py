@@ -639,17 +639,17 @@ def _resolved_compartment_id(payload: dict[str, Any]) -> str:
 
 
 def _resolved_vector_store_id(payload: dict[str, Any]) -> str:
-    """Return the Vector Store OCID or the placeholder produced by resolution.
+    """Return the Vector Store identifier or the placeholder produced by resolution.
 
     Args:
         payload: Normalized deployment payload.
 
     Returns:
-        str: Vector Store OCID value for the deployed agent environment.
+        str: Vector Store identifier for the deployed agent environment.
     """
 
     vector_store_name = str(payload["vector_store_name"])
-    if vector_store_name.startswith("ocid1."):
+    if vector_store_name.startswith(("ocid1.", "vs_")):
         return vector_store_name
     return "<created-or-resolved-vector-store-ocid>"
 

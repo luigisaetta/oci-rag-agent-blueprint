@@ -305,6 +305,12 @@ clear placeholder such as `<resolved-compartment-ocid>`,
 `<resolved-namespace>`, or `<created-or-resolved-vector-store-ocid>` for values
 that cannot be known until live OCI creation.
 
+Vector Store values propagated to the deployed agent must use the actual
+identifier returned by the OCI Enterprise AI Vector Store control plane. That
+identifier may be an OCI service identifier such as `vs_fra_...` rather than an
+`ocid1...` OCID, and it must be treated as resolved once returned by lookup or
+creation.
+
 ## Deployment Inputs
 
 Agent Factory must collect the following inputs.
@@ -472,6 +478,13 @@ Hosted Application creation must be performed through OCI CLI commands.
 
 Hosted Application deployment creation and status polling must be performed
 through OCI CLI commands.
+
+When OCI CLI Hosted Application or Hosted Deployment creation returns a work
+request, the backend must extract the created resource identifier from the work
+request `resources` entry whose `entity-type` matches the requested resource,
+for example `HOSTED_APPLICATION` or `HOSTED_DEPLOYMENT`. The backend must not
+use unrelated OCIDs from the same response, such as the compartment OCID or work
+request OCID, as the created resource identifier.
 
 The first implementation must create only public endpoint deployments.
 
