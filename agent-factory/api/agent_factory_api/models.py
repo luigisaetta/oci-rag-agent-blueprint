@@ -248,7 +248,7 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
         dict[str, Any]: Payload with defaults applied.
     """
 
-    normalized = dict(payload)
+    normalized = _strip_text_values(payload)
     normalized.setdefault("bucket_mode", "create")
     normalized.setdefault("vector_store_mode", "create")
     normalized.setdefault("connector_mode", "create")
@@ -262,6 +262,22 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     if "genai_project" not in normalized and "genai_project_ocid" in normalized:
         normalized["genai_project"] = normalized["genai_project_ocid"]
     return normalized
+
+
+def _strip_text_values(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of a payload with surrounding whitespace removed.
+
+    Args:
+        payload: Raw JSON payload.
+
+    Returns:
+        dict[str, Any]: Payload with string values stripped.
+    """
+
+    return {
+        field_name: value.strip() if isinstance(value, str) else value
+        for field_name, value in payload.items()
+    }
 
 
 def _required_fields() -> tuple[str, ...]:

@@ -62,6 +62,9 @@ changes, or documentation updates are introduced.
   treated as successful reuse instead of leaving the deployment failed.
 - Fixed live Agent Factory failure handling so failed runs cannot leave steps in
   `running` state and the UI always displays the run-level error message.
+- Normalized pasted Agent Factory text inputs and disabled browser autofill for
+  secret fields so OCIR auth tokens are not submitted with accidental whitespace
+  or stale autofilled values.
 
 ## 2026-06-07
 

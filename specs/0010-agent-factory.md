@@ -573,6 +573,10 @@ Validation failures must occur before OCI resources are created.
 Validation errors must be returned as structured responses that the UI can map
 to form fields or global workflow errors.
 
+The backend must normalize leading and trailing whitespace from submitted text
+fields before validation and command execution so pasted credentials, OCIDs, and
+resource names do not fail because of accidental surrounding whitespace.
+
 ## Error Handling
 
 The backend must make errors predictable and actionable.

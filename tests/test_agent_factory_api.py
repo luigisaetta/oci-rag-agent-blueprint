@@ -199,6 +199,47 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     }
 
 
+def test_agent_factory_strips_surrounding_text_input_whitespace(monkeypatch) -> None:
+    """Test pasted text values are normalized before planning and login checks."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
+    request_payload = _valid_payload()
+    request_payload["ocir_username"] = " test-ocir-user "
+    request_payload["ocir_password"] = " test-ocir-password "
+    request_payload["container_repository_name"] = " oci-rag-agent-blueprint-agent "
+
+    captured_login: dict[str, str] = {}
+
+    def fake_validate_ocir_login(**kwargs: Any) -> dict[str, str]:
+        captured_login["username"] = str(kwargs["username"])
+        captured_login["password"] = str(kwargs["password"])
+        return {
+            "ocir_registry": str(kwargs["registry"]),
+            "ocir_username": str(kwargs["username"]),
+        }
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_ocir_login",
+        fake_validate_ocir_login,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert captured_login == {
+        "username": "test-ocir-user",
+        "password": "test-ocir-password",
+    }
+    assert payload["request"]["ocir_username"] == "test-ocir-user"
+    assert (
+        payload["outputs"]["image_reference"]
+        == "fra.ocir.io/test-namespace/oci-rag-agent-blueprint-agent:0.1.0"
+    )
+
+
 def test_agent_factory_resolves_names_before_downstream_commands(monkeypatch) -> None:
     """Test names are converted to OCID placeholders for downstream commands."""
 

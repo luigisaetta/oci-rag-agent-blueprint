@@ -71,7 +71,8 @@ function Field({
   error = "",
   disabled = false,
   min,
-  max
+  max,
+  autoComplete
 }) {
   return (
     <label className="field">
@@ -83,6 +84,7 @@ function Field({
         disabled={disabled}
         min={min}
         max={max}
+        autoComplete={autoComplete}
         onChange={onChange}
         aria-invalid={Boolean(error)}
       />
@@ -318,6 +320,7 @@ export default function Home() {
             value={form.ocir_password}
             onChange={updateField}
             error={fieldErrors.ocir_password}
+            autoComplete="new-password"
           />
         </div>
 
@@ -510,6 +513,7 @@ export default function Home() {
                   type="password"
                   onChange={updateField}
                   error={fieldErrors.openai_api_key}
+                  autoComplete="new-password"
                 />
                 <Field
                   label="Container repository"
