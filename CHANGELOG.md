@@ -21,6 +21,10 @@ changes, or documentation updates are introduced.
 - Added Docker CLI to the Agent Factory API container and mounted the host
   Docker socket in the local Compose deployment so dry-run OCIR validation and
   live image build/push operations can run inside the container.
+- Installed the `docker-cli` package explicitly because recent Debian images no
+  longer provide the `docker` client binary through `docker.io` alone.
+- Changed `start_factory.sh --build` to rebuild the API image without cache and
+  force-recreate services so runtime tool changes are picked up.
 - Updated Agent Factory to accept a GenAI project name or OCID, resolving names
   inside the selected compartment before setting the deployed agent
   `OCI_PROJECT_ID` runtime environment variable.

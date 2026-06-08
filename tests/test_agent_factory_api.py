@@ -66,9 +66,12 @@ def test_agent_factory_compose_api_container_can_use_docker() -> None:
     compose_file = (PROJECT_ROOT / "agent-factory" / "docker-compose.yml").read_text(
         encoding="utf-8"
     )
+    start_script = (PROJECT_ROOT / "start_factory.sh").read_text(encoding="utf-8")
 
-    assert "docker.io" in api_dockerfile
+    assert "docker.io docker-cli" in api_dockerfile
     assert "/var/run/docker.sock:/var/run/docker.sock" in compose_file
+    assert "build --no-cache factory-api" in start_script
+    assert "up -d --build --force-recreate" in start_script
 
 
 def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:

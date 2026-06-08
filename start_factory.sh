@@ -41,7 +41,8 @@ cd "${SCRIPT_DIR}"
 
 echo "Starting Agent Factory..."
 if [[ -n "${BUILD_FLAG}" ]]; then
-  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" up -d --build
+  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" build --no-cache factory-api
+  "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" up -d --build --force-recreate
 else
   "${COMPOSE_CMD}" -f "${COMPOSE_FILE}" up -d
 fi

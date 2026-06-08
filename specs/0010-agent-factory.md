@@ -92,6 +92,9 @@ The local Docker Compose deployment must include:
   Compose runs, so the API container can use the host Docker daemon.
 
 The helper scripts must start and stop only the Agent Factory services.
+When `start_factory.sh --build` is used, the API container must be rebuilt and
+recreated so changes to runtime tools such as Docker CLI are reflected in the
+running service.
 
 The default local ports must be:
 
