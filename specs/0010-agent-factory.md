@@ -408,6 +408,8 @@ The backend must stop the sequence on the first unrecoverable failure.
 Non-dry-run deployments must not mark planned Docker, OCIR, or Hosted
 Application commands as succeeded unless those commands were actually executed
 successfully.
+If the target OCI Container Registry repository already exists, the registry
+step must be treated as a successful reuse instead of a deployment failure.
 
 The backend must persist or retain enough run state to show which steps
 completed before a failure.
@@ -416,6 +418,9 @@ deployment run promptly, continue provisioning work after the response, and
 update the stored run state as each step transitions to running, succeeded,
 failed, or skipped. The UI must poll the deployment status endpoint while the run
 is active and render step updates progressively.
+When a run transitions to `failed`, no step may remain in `running`; the backend
+must mark the failed current step, or any still-running step when the exact
+current step cannot be resolved, with the sanitized error message.
 
 ## RAG Agent Image
 

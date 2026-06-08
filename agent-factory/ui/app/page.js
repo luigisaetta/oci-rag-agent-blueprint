@@ -143,8 +143,24 @@ function StepList({ steps }) {
   );
 }
 
+function initialBackendUrl() {
+  if (
+    typeof window === "undefined" ||
+    process.env.NEXT_PUBLIC_FACTORY_API_URL ||
+    DEFAULT_BACKEND_URL !== LOCAL_BACKEND_URL
+  ) {
+    return DEFAULT_BACKEND_URL;
+  }
+
+  if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return DEFAULT_BACKEND_URL;
+  }
+
+  return `${window.location.protocol}//${window.location.hostname}:8081/factory/deployments`;
+}
+
 export default function Home() {
-  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
+  const [backendUrl, setBackendUrl] = useState(initialBackendUrl);
   const [form, setForm] = useState(INITIAL_FORM);
   const [fieldErrors, setFieldErrors] = useState({});
   const [run, setRun] = useState(null);
@@ -162,22 +178,6 @@ export default function Home() {
   );
 
   const canSubmit = missingRequiredFields.length === 0 && !isSubmitting && !isRunActive;
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      process.env.NEXT_PUBLIC_FACTORY_API_URL ||
-      backendUrl !== LOCAL_BACKEND_URL
-    ) {
-      return;
-    }
-
-    if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-      setBackendUrl(
-        `${window.location.protocol}//${window.location.hostname}:8081/factory/deployments`
-      );
-    }
-  }, [backendUrl]);
 
   useEffect(() => {
     if (!run?.deployment_run_id || !isRunActive) {
@@ -573,6 +573,8 @@ export default function Home() {
                 Save commands
               </button>
             </div>
+
+            {run?.error ? <div className="errorBanner">{run.error}</div> : null}
 
             <StepList steps={run?.steps} />
 

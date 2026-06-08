@@ -58,6 +58,10 @@ changes, or documentation updates are introduced.
   `OCI_PROJECT_ID` runtime environment variable.
 - Updated the Agent Factory UI and specification to describe GenAI project
   name-or-OCID input and show the resolved project identifier in run outputs.
+- Fixed live Agent Factory registry handling so an existing OCIR repository is
+  treated as successful reuse instead of leaving the deployment failed.
+- Fixed live Agent Factory failure handling so failed runs cannot leave steps in
+  `running` state and the UI always displays the run-level error message.
 
 ## 2026-06-07
 

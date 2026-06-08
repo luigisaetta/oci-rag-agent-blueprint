@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 
 import agent_factory_api.resources as factory_resources  # pylint: disable=wrong-import-position
+import agent_factory_api.executor as factory_executor  # pylint: disable=wrong-import-position
 from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-position
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
@@ -682,6 +683,116 @@ def test_agent_factory_apply_fails_when_live_command_execution_fails(
     assert steps_by_id["docker-build"]["status"] == "failed"
     assert steps_by_id["registry"]["status"] == "pending"
     assert payload["outputs"]["note"].startswith("Live deployment failed")
+
+
+def test_live_deployment_failure_does_not_leave_running_steps(
+    monkeypatch,
+) -> None:
+    """Test unexpected step identifiers do not leave UI-visible running steps."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["dry_run"] = False
+
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
+        _notify_fake_resource_progress(progress_callback)
+        return FoundationResourcesResult(
+            compartment_id="ocid1.compartment.oc1..example",
+            project=ProjectResult(
+                project_id="ocid1.generativeaiproject.oc1..example",
+                name="agent-factory-project",
+            ),
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="ocid1.vectorstore.oc1..example",
+                name=payload["vector_store_name"],
+                created=False,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..example",
+                name=payload["connector_name"],
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+        )
+
+    def fake_execute(
+        payload: dict[str, Any],
+        commands_by_step_id: dict[str, list[str]],
+        progress_callback: Any,
+    ) -> dict[str, Any]:
+        _ = payload, commands_by_step_id
+        progress_callback("registry", "running", None)
+        raise CommandExecutionError("oci", "Repository create failed")
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
+    )
+    monkeypatch.setattr(
+        "agent_factory_api.app.execute_live_deployment_commands",
+        fake_execute,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = _fetch_run(client, response.json()["deployment_run_id"])
+    steps_by_id = {step["step_id"]: step for step in payload["steps"]}
+    assert payload["status"] == "failed"
+    assert payload["error"] == "Repository create failed"
+    assert steps_by_id["registry"]["status"] == "failed"
+    assert steps_by_id["registry"]["error"] == "Repository create failed"
+    assert all(step["status"] != "running" for step in payload["steps"])
+
+
+def test_registry_step_reuses_existing_ocir_repository(monkeypatch) -> None:
+    """Test OCIR repository create conflicts are treated as successful reuse."""
+
+    progress_events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def fake_run_command(*args: Any, **kwargs: Any) -> Any:
+        _ = args
+        raise CommandExecutionError(
+            str(kwargs["step_id"]),
+            "ServiceError: code: NAMESPACE_CONFLICT message: Repository already exists.",
+        )
+
+    def capture_progress(
+        step_id: str,
+        status: str,
+        outputs: dict[str, Any] | None,
+    ) -> None:
+        progress_events.append((step_id, status, outputs))
+
+    monkeypatch.setattr(factory_executor, "_run_command", fake_run_command)
+
+    result = factory_executor._run_step(  # pylint: disable=protected-access
+        "registry",
+        ["oci", "artifacts", "container", "repository", "create"],
+        capture_progress,
+        payload=_valid_payload(),
+        cwd=PROJECT_ROOT,
+    )
+
+    assert result.returncode == 0
+    assert progress_events[0] == ("registry", "running", None)
+    assert progress_events[1][0:2] == ("registry", "succeeded")
+    assert progress_events[1][2] == {
+        "created": False,
+        "reused": True,
+        "message": "OCI Container Registry repository already exists.",
+        "repository": "oci-rag-agent-blueprint-agent",
+    }
 
 
 def test_foundation_resource_provisioning_waits_before_connector(monkeypatch) -> None:

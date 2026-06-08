@@ -95,6 +95,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 "registry",
                 _command(commands_by_step_id, "registry"),
                 progress_callback,
+                payload=payload,
                 cwd=repo_root,
                 env=environment,
                 secrets=[str(payload["ocir_password"])],
@@ -204,15 +205,49 @@ def _run_step(  # pylint: disable=too-many-arguments
     command: list[str],
     progress_callback: ProgressCallback,
     *,
+    payload: dict[str, Any] | None = None,
     cwd: Path,
     env: dict[str, str] | None = None,
     secrets: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a command and update progress for one workflow step."""
+    """Run a command and update progress for one workflow step.
+
+    Args:
+        step_id: Workflow step identifier.
+        command: Command arguments to execute.
+        progress_callback: Callback used to update run state.
+        payload: Normalized deployment payload, if step-specific output needs it.
+        cwd: Working directory for the command.
+        env: Optional command environment.
+        secrets: Secret values to redact from command outputs.
+
+    Returns:
+        subprocess.CompletedProcess[str]: Completed command result.
+    """
 
     progress_callback(step_id, "running", None)
-    result = _run_command(command, cwd=cwd, env=env, secrets=secrets)
-    progress_callback(step_id, "succeeded", _command_outputs(result, secrets or []))
+    try:
+        result = _run_command(
+            command,
+            cwd=cwd,
+            env=env,
+            secrets=secrets,
+            step_id=step_id,
+        )
+    except CommandExecutionError as exc:
+        if step_id == "registry" and _is_existing_registry_repository_error(str(exc)):
+            progress_callback(
+                step_id,
+                "succeeded",
+                _registry_reuse_outputs(payload),
+            )
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr=str(exc))
+        raise
+
+    outputs = _command_outputs(result, secrets or [])
+    if step_id == "registry":
+        outputs = {**outputs, "created": True}
+    progress_callback(step_id, "succeeded", outputs)
     return result
 
 
@@ -317,6 +352,43 @@ def _run_command(  # pylint: disable=too-many-arguments
         raise CommandExecutionError(effective_step_id, detail)
 
     return result
+
+
+def _is_existing_registry_repository_error(error_message: str) -> bool:
+    """Return whether an OCIR create failure means the repository already exists.
+
+    Args:
+        error_message: Sanitized OCI CLI error output.
+
+    Returns:
+        bool: True when the registry repository can be reused.
+    """
+
+    normalized_error = error_message.lower()
+    return (
+        "namespace_conflict" in normalized_error
+        and "repository already exists" in normalized_error
+    )
+
+
+def _registry_reuse_outputs(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Build non-secret outputs for a reused OCIR repository.
+
+    Args:
+        payload: Normalized deployment payload, when available.
+
+    Returns:
+        dict[str, Any]: Registry step outputs.
+    """
+
+    outputs: dict[str, Any] = {
+        "created": False,
+        "reused": True,
+        "message": "OCI Container Registry repository already exists.",
+    }
+    if payload is not None:
+        outputs["repository"] = str(payload["container_repository_name"])
+    return outputs
 
 
 def _command_outputs(

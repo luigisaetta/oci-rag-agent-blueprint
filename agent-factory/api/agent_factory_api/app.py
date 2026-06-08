@@ -501,6 +501,11 @@ def _mark_live_run_failed(
         error=error_message,
         timestamp=timestamp,
     )
+    _mark_running_steps_failed(
+        deployment_run.steps,
+        error_message=error_message,
+        timestamp=timestamp,
+    )
     plan = build_deployment_plan(payload, dry_run=False)
     deployment_run.status = "failed"
     deployment_run.completed_at = timestamp
@@ -621,6 +626,25 @@ def _set_step_status(  # pylint: disable=too-many-arguments
         step.outputs = outputs
     if error is not None:
         step.error = error
+
+
+def _mark_running_steps_failed(
+    steps: list[FactoryStep], *, error_message: str, timestamp: str
+) -> None:
+    """Fail any step still marked running after a run-level failure.
+
+    Args:
+        steps: Workflow steps for the run.
+        error_message: Sanitized run error.
+        timestamp: Failure timestamp.
+    """
+
+    for step in steps:
+        if step.status == "running":
+            step.status = "failed"
+            step.ended_at = timestamp
+            if step.error is None:
+                step.error = error_message
 
 
 def _refresh_step_commands(
