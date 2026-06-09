@@ -503,7 +503,10 @@ through OCI CLI commands.
 Before creating a Hosted Application, Agent Factory must list Hosted
 Applications in the target compartment and reuse a non-deleted application whose
 display name matches the requested Hosted Application name. Hosted Applications
-in `DELETED` or `DELETING` lifecycle states must not be reused.
+in `DELETED` or `DELETING` lifecycle states must not be reused. When a matching
+Hosted Application exists but is not yet active, Agent Factory must wait for
+that same Hosted Application to reach `SUCCEEDED` using OCI CLI before creating
+the Hosted Deployment.
 
 When OCI CLI Hosted Application or Hosted Deployment creation returns a work
 request, the backend must extract the created resource identifier from the work
@@ -515,12 +518,10 @@ resource prefix, such as `ocid1.generativeaihostedapplication.` or
 from the same response, such as the compartment OCID or work request OCID, as
 the created resource identifier.
 
-Hosted Application and Hosted Deployment create commands must not rely on OCI
-CLI wait output as their primary synchronization mechanism, because wait
-progress text can make the command output unsuitable for JSON parsing. The
-backend must keep deployment activation checks in the dedicated readiness step
-and must tolerate non-JSON informational text before the JSON object returned by
-OCI CLI commands.
+Hosted Application and Hosted Deployment create commands must use OCI CLI wait
+options, matching the working `oci-enterprise-ai-deployer` behavior. The backend
+must tolerate non-JSON informational text before the JSON object returned by OCI
+CLI commands.
 
 For Docker-image deployments, Agent Factory must prefer the OCI CLI
 `hosted-deployment create-hosted-deployment-single-docker-artifact` shortcut over

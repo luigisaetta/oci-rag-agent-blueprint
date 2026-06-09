@@ -14,6 +14,9 @@ changes, or documentation updates are introduced.
   command.
 - Added browser-local OCIR credential save, load, and forget controls to the
   Agent Factory sidebar without persisting the selected OCI region.
+- Restored OCI CLI wait behavior for Hosted Application and Hosted Deployment
+  creation and wait for existing non-active Hosted Applications before creating
+  dependent deployments.
 
 ## 2026-06-08
 

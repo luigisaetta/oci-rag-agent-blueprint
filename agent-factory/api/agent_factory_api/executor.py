@@ -373,7 +373,21 @@ def _find_existing_hosted_application_id(  # pylint: disable=too-many-arguments
     ]
     if not matches:
         return None
-    hosted_application_id = _first_string(matches[0], "id")
+    hosted_application = matches[0]
+    hosted_application_id = _first_string(hosted_application, "id")
+    lifecycle_state = _first_string(
+        hosted_application,
+        "lifecycle-state",
+        "lifecycleState",
+    ).upper()
+    if lifecycle_state and lifecycle_state != "ACTIVE":
+        _wait_for_hosted_application(
+            payload=payload,
+            hosted_application_id=hosted_application_id,
+            progress_callback=progress_callback,
+            cwd=cwd,
+            secrets=secrets,
+        )
     progress_callback(
         "hosted-application",
         "succeeded",
@@ -381,9 +395,58 @@ def _find_existing_hosted_application_id(  # pylint: disable=too-many-arguments
             "hosted_application_id": hosted_application_id,
             "reused": True,
             "display_name": display_name,
+            "lifecycle_state": "ACTIVE",
         },
     )
     return hosted_application_id
+
+
+def _wait_for_hosted_application(  # pylint: disable=too-many-arguments
+    *,
+    payload: dict[str, Any],
+    hosted_application_id: str,
+    progress_callback: ProgressCallback,
+    cwd: Path,
+    secrets: list[str],
+) -> None:
+    """Wait for an existing Hosted Application to become active using OCI CLI.
+
+    Args:
+        payload: Normalized deployment payload.
+        hosted_application_id: Existing Hosted Application OCID.
+        progress_callback: Callback used to update the Hosted Application step.
+        cwd: Working directory for OCI CLI execution.
+        secrets: Secret values to redact from command output.
+    """
+
+    progress_callback(
+        "hosted-application",
+        "running",
+        {
+            "action": "wait",
+            "hosted_application_id": hosted_application_id,
+        },
+    )
+    _run_json_step(
+        "hosted-application",
+        [
+            "oci",
+            "--region",
+            str(payload["region"]),
+            "--output",
+            "json",
+            "generative-ai",
+            "hosted-application",
+            "get",
+            "--hosted-application-id",
+            hosted_application_id,
+            "--wait-for-state",
+            "SUCCEEDED",
+        ],
+        progress_callback,
+        cwd=cwd,
+        secrets=secrets,
+    )
 
 
 def _build_list_hosted_applications_command(

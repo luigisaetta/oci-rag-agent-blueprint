@@ -7,7 +7,7 @@ Description: Unit tests for the Agent Factory FastAPI skeleton.
 
 from __future__ import annotations
 
-# pylint: disable=too-few-public-methods,too-many-lines
+# pylint: disable=duplicate-code,too-few-public-methods,too-many-lines
 
 import sys
 import subprocess
@@ -239,7 +239,7 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     assert "docker build --platform linux/amd64" in payload["commands_text"]
     assert "docker manifest inspect" in payload["commands_text"]
     assert "json.tool" not in payload["commands_text"]
-    assert "--wait-for-state" not in payload["commands_text"]
+    assert "--wait-for-state SUCCEEDED" in payload["commands_text"]
     assert "hosted-application-collection list-hosted-applications" in (
         payload["commands_text"]
     )
@@ -696,8 +696,75 @@ def test_agent_factory_finds_existing_hosted_application(monkeypatch) -> None:
             ),
             "reused": True,
             "display_name": "agent-factory-app",
+            "lifecycle_state": "ACTIVE",
         },
     )
+
+
+def test_agent_factory_waits_for_existing_creating_hosted_application(
+    monkeypatch,
+) -> None:
+    """Test existing non-active Hosted Applications are waited before reuse."""
+
+    commands: list[list[str]] = []
+    events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def fake_run_command(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        _ = kwargs
+        commands.append(command)
+        if "list-hosted-applications" in command:
+            stdout = (
+                '{"data": {"items": ['
+                '{"display-name": "agent-factory-app", '
+                '"id": "ocid1.generativeaihostedapplication.oc1..creating", '
+                '"lifecycle-state": "CREATING"}'
+                "]}}"
+            )
+        else:
+            stdout = (
+                '{"data": {'
+                '"id": "ocid1.generativeaihostedapplication.oc1..creating", '
+                '"lifecycle-state": "ACTIVE"'
+                "}}"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(
+        "agent_factory_api.executor._run_command",
+        fake_run_command,
+    )
+
+    hosted_application_id = _find_existing_hosted_application_id(
+        payload=_valid_payload(),
+        compartment_id="ocid1.compartment.oc1..example",
+        progress_callback=lambda step_id, status, outputs: events.append(
+            (step_id, status, outputs)
+        ),
+        cwd=PROJECT_ROOT,
+        secrets=[],
+    )
+
+    assert hosted_application_id == (
+        "ocid1.generativeaihostedapplication.oc1..creating"
+    )
+    assert commands[1] == [
+        "oci",
+        "--region",
+        "eu-frankfurt-1",
+        "--output",
+        "json",
+        "generative-ai",
+        "hosted-application",
+        "get",
+        "--hosted-application-id",
+        "ocid1.generativeaihostedapplication.oc1..creating",
+        "--wait-for-state",
+        "SUCCEEDED",
+    ]
+    assert events[-1][0:2] == ("hosted-application", "succeeded")
+    assert events[-1][2]["lifecycle_state"] == "ACTIVE"
 
 
 def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
@@ -758,7 +825,7 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     assert "hosted-deployment create-hosted-deployment-single-docker-artifact" in (
         payload["commands_text"]
     )
-    assert "--wait-for-state" not in payload["commands_text"]
+    assert "--wait-for-state SUCCEEDED" in payload["commands_text"]
     runtime_environment = payload["outputs"]["runtime_environment"]
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (
         "ocid1.vectorstore.oc1..example"

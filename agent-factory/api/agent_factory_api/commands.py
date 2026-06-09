@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+DEFAULT_WAIT_STATE = "SUCCEEDED"
 GENERATED_ARTIFACT_DIR = "agent-factory/generated"
 COMPARTMENT_OCID_PREFIX = "ocid1.compartment."
 GENAI_PROJECT_OCID_PREFIX = "ocid1.generativeaiproject."
@@ -231,6 +232,8 @@ def _build_dry_run_commands(
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
             compartment_id,
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
         ],
         [
             "oci",
@@ -390,6 +393,8 @@ def _build_apply_commands(
             _file_uri("hosted-application-networking-config.json"),
             "--environment-variables",
             _file_uri("hosted-application-environment-variables.json"),
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
         ],
         [
             "oci",
@@ -410,6 +415,8 @@ def _build_apply_commands(
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
             compartment_id,
+            "--wait-for-state",
+            DEFAULT_WAIT_STATE,
         ],
         [
             "oci",
