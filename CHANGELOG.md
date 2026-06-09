@@ -8,6 +8,8 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-09
 
+- Marked version 1.0 as ready after Hosted Deployment validation, with both
+  non-streaming and streaming request modes tested successfully.
 - Made the Python CLI streaming parser tolerate hosted gateway responses that
   preserve SSE `data:` frames but strip explicit `event:` names.
 - Verified and enabled streaming tests through OCI Hosted Deployments by
