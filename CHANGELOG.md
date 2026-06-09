@@ -8,6 +8,8 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-09
 
+- Added a root troubleshooting FAQ and documented how to set the Agent Factory
+  API URL when the UI is opened against a remote server.
 - Aligned Agent Factory Hosted Application and Hosted Deployment OCI CLI actions
   with the working `oci-enterprise-ai-deployer` flow by reusing existing Hosted
   Applications by display name and using the single Docker artifact deployment

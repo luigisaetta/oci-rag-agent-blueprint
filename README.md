@@ -14,6 +14,8 @@ The goal is to provide a practical foundation for creating and deploying a RAG s
 
 Start with [QUICKSTART.md](QUICKSTART.md) for the end-to-end customer path from OCI resource setup to the first working RAG demo.
 
+For recurring operational issues, see [Troubleshooting FAQ](TROUBLESHOOTING.md).
+
 ## What This Project Is
 
 This project contains a blueprint and a set of guidelines for creating and deploying a RAG solution in OCI Enterprise AI. It is intended to help teams move from an idea to a repeatable implementation by combining:
