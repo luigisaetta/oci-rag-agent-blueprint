@@ -158,6 +158,12 @@ def stream_agent_request(
 
         _complete_stream_state_if_needed(client, stream_state, settings)
         yield from _iter_stream_final_events(conversation_id, stream_state)
+        LOGGER.info(
+            "Streaming request completed conversation_id=%s response_id=%s tokens=%s",
+            conversation_id,
+            stream_state.response_id,
+            token_events_emitted,
+        )
     except JSONDecodeError as exc:
         if token_events_emitted:
             LOGGER.warning(
@@ -208,8 +214,18 @@ def _stream_response_tokens(
         )
         raise
 
+    LOGGER.info(
+        "Responses API streaming response opened conversation_id=%s",
+        conversation_id,
+    )
     for event in stream:
         _capture_stream_response_id(event, stream_state)
+        if stream_state.response_id:
+            LOGGER.debug(
+                "Streaming response_id=%s conversation_id=%s",
+                stream_state.response_id,
+                conversation_id,
+            )
         stream_state.references.extend(extract_references(event))
         stream_state.usage = extract_usage(event) or stream_state.usage
         token = _extract_stream_token(event)

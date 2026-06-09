@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-09
 License: MIT
 Description: Command-line client for testing the local OCI RAG agent endpoint.
 """
@@ -246,10 +246,12 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
             usage = event.data.get("usage")
         elif event.name == "error":
             print(f"\n\n[error] {event.data.get('error', 'Unknown error')}")
+            return
         elif event.name == "done":
             _print_references(references)
             _print_usage(usage)
             print("\n\n[done]")
+            return
 
 
 def render_json_response(endpoint: str, payload: dict[str, object]) -> None:

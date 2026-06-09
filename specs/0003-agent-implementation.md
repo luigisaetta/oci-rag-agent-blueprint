@@ -377,6 +377,8 @@ The first implementation must log:
 - Request validation errors.
 - Active `conversation_id` values.
 - Responses API `response_id` values, when available.
+- Streaming response open and completion events, including token event counts
+  and response identifiers when available.
 - Responses API failures with the failing phase, for example client creation,
   conversation creation, response creation, streaming, or response validation.
 - Unhandled server failures with a request identifier and stack trace.

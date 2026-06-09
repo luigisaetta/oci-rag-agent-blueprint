@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-09
 
+- Fixed the Python CLI streaming client so it exits immediately after `done` or
+  `error` events instead of waiting for hosted gateway connections to close, and
+  added agent stream-open and stream-completion diagnostics.
 - Added request-scoped diagnostic logging to the RAG agent backend so unhandled
   errors and Responses API failures include request identifiers and failing
   processing phases in server logs.

@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-09
 License: MIT
 Description: Unit tests for the OCI RAG agent command-line test client.
 """
@@ -8,7 +8,7 @@ Description: Unit tests for the OCI RAG agent command-line test client.
 from __future__ import annotations
 
 import argparse
-from typing import Any
+from typing import Any, Iterator
 
 import pytest
 
@@ -258,3 +258,102 @@ def test_render_stream_prints_references(
     assert "[references: 1]" in output
     assert "1. guide.md, page 3" in output
     assert "[tokens: input 10, output 5, total 15, reasoning 1]" in output
+
+
+def test_render_stream_stops_after_done(
+    monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    """Test streaming rendering stops when the agent emits done."""
+
+    consumed_events: list[str] = []
+
+    def fake_send_streaming_request(
+        _endpoint: str,
+        _payload: dict[str, object],
+    ) -> Iterator[agent_cli.SseEvent]:
+        """Yield a done event followed by an event that must not be consumed.
+
+        Args:
+            _endpoint: Agent endpoint URL.
+            _payload: Agent request payload.
+
+        Yields:
+            SseEvent: Fake stream events.
+        """
+
+        for event in [
+            agent_cli.SseEvent("metadata", {"conversation_id": "conv-123"}),
+            agent_cli.SseEvent("token", {"text": "Streaming answer"}),
+            agent_cli.SseEvent("done", {"conversation_id": "conv-123"}),
+            agent_cli.SseEvent("token", {"text": "Should not print"}),
+        ]:
+            consumed_events.append(event.name)
+            yield event
+
+    monkeypatch.setattr(
+        agent_cli, "send_streaming_request", fake_send_streaming_request
+    )
+
+    render_stream(
+        "http://localhost:8080/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": True,
+        },
+    )
+
+    output = capsys.readouterr().out
+
+    assert consumed_events == ["metadata", "token", "done"]
+    assert "Streaming answer" in output
+    assert "Should not print" not in output
+
+
+def test_render_stream_stops_after_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    """Test streaming rendering stops when the agent emits an error."""
+
+    consumed_events: list[str] = []
+
+    def fake_send_streaming_request(
+        _endpoint: str,
+        _payload: dict[str, object],
+    ) -> Iterator[agent_cli.SseEvent]:
+        """Yield an error event followed by an event that must not be consumed.
+
+        Args:
+            _endpoint: Agent endpoint URL.
+            _payload: Agent request payload.
+
+        Yields:
+            SseEvent: Fake stream events.
+        """
+
+        for event in [
+            agent_cli.SseEvent("metadata", {"conversation_id": "conv-123"}),
+            agent_cli.SseEvent("error", {"error": "upstream unavailable"}),
+            agent_cli.SseEvent("token", {"text": "Should not print"}),
+        ]:
+            consumed_events.append(event.name)
+            yield event
+
+    monkeypatch.setattr(
+        agent_cli, "send_streaming_request", fake_send_streaming_request
+    )
+
+    render_stream(
+        "http://localhost:8080/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": True,
+        },
+    )
+
+    output = capsys.readouterr().out
+
+    assert consumed_events == ["metadata", "error"]
+    assert "[error] upstream unavailable" in output
+    assert "Should not print" not in output

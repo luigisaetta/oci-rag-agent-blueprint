@@ -94,6 +94,11 @@ The client must call the agent endpoint with `POST /responses`.
 When `--stream true` is used, the client must consume the `text/event-stream`
 response returned by the agent.
 
+The client must stop reading the HTTP response as soon as it receives either a
+`done` event or an `error` event. This keeps hosted endpoints that leave the
+underlying connection open from making the CLI appear stuck after the agent has
+already completed.
+
 The client must handle the following Server-Sent Events:
 
 - `metadata`, used to display the active conversation identifier.
@@ -132,6 +137,7 @@ The output must show:
 - The client maps `--create-conversation` to `new_conversation`.
 - The client maps `--stream` to `stream`.
 - The client consumes Server-Sent Events from the agent endpoint.
+- The client exits streaming mode when the agent emits `done` or `error`.
 - The client consumes JSON responses from the agent endpoint.
 - The client displays references for both streaming and non-streaming responses.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
