@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { parseSseFrame } from "./sse.mjs";
+
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
 const EMPTY_TOKEN_TOTALS = {
   input: 0,
@@ -16,31 +18,6 @@ function createMessage(role, content, status = "complete") {
     role,
     content,
     status
-  };
-}
-
-function parseSseFrame(frame) {
-  const lines = frame.split("\n");
-  let eventName = "message";
-  const dataLines = [];
-
-  for (const line of lines) {
-    if (line.startsWith("event:")) {
-      eventName = line.slice("event:".length).trim();
-    }
-
-    if (line.startsWith("data:")) {
-      dataLines.push(line.slice("data:".length).trim());
-    }
-  }
-
-  if (!dataLines.length) {
-    return null;
-  }
-
-  return {
-    eventName,
-    data: JSON.parse(dataLines.join("\n"))
   };
 }
 
@@ -218,6 +195,7 @@ export default function Home() {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let metadataSeen = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -230,13 +208,14 @@ export default function Home() {
       buffer = frames.pop() ?? "";
 
       for (const frame of frames) {
-        const parsedFrame = parseSseFrame(frame);
+        const parsedFrame = parseSseFrame(frame, metadataSeen);
         if (!parsedFrame) {
           continue;
         }
 
         if (parsedFrame.eventName === "metadata") {
           setConversationId(parsedFrame.data.conversation_id ?? "");
+          metadataSeen = true;
         }
 
         if (parsedFrame.eventName === "token") {
@@ -251,10 +230,14 @@ export default function Home() {
           const backendError = parsedFrame.data.error ?? "Backend stream error.";
           setErrorMessage(backendError);
           appendAssistantToken(assistantMessageId, `\n\n${backendError}`);
+          await reader.cancel();
+          return;
         }
 
         if (parsedFrame.eventName === "done") {
           completeAssistantMessage(assistantMessageId);
+          await reader.cancel();
+          return;
         }
       }
     }

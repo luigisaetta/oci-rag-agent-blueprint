@@ -125,12 +125,29 @@ The UI must send requests with:
 
 The UI must consume Server-Sent Events returned by the backend.
 
+Some hosted gateways may preserve SSE `data:` frames while stripping explicit
+`event:` lines. In that case, the UI must infer agent event names from the known
+payload shape:
+
+- `conversation_id` before metadata has been shown: `metadata`.
+- `text`: `token`.
+- `references`: `references`.
+- `usage`: `usage`.
+- `error`: `error`.
+- `conversation_id` after metadata has been shown: `done`.
+
 The UI must handle:
 
 - `metadata`, used to store the active `conversation_id`.
 - `token`, used to append response text as it arrives.
+- `references`, reserved for source reference rendering.
+- `usage`, used to update token totals.
 - `done`, used to mark the assistant response as complete.
 - `error`, used to display a readable error message.
+
+When `done` or `error` is received, the UI must stop reading the stream so
+hosted gateways that keep connections open do not leave the interface in a
+permanent streaming state.
 
 The UI must not show backend protocol details to users.
 
@@ -181,6 +198,8 @@ The `rag-ui` service must:
 - The UI sends streaming requests to the backend.
 - The UI shows a loading spinner while waiting for the first assistant token.
 - The UI renders streamed assistant tokens as they arrive.
+- The UI handles hosted gateway responses that strip SSE event names.
+- The UI exits streaming mode when the backend emits `done` or `error`.
 - The UI stores and reuses the active backend `conversation_id`.
 - The UI can clear the current conversation and start a new one.
 - Docker Compose can build and run the UI service.

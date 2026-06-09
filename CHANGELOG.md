@@ -12,6 +12,8 @@ changes, or documentation updates are introduced.
   preserve SSE `data:` frames but strip explicit `event:` names.
 - Verified and enabled streaming tests through OCI Hosted Deployments by
   handling the Hosted Application invoke gateway's stripped SSE event names.
+- Ported Hosted Deployment streaming compatibility to the Next.js reference UI
+  so it can consume gateway-stripped SSE event names and stop on final events.
 - Fixed the Python CLI streaming client so it exits immediately after `done` or
   `error` events instead of waiting for hosted gateway connections to close, and
   added agent stream-open and stream-completion diagnostics.
