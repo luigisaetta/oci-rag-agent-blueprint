@@ -6,6 +6,13 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-09
+
+- Aligned Agent Factory Hosted Application and Hosted Deployment OCI CLI actions
+  with the working `oci-enterprise-ai-deployer` flow by reusing existing Hosted
+  Applications by display name and using the single Docker artifact deployment
+  command.
+
 ## 2026-06-08
 
 - Changed Agent Factory dry runs to perform read-only OCI preflight checks,

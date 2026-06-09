@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-09
 License: MIT
 Description: Live command execution helpers for Agent Factory deployments.
 """
@@ -124,19 +124,27 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             },
         )
 
-        hosted_application_output = _run_json_step(
-            "hosted-application",
-            _resolve_artifact_paths(
-                _command(commands_by_step_id, "hosted-application"), artifact_path
-            ),
-            progress_callback,
+        hosted_application_id = _find_existing_hosted_application_id(
+            payload=payload,
+            compartment_id=resolved_identifiers["compartment_id"],
+            progress_callback=progress_callback,
             cwd=repo_root,
             secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
         )
-        hosted_application_id = _extract_identifier(
-            hosted_application_output,
-            entity_type="HOSTED_APPLICATION",
-        )
+        if not hosted_application_id:
+            hosted_application_output = _run_json_step(
+                "hosted-application",
+                _resolve_artifact_paths(
+                    _command(commands_by_step_id, "hosted-application"), artifact_path
+                ),
+                progress_callback,
+                cwd=repo_root,
+                secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+            )
+            hosted_application_id = _extract_identifier(
+                hosted_application_output,
+                entity_type="HOSTED_APPLICATION",
+            )
         if not hosted_application_id:
             raise CommandExecutionError(
                 "hosted-application",
@@ -324,6 +332,138 @@ def _load_json_output(
         step_id,
         f"{step_id} returned JSON that was not an object.{detail}",
     )
+
+
+def _find_existing_hosted_application_id(  # pylint: disable=too-many-arguments
+    *,
+    payload: dict[str, Any],
+    compartment_id: str,
+    progress_callback: ProgressCallback,
+    cwd: Path,
+    secrets: list[str],
+) -> str | None:
+    """Return an existing Hosted Application OCID for the requested display name.
+
+    Args:
+        payload: Normalized deployment payload.
+        compartment_id: Resolved compartment OCID to search.
+        progress_callback: Callback used to update the Hosted Application step.
+        cwd: Working directory for OCI CLI execution.
+        secrets: Secret values to redact from command output.
+
+    Returns:
+        str | None: Existing Hosted Application OCID, if one is found.
+    """
+
+    progress_callback("hosted-application", "running", {"action": "lookup"})
+    result = _run_command(
+        _build_list_hosted_applications_command(payload, compartment_id),
+        cwd=cwd,
+        secrets=secrets,
+        step_id="hosted-application",
+    )
+    output = _load_json_output("hosted-application", result, secrets)
+    display_name = str(payload["hosted_application_name"])
+    matches = [
+        item
+        for item in _extract_list_items(output)
+        if _first_string(item, "display-name", "displayName", "name") == display_name
+        and _first_string(item, "id")
+        and not _is_deleted_hosted_application(item)
+    ]
+    if not matches:
+        return None
+    hosted_application_id = _first_string(matches[0], "id")
+    progress_callback(
+        "hosted-application",
+        "succeeded",
+        {
+            "hosted_application_id": hosted_application_id,
+            "reused": True,
+            "display_name": display_name,
+        },
+    )
+    return hosted_application_id
+
+
+def _build_list_hosted_applications_command(
+    payload: dict[str, Any], compartment_id: str
+) -> list[str]:
+    """Build the OCI CLI command used to find existing Hosted Applications.
+
+    Args:
+        payload: Normalized deployment payload.
+        compartment_id: Resolved compartment OCID to search.
+
+    Returns:
+        list[str]: OCI CLI command arguments.
+    """
+
+    return [
+        "oci",
+        "--region",
+        str(payload["region"]),
+        "--output",
+        "json",
+        "generative-ai",
+        "hosted-application-collection",
+        "list-hosted-applications",
+        "--compartment-id",
+        compartment_id,
+        "--all",
+    ]
+
+
+def _extract_list_items(command_output: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract OCI CLI list items from common response shapes.
+
+    Args:
+        command_output: Parsed OCI CLI JSON response.
+
+    Returns:
+        list[dict[str, Any]]: List items found under `data` or `data.items`.
+    """
+
+    data = command_output.get("data")
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        items = data.get("items")
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _first_string(item: dict[str, Any], *keys: str) -> str:
+    """Return the first non-empty string value for the given keys.
+
+    Args:
+        item: OCI CLI response item.
+        keys: Candidate response keys.
+
+    Returns:
+        str: First non-empty value, or an empty string.
+    """
+
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _is_deleted_hosted_application(item: dict[str, Any]) -> bool:
+    """Return whether a listed Hosted Application is deleted or deleting.
+
+    Args:
+        item: Hosted Application list item.
+
+    Returns:
+        bool: True when the item is not reusable.
+    """
+
+    lifecycle_state = _first_string(item, "lifecycle-state", "lifecycleState").upper()
+    return lifecycle_state in {"DELETED", "DELETING"}
 
 
 def _run_docker_login(

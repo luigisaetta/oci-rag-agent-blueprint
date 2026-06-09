@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-09
 License: MIT
 Description: Command planning helpers for Agent Factory deployment runs.
 """
@@ -220,11 +220,13 @@ def _build_dry_run_commands(
             "json",
             "generative-ai",
             "hosted-deployment",
-            "create",
+            "create-hosted-deployment-single-docker-artifact",
             "--hosted-application-id",
             "<hosted-application-ocid-from-create-response>",
-            "--active-artifact",
-            _file_uri("hosted-deployment-active-artifact.json"),
+            "--active-artifact-container-uri",
+            artifacts["create-hosted-deployment.json"]["containerUri"],
+            "--active-artifact-tag",
+            artifacts["create-hosted-deployment.json"]["artifactTag"],
             "--display-name",
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",
@@ -397,11 +399,13 @@ def _build_apply_commands(
             "json",
             "generative-ai",
             "hosted-deployment",
-            "create",
+            "create-hosted-deployment-single-docker-artifact",
             "--hosted-application-id",
             "<hosted-application-ocid-from-create-response>",
-            "--active-artifact",
-            _file_uri("hosted-deployment-active-artifact.json"),
+            "--active-artifact-container-uri",
+            artifacts["create-hosted-deployment.json"]["containerUri"],
+            "--active-artifact-tag",
+            artifacts["create-hosted-deployment.json"]["artifactTag"],
             "--display-name",
             artifacts["create-hosted-deployment.json"]["displayName"],
             "--compartment-id",

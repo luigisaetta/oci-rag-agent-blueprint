@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-09
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -31,6 +31,7 @@ from agent_factory_api.commands import (  # pylint: disable=wrong-import-positio
 from agent_factory_api.executor import (  # pylint: disable=wrong-import-position
     CommandExecutionError,
     _extract_identifier,
+    _find_existing_hosted_application_id,
     _load_json_output,
 )
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
@@ -222,8 +223,12 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     assert "hosted-application-collection list-hosted-applications" in (
         payload["commands_text"]
     )
-    assert "hosted-deployment create" in payload["commands_text"]
-    assert "--active-artifact" in payload["commands_text"]
+    assert "hosted-deployment create-hosted-deployment-single-docker-artifact" in (
+        payload["commands_text"]
+    )
+    assert "--active-artifact-container-uri" in payload["commands_text"]
+    assert "--active-artifact-tag" in payload["commands_text"]
+    assert "--active-artifact " not in payload["commands_text"]
     assert (
         payload["outputs"]["image_reference"] == "fra.ocir.io/test-namespace/"
         "oci-rag-agent-blueprint-agent:0.1.0"
@@ -615,6 +620,66 @@ def test_agent_factory_loads_oci_json_output_with_status_prefix() -> None:
     ) == {"data": {"id": "ocid1.test"}}
 
 
+def test_agent_factory_finds_existing_hosted_application(monkeypatch) -> None:
+    """Test live deployment reuses an existing non-deleted Hosted Application."""
+
+    commands: list[list[str]] = []
+    events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def fake_run_command(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        _ = kwargs
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                '{"data": {"items": ['
+                '{"display-name": "agent-factory-app", '
+                '"id": "ocid1.generativeaihostedapplication.oc1..existing", '
+                '"lifecycle-state": "ACTIVE"}'
+                "]}}"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.executor._run_command",
+        fake_run_command,
+    )
+
+    hosted_application_id = _find_existing_hosted_application_id(
+        payload=_valid_payload(),
+        compartment_id="ocid1.compartment.oc1..example",
+        progress_callback=lambda step_id, status, outputs: events.append(
+            (step_id, status, outputs)
+        ),
+        cwd=PROJECT_ROOT,
+        secrets=[],
+    )
+
+    assert hosted_application_id == (
+        "ocid1.generativeaihostedapplication.oc1..existing"
+    )
+    assert commands[0][6:9] == [
+        "hosted-application-collection",
+        "list-hosted-applications",
+        "--compartment-id",
+    ]
+    assert events[-1] == (
+        "hosted-application",
+        "succeeded",
+        {
+            "hosted_application_id": (
+                "ocid1.generativeaihostedapplication.oc1..existing"
+            ),
+            "reused": True,
+            "display_name": "agent-factory-app",
+        },
+    )
+
+
 def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     monkeypatch,
 ) -> None:
@@ -670,7 +735,9 @@ def test_agent_factory_apply_plan_passes_runtime_environment_to_deployment(
     assert payload["status"] == "succeeded"
     assert "--environment-variables" in payload["commands_text"]
     assert "hosted-application-environment-variables.json" in (payload["commands_text"])
-    assert "hosted-deployment create" in payload["commands_text"]
+    assert "hosted-deployment create-hosted-deployment-single-docker-artifact" in (
+        payload["commands_text"]
+    )
     assert "--wait-for-state" not in payload["commands_text"]
     runtime_environment = payload["outputs"]["runtime_environment"]
     assert payload["outputs"]["resolved_identifiers"]["vector_store_id"] == (

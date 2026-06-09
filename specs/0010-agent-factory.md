@@ -402,12 +402,17 @@ Agent Factory must run the deployment workflow in the following order.
     writing to the user's default Docker configuration.
 12. Push the RAG agent backend image to OCI Container Registry with Docker CLI.
 13. Generate Hosted Application runtime environment variable artifacts.
-14. Create the OCI Enterprise AI Hosted Application with OCI CLI, passing the
-    generated runtime environment variables. The create command must return
-    parseable JSON so the backend can capture the Hosted Application identifier.
-15. Create the deployment inside the Hosted Application with OCI CLI. The create
-    command must return parseable JSON so the backend can capture the Hosted
-    Deployment identifier.
+14. Find an active OCI Enterprise AI Hosted Application with the requested
+    display name in the target compartment. Reuse it when present; otherwise
+    create it with OCI CLI, passing the generated runtime environment
+    variables. The create command must return parseable JSON so the backend can
+    capture the Hosted Application identifier.
+15. Create the deployment inside the Hosted Application with OCI CLI. Docker
+    image deployments must use the OCI CLI
+    `create-hosted-deployment-single-docker-artifact` command with
+    `--active-artifact-container-uri` and `--active-artifact-tag`, matching the
+    working `oci-enterprise-ai-deployer` flow. The create command must return
+    parseable JSON so the backend can capture the Hosted Deployment identifier.
 16. Wait for deployment activation or readiness with OCI CLI.
 17. Validate the deployed `GET /health` endpoint when reachable.
 18. Return final deployment outputs.
@@ -492,6 +497,11 @@ Hosted Application creation must be performed through OCI CLI commands.
 Hosted Application deployment creation and status polling must be performed
 through OCI CLI commands.
 
+Before creating a Hosted Application, Agent Factory must list Hosted
+Applications in the target compartment and reuse a non-deleted application whose
+display name matches the requested Hosted Application name. Hosted Applications
+in `DELETED` or `DELETING` lifecycle states must not be reused.
+
 When OCI CLI Hosted Application or Hosted Deployment creation returns a work
 request, the backend must extract the created resource identifier from the work
 request `resources` entry whose `entity-type` matches the requested resource,
@@ -508,6 +518,10 @@ progress text can make the command output unsuitable for JSON parsing. The
 backend must keep deployment activation checks in the dedicated readiness step
 and must tolerate non-JSON informational text before the JSON object returned by
 OCI CLI commands.
+
+For Docker-image deployments, Agent Factory must prefer the OCI CLI
+`hosted-deployment create-hosted-deployment-single-docker-artifact` shortcut over
+the generic `hosted-deployment create --active-artifact` form.
 
 The first implementation must create only public endpoint deployments.
 
