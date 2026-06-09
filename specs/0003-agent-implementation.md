@@ -372,12 +372,17 @@ The agent must implement minimal structured logging.
 The first implementation must log:
 
 - Agent startup.
+- Request start and completion for agent endpoints with a request identifier,
+  method, path, and status code.
 - Request validation errors.
 - Active `conversation_id` values.
 - Responses API `response_id` values, when available.
-- Responses API failures.
+- Responses API failures with the failing phase, for example client creation,
+  conversation creation, response creation, streaming, or response validation.
+- Unhandled server failures with a request identifier and stack trace.
 
-The health endpoint may log debug-level entries, but it must not create noisy logs during normal operation.
+The health endpoint may log debug-level entries, but it must not create noisy
+logs during normal operation.
 
 Logs must never include `OPENAI_API_KEY` or other secrets.
 

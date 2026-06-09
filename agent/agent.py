@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-09
 License: MIT
 Description: Core request processing logic for the OCI RAG agent.
 """
@@ -69,15 +69,31 @@ def process_agent_request(
             converts them into deterministic JSON error responses.
     """
 
-    client = client_factory(settings)
-    conversation_id = _resolve_conversation_id(payload, client)
+    try:
+        client = client_factory(settings)
+    except Exception:
+        LOGGER.exception("Agent request failed during client creation")
+        raise
+
+    try:
+        conversation_id = _resolve_conversation_id(payload, client)
+    except Exception:
+        LOGGER.exception("Agent request failed during conversation resolution")
+        raise
 
     LOGGER.info("Processing request for conversation_id=%s", conversation_id)
 
-    response = client.responses.create(
-        **_build_response_request(payload, settings, conversation_id),
-        timeout=settings.responses_timeout_seconds,
-    )
+    try:
+        response = client.responses.create(
+            **_build_response_request(payload, settings, conversation_id),
+            timeout=settings.responses_timeout_seconds,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Agent request failed during response creation conversation_id=%s",
+            conversation_id,
+        )
+        raise
 
     response_id = getattr(response, "id", None)
     if response_id:
@@ -115,8 +131,18 @@ def stream_agent_request(
     token_events_emitted = 0
 
     try:
-        client = client_factory(settings)
-        conversation_id = _resolve_conversation_id(payload, client)
+        try:
+            client = client_factory(settings)
+        except Exception:
+            LOGGER.exception("Streaming request failed during client creation")
+            raise
+
+        try:
+            conversation_id = _resolve_conversation_id(payload, client)
+        except Exception:
+            LOGGER.exception("Streaming request failed during conversation resolution")
+            raise
+
         LOGGER.info("Streaming request for conversation_id=%s", conversation_id)
         yield _format_sse_event("metadata", {"conversation_id": conversation_id})
 
@@ -169,11 +195,18 @@ def _stream_response_tokens(
         str: Final-answer text tokens.
     """
 
-    stream = client.responses.create(
-        **_build_response_request(payload, settings, conversation_id),
-        timeout=settings.responses_timeout_seconds,
-        stream=True,
-    )
+    try:
+        stream = client.responses.create(
+            **_build_response_request(payload, settings, conversation_id),
+            timeout=settings.responses_timeout_seconds,
+            stream=True,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Streaming request failed during response creation conversation_id=%s",
+            conversation_id,
+        )
+        raise
 
     for event in stream:
         _capture_stream_response_id(event, stream_state)

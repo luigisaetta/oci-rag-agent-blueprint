@@ -1,11 +1,12 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-09
 License: MIT
 Description: Unit tests for the OCI RAG agent FastAPI API.
 """
 
 # pylint: disable=too-few-public-methods,too-many-arguments,too-many-instance-attributes
+# pylint: disable=too-many-lines
 # pylint: disable=too-many-positional-arguments
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from json import JSONDecodeError
+import logging
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -523,20 +525,50 @@ def test_extracts_page_number_from_result_text(monkeypatch: Any) -> None:
     ]
 
 
-def test_responses_api_failure(monkeypatch: Any) -> None:
-    """Test Responses API failure handling."""
+def test_responses_api_failure_logs_phase(monkeypatch: Any, caplog: Any) -> None:
+    """Test Responses API failures log request and processing phase context."""
 
     _set_required_env(monkeypatch)
     _set_client_factory(FakeOpenAIClient(fail=True))
     client = TestClient(app)
 
-    response = client.post(
-        "/responses",
-        json={"new_conversation": True, "user_request": "Hello"},
-    )
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/responses",
+            json={"new_conversation": True, "user_request": "Hello"},
+        )
 
     assert response.status_code == 502
     assert "Responses API failure: upstream unavailable" in response.json()["error"]
+    assert "Request started request_id=" in caplog.text
+    assert "Agent request failed during response creation" in caplog.text
+    assert "Responses API failure request_id=" in caplog.text
+
+
+def test_unhandled_request_failure_logs_request_id(
+    monkeypatch: Any, caplog: Any
+) -> None:
+    """Test unexpected request failures include a request id in logs and response."""
+
+    _set_required_env(monkeypatch)
+    _set_client_factory(FakeOpenAIClient())
+
+    async def fail_unhandled_route() -> None:
+        raise RuntimeError("response schema unavailable")
+
+    route_path = "/__test_unhandled_logging"
+    if not any(route.path == route_path for route in app.routes):
+        app.add_api_route(route_path, fail_unhandled_route, methods=["GET"])
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with caplog.at_level(logging.INFO):
+        response = client.get(route_path)
+
+    assert response.status_code == 500
+    assert "request_id=" in response.json()["error"]
+    assert "Unhandled request failure request_id=" in caplog.text
+    assert "response schema unavailable" in caplog.text
 
 
 def test_streams_response_tokens(monkeypatch: Any) -> None:

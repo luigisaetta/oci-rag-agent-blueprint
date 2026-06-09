@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-09
 
+- Added request-scoped diagnostic logging to the RAG agent backend so unhandled
+  errors and Responses API failures include request identifiers and failing
+  processing phases in server logs.
 - Added a root troubleshooting FAQ and documented how to set the Agent Factory
   API URL when the UI is opened against a remote server.
 - Aligned Agent Factory Hosted Application and Hosted Deployment OCI CLI actions

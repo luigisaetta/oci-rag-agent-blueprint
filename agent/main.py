@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-05
+Date last modified: 2026-06-09
 License: MIT
 Description: FastAPI entrypoint for the OCI RAG agent.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,51 @@ app.state.openai_client_factory = create_openai_client
 LOGGER.info("OCI RAG agent application initialized")
 
 
+@app.middleware("http")
+async def log_request_failures(request: Request, call_next: Any) -> Response:
+    """Log request lifecycle and unhandled failures with a request identifier.
+
+    Args:
+        request: Incoming FastAPI request.
+        call_next: Next ASGI handler in the middleware chain.
+
+    Returns:
+        Response: Downstream response, or a sanitized JSON error response.
+    """
+
+    request_id = str(uuid4())
+    request.state.request_id = request_id
+    LOGGER.info(
+        "Request started request_id=%s method=%s path=%s",
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    try:
+        response = await call_next(request)
+    except Exception:  # pylint: disable=broad-exception-caught
+        LOGGER.exception(
+            "Unhandled request failure request_id=%s method=%s path=%s",
+            request_id,
+            request.method,
+            request.url.path,
+        )
+        return _error_response(
+            f"Internal server error. See server logs for request_id={request_id}.",
+            status_code=500,
+        )
+
+    LOGGER.info(
+        "Request completed request_id=%s method=%s path=%s status_code=%s",
+        request_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+    )
+    response.headers["x-request-id"] = request_id
+    return response
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Return agent health status.
@@ -65,22 +111,35 @@ async def create_response(request: Request) -> Response:
     try:
         payload = await request.json()
     except ValueError:
-        LOGGER.info("Invalid JSON payload")
+        LOGGER.info(
+            "Invalid JSON payload request_id=%s",
+            _request_id(request),
+        )
         return _error_response("Invalid JSON payload", status_code=400)
 
     try:
         validated_payload = validate_agent_request(payload)
     except SchemaValidationError as exc:
-        LOGGER.info("Request validation error: %s", exc)
+        LOGGER.info(
+            "Request validation error request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
         return _error_response(str(exc), status_code=400)
 
     try:
         return _handle_validated_response_request(request, validated_payload)
     except ValueError as exc:
-        LOGGER.info("Configuration error: %s", exc)
+        LOGGER.exception(
+            "Configuration error request_id=%s",
+            _request_id(request),
+        )
         return _error_response(str(exc), status_code=500)
     except Exception as exc:  # pylint: disable=broad-exception-caught
-        LOGGER.exception("Responses API failure")
+        LOGGER.exception(
+            "Responses API failure request_id=%s",
+            _request_id(request),
+        )
         return _error_response(f"Responses API failure: {exc}", status_code=502)
 
 
@@ -144,3 +203,16 @@ def _error_response(error: str, status_code: int) -> JSONResponse:
         "error": error,
     }
     return JSONResponse(validate_agent_response(error_payload), status_code=status_code)
+
+
+def _request_id(request: Request) -> str:
+    """Return the request identifier assigned by middleware.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        str: Request identifier, or `n/a` if middleware did not assign one.
+    """
+
+    return str(getattr(request.state, "request_id", "n/a"))
