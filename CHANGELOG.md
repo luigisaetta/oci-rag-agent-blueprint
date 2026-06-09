@@ -12,6 +12,8 @@ changes, or documentation updates are introduced.
   with the working `oci-enterprise-ai-deployer` flow by reusing existing Hosted
   Applications by display name and using the single Docker artifact deployment
   command.
+- Added browser-local OCIR credential save, load, and forget controls to the
+  Agent Factory sidebar without persisting the selected OCI region.
 
 ## 2026-06-08
 

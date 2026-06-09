@@ -276,6 +276,9 @@ The UI must allow users to:
 - Enter deployment inputs.
 - Validate OCIR Docker login credentials directly from the sidebar before
   starting a dry-run or live deployment.
+- Save, reload, and clear OCIR Docker login credentials in browser-local
+  storage so repeated local runs do not require retyping the registry username
+  and auth token.
 - Choose whether to create or reuse optional resources.
 - Review the planned actions before starting the deployment.
 - Start the deployment run.
@@ -663,6 +666,15 @@ Agent Factory handles control plane operations and secrets.
 The backend must be the only component allowed to use OCI credentials.
 
 The UI must never receive OCI signing credentials.
+
+The UI may store OCIR Docker login fields in browser-local storage only after an
+explicit user action. The selected deployment region in the main form must remain
+separate from saved OCIR credentials and must continue to determine the target
+OCIR registry at check or deployment time. Local storage persistence must store
+only the OCIR username and password or auth token, and the UI must provide
+controls to reload and clear those saved values. Saved OCIR credentials must not
+be sent to the backend except through the existing credential check or deployment
+submission actions.
 
 For local Docker Compose runs, the Agent Factory API container must receive the
 OCI SDK configuration through a read-only mount of the user's `.oci` directory.

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 const DEFAULT_BACKEND_URL =
   process.env.NEXT_PUBLIC_FACTORY_API_URL ?? "http://localhost:8081/factory/deployments";
 const LOCAL_BACKEND_URL = "http://localhost:8081/factory/deployments";
+const OCIR_CREDENTIALS_STORAGE_KEY = "agentFactory.ocirCredentials.v1";
 
 const INITIAL_FORM = {
   compartment: "",
@@ -169,6 +170,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingOcirLogin, setIsCheckingOcirLogin] = useState(false);
   const [ocirLoginCheck, setOcirLoginCheck] = useState(null);
+  const [ocirCredentialStorage, setOcirCredentialStorage] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
 
@@ -187,6 +189,8 @@ export default function Home() {
     Boolean(form.ocir_username?.trim()) &&
     Boolean(form.ocir_password?.trim()) &&
     !isCheckingOcirLogin;
+  const canSaveOcirCredentials =
+    Boolean(form.ocir_username?.trim()) && Boolean(form.ocir_password?.trim());
 
   useEffect(() => {
     if (!run?.deployment_run_id || !isRunActive) {
@@ -223,6 +227,81 @@ export default function Home() {
       window.clearInterval(intervalId);
     };
   }, [backendUrl, isRunActive, run?.deployment_run_id]);
+
+  function saveOcirCredentials() {
+    if (!canSaveOcirCredentials) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        OCIR_CREDENTIALS_STORAGE_KEY,
+        JSON.stringify({
+          ocir_username: form.ocir_username,
+          ocir_password: form.ocir_password
+        })
+      );
+      setOcirCredentialStorage({
+        status: "succeeded",
+        message: "OCIR credentials saved locally in this browser."
+      });
+    } catch (error) {
+      setOcirCredentialStorage({
+        status: "failed",
+        message: error.message || "Unable to save OCIR credentials locally."
+      });
+    }
+  }
+
+  function loadOcirCredentials() {
+    try {
+      const storedCredentials = window.localStorage.getItem(OCIR_CREDENTIALS_STORAGE_KEY);
+      if (!storedCredentials) {
+        setOcirCredentialStorage({
+          status: "failed",
+          message: "No saved OCIR credentials were found in this browser."
+        });
+        return;
+      }
+
+      const parsedCredentials = JSON.parse(storedCredentials);
+      setForm((currentForm) => ({
+        ...currentForm,
+        ocir_username: String(parsedCredentials.ocir_username ?? ""),
+        ocir_password: String(parsedCredentials.ocir_password ?? "")
+      }));
+      setFieldErrors((currentErrors) => ({
+        ...currentErrors,
+        ocir_username: "",
+        ocir_password: ""
+      }));
+      setOcirLoginCheck(null);
+      setOcirCredentialStorage({
+        status: "succeeded",
+        message: "Saved OCIR credentials loaded."
+      });
+    } catch (error) {
+      setOcirCredentialStorage({
+        status: "failed",
+        message: error.message || "Unable to load saved OCIR credentials."
+      });
+    }
+  }
+
+  function forgetOcirCredentials() {
+    try {
+      window.localStorage.removeItem(OCIR_CREDENTIALS_STORAGE_KEY);
+      setOcirCredentialStorage({
+        status: "succeeded",
+        message: "Saved OCIR credentials removed from this browser."
+      });
+    } catch (error) {
+      setOcirCredentialStorage({
+        status: "failed",
+        message: error.message || "Unable to remove saved OCIR credentials."
+      });
+    }
+  }
 
   function updateField(event) {
     const { name, value, type, checked } = event.target;
@@ -385,6 +464,35 @@ export default function Home() {
           {ocirLoginCheck ? (
             <p className={`checkStatus ${ocirLoginCheck.status}`}>
               {ocirLoginCheck.message}
+            </p>
+          ) : null}
+          <div className="actionRow">
+            <button
+              className="secondaryAction"
+              disabled={!canSaveOcirCredentials}
+              onClick={saveOcirCredentials}
+              type="button"
+            >
+              Save locally
+            </button>
+            <button
+              className="secondaryAction"
+              onClick={loadOcirCredentials}
+              type="button"
+            >
+              Load saved
+            </button>
+            <button
+              className="secondaryAction"
+              onClick={forgetOcirCredentials}
+              type="button"
+            >
+              Forget
+            </button>
+          </div>
+          {ocirCredentialStorage ? (
+            <p className={`checkStatus ${ocirCredentialStorage.status}`}>
+              {ocirCredentialStorage.message}
             </p>
           ) : null}
         </div>

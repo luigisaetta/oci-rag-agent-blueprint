@@ -129,6 +129,26 @@ def test_agent_factory_ui_exposes_ocir_login_check() -> None:
     assert "ocirLoginCheck" in page_source
 
 
+def test_agent_factory_ui_exposes_local_ocir_credential_storage() -> None:
+    """Test UI can save and reload OCIR credentials locally."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OCIR_CREDENTIALS_STORAGE_KEY" in page_source
+    assert "window.localStorage.setItem" in page_source
+    assert "window.localStorage.getItem" in page_source
+    assert "window.localStorage.removeItem" in page_source
+    assert "Save locally" in page_source
+    assert "Load saved" in page_source
+    assert "Forget" in page_source
+    saved_payload = page_source.split("JSON.stringify({", 1)[1].split("})", 1)[0]
+    assert "ocir_username" in saved_payload
+    assert "ocir_password" in saved_payload
+    assert "region" not in saved_payload
+
+
 def test_agent_factory_checks_ocir_login_credentials(monkeypatch) -> None:
     """Test OCIR login check endpoint validates Docker credentials directly."""
 
