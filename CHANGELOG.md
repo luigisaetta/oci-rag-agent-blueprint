@@ -10,6 +10,11 @@ changes, or documentation updates are introduced.
 
 - Marked version 1.0 as ready after Hosted Deployment validation, with both
   non-streaming and streaming request modes tested successfully.
+- Refreshed the main README for the version 1.0 state, highlighting Hosted
+  Deployment validation, API usage, Agent Factory, local UI usage, and quality
+  checks.
+- Added a simple Agent API usage guide covering local and Hosted Application
+  endpoints, non-streaming payloads, streaming payloads, and hosted SSE behavior.
 - Made the Python CLI streaming parser tolerate hosted gateway responses that
   preserve SSE `data:` frames but strip explicit `event:` names.
 - Verified and enabled streaming tests through OCI Hosted Deployments by

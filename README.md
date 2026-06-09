@@ -8,76 +8,91 @@
 
 ![OCI RAG Agent Blueprint architecture](images/arch01.png)
 
-Retrieval-Augmented Generation becomes truly useful when it is treated as an engineered system, not as a demo stitched together around a prompt. This repository is a **blueprint** for building that system on **OCI Enterprise AI**: grounded retrieval, clear deployment guidance, and agent behavior specified before code is written.
+Retrieval-Augmented Generation becomes useful in production only when it is
+treated as an engineered system: grounded retrieval, explicit runtime contracts,
+repeatable deployment, and testable client behavior.
 
-The goal is to provide a practical foundation for creating and deploying a RAG solution in OCI Enterprise AI, using OCI Enterprise AI **Vector Store** as the retrieval layer and the **Responses API** as the interaction layer.
+This repository is a **version 1.0 blueprint** for building and deploying a RAG
+agent on **OCI Enterprise AI**, using **OCI Vector Store** for retrieval and the
+OpenAI-compatible **Responses API** for generation.
 
-Start with [QUICKSTART.md](QUICKSTART.md) for the end-to-end customer path from OCI resource setup to the first working RAG demo.
+Version 1.0 has been validated with OCI Hosted Deployments in both
+non-streaming and streaming request modes. The Python CLI client and the Next.js
+reference UI both support the Hosted Application invoke gateway behavior where
+SSE `data:` frames are preserved but explicit `event:` names may be stripped.
 
-For recurring operational issues, see [Troubleshooting FAQ](TROUBLESHOOTING.md).
+## Start Here
 
-## What This Project Is
+Use these guides depending on what you want to do:
 
-This project contains a blueprint and a set of guidelines for creating and deploying a RAG solution in OCI Enterprise AI. It is intended to help teams move from an idea to a repeatable implementation by combining:
+- [Quickstart](QUICKSTART.md): end-to-end path from OCI resources to a working
+  local and hosted RAG demo.
+- [Agent API Usage](docs/agent-api-usage.md): exact endpoints, request payloads,
+  non-streaming examples, streaming examples, and Hosted Application invoke
+  notes.
+- [Agent Factory](agent-factory/README.md): guided web UI and API for building
+  and deploying the backend container to OCI Enterprise AI Hosted Applications.
+- [Environment Variables](docs/environment-variables.md): complete runtime
+  configuration reference.
+- [OCI Enterprise AI Deployment Guide](docs/oci-enterprise-ai-deployment.md):
+  detailed hosted deployment procedure.
+- [Troubleshooting FAQ](TROUBLESHOOTING.md): recurring operational issues and
+  fixes.
 
-- A spec-driven development workflow.
-- OCI-based vector storage and retrieval.
-- Response generation through the Responses API.
-- Python implementation patterns with automated quality checks.
-- A Next.js reference UI for local chatbot testing.
-- Unit tests and coverage expectations for every new feature.
+## What You Get
 
-## Development Approach
+The blueprint includes:
 
-This repository follows spec-driven development.
+- A FastAPI backend agent built around the Responses API.
+- OCI Vector Store file search integration.
+- Short-term conversation management through Responses API conversations.
+- Streaming and non-streaming `/responses` request paths.
+- A Python CLI test client for local and hosted endpoint validation.
+- A Next.js reference chatbot UI with Markdown rendering and streaming support.
+- An Agent Factory application for guided OCI Hosted Application deployment.
+- Docker Compose local development for the backend and reference UI.
+- JSON request and response schemas.
+- Specs, tests, linting, and coverage rules that keep behavior reviewable.
 
-Every new capability must start with a specification under the `specs/` directory. Code is written only after the expected behavior, acceptance criteria, and test expectations are documented.
+## Runtime API
 
-This keeps the project aligned around a simple rule: the implementation must conform to the specification, not the other way around.
-
-## Quality Standards
-
-Python code in this repository must follow these standards:
-
-- Source files include the required project header.
-- Code is formatted with `black`.
-- Code is checked with `pylint`.
-- Unit tests are written with `pytest`.
-- New functionality targets more than 80% test coverage.
-- Work is considered done only when formatting, linting, tests, and related fixes are complete.
-
-See [AGENTS.md](AGENTS.md) for the full working guidelines.
-
-## Repository Structure
+The agent exposes:
 
 ```text
-.
-├── AGENTS.md
-├── agent/
-├── clients/
-├── docker-compose.yml
-├── LICENSE
-├── README.md
-├── schemas/
-├── specs/
-├── start_demo.sh
-├── stop_demo.sh
-├── tests/
-└── ui/
+GET /health
+POST /responses
 ```
+
+For local development:
+
+```text
+http://localhost:8080/health
+http://localhost:8080/responses
+```
+
+For OCI Hosted Application invoke:
+
+```text
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/health
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses
+```
+
+Use `stream: false` for one JSON response and `stream: true` for Server-Sent
+Events.
+
+See [Agent API Usage](docs/agent-api-usage.md) for complete payload examples and
+curl commands.
 
 ## Local Demo
 
-The local Docker Compose deployment includes:
+Before starting the demo, create a root `.env` file from `.env.sample` and fill
+in the required OCI Enterprise AI values:
 
-- `rag-agent`, the FastAPI backend exposed on `http://localhost:8080`.
-- `rag-ui`, the Next.js reference UI exposed on `http://localhost:3000`.
+```bash
+cp .env.sample .env
+```
 
-Before starting the demo, create a root `.env` file from `.env.sample` and fill in the required OCI Enterprise AI values.
-
-See [Environment Variables](docs/environment-variables.md) for the complete runtime configuration reference.
-
-Start both services:
+Start both local services:
 
 ```bash
 ./start_demo.sh
@@ -89,7 +104,12 @@ Build images and then start both services:
 ./start_demo.sh --build
 ```
 
-Then open:
+The local deployment starts:
+
+- `rag-agent` on `http://localhost:8080`
+- `rag-ui` on `http://localhost:3000`
+
+Open:
 
 ```text
 http://localhost:3000
@@ -101,17 +121,127 @@ Stop the demo:
 ./stop_demo.sh
 ```
 
+## Run The UI Without Docker
+
+You can run the Next.js reference UI directly on your workstation:
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+Set the UI backend URL to either the local `/responses` endpoint or the Hosted
+Application invoke `/responses` endpoint.
+
+## Python CLI
+
+From the repository root:
+
+```bash
+python -m clients.agent_cli \
+  --endpoint "http://localhost:8080/responses" \
+  --create-conversation true \
+  --stream false \
+  "Answer with only: ok"
+```
+
+Streaming:
+
+```bash
+python -m clients.agent_cli \
+  --endpoint "http://localhost:8080/responses" \
+  --create-conversation true \
+  --stream true \
+  "Answer with only: ok"
+```
+
+For Hosted Application validation, replace the endpoint with:
+
+```text
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses
+```
+
+## Agent Factory
+
+The `agent-factory/` application provides a guided deployment workflow for the
+backend container:
+
+- Resolve OCI resource names and OCIDs.
+- Validate OCIR credentials.
+- Build and push the backend image.
+- Create or reuse a Hosted Application.
+- Create a Hosted Deployment from the container artifact.
+- Track command output and deployment status.
+
+See [Agent Factory](agent-factory/README.md) for setup and usage.
+
+## Development Approach
+
+This repository follows spec-driven development.
+
+Every new capability starts with a specification under `specs/`. Code is written
+after the expected behavior, acceptance criteria, and test expectations are
+documented.
+
+This keeps the project aligned around a simple rule: implementation must conform
+to the specification, not the other way around.
+
+## Quality Standards
+
+Python code in this repository must follow these standards:
+
+- Source files include the required project header.
+- Code is formatted with `black`.
+- Code is checked with `pylint`.
+- Unit tests are written with `pytest`.
+- New functionality targets more than 80% test coverage.
+- Work is considered done only when formatting, linting, tests, and related
+  fixes are complete.
+
+Next.js UI changes must pass:
+
+```bash
+cd ui
+npm run test
+npm run lint
+npm run build
+```
+
+See [AGENTS.md](AGENTS.md) for the full working guidelines.
+
+## Repository Structure
+
+```text
+.
+├── AGENTS.md
+├── CHANGELOG.md
+├── QUICKSTART.md
+├── TROUBLESHOOTING.md
+├── agent/
+├── agent-factory/
+├── clients/
+├── docs/
+├── schemas/
+├── specs/
+├── tests/
+└── ui/
+```
+
 ## Current Status
 
-The project now includes:
+Version 1.0 is ready for use as a working OCI Enterprise AI RAG blueprint. It has
+been tested with:
 
-- Spec-driven architecture and implementation guidelines.
-- A FastAPI backend agent using the OpenAI-compatible Responses API.
-- Conversation management support.
-- Streaming and non-streaming response paths.
-- File search integration against a configured OCI Vector Store.
-- JSON request and response schemas.
-- A Python CLI test client.
-- A Next.js reference chatbot UI with streaming and Markdown rendering.
-- Docker Compose local deployment for backend and UI.
-- Root-level demo scripts for starting and stopping the local deployment.
+- Local backend and reference UI.
+- OCI Hosted Application health checks.
+- Hosted Deployment non-streaming `/responses` requests.
+- Hosted Deployment streaming `/responses` requests.
+- Python CLI streaming and non-streaming clients.
+- Next.js UI streaming against Hosted Application invoke.
