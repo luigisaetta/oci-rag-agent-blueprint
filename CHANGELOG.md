@@ -8,6 +8,8 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-09
 
+- Made the Python CLI streaming parser tolerate hosted gateway responses that
+  preserve SSE `data:` frames but strip explicit `event:` names.
 - Fixed the Python CLI streaming client so it exits immediately after `done` or
   `error` events instead of waiting for hosted gateway connections to close, and
   added agent stream-open and stream-completion diagnostics.

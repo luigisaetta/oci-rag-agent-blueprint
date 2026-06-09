@@ -143,6 +143,39 @@ def test_parse_sse_lines() -> None:
     }
 
 
+def test_parse_sse_lines_infers_events_when_gateway_strips_event_names() -> None:
+    """Test SSE parsing when a hosted gateway preserves only data frames."""
+
+    events = list(
+        parse_sse_lines(
+            [
+                'data: {"conversation_id": "conv-123"}\n',
+                "\n",
+                'data: {"text": "ok"}\n',
+                "\n",
+                'data: {"references": []}\n',
+                "\n",
+                (
+                    'data: {"usage": {"input_tokens": 10, "output_tokens": 5, '
+                    '"total_tokens": 15, "reasoning_tokens": 0}}\n'
+                ),
+                "\n",
+                'data: {"conversation_id": "conv-123"}\n',
+                "\n",
+            ]
+        )
+    )
+
+    assert [event.name for event in events] == [
+        "metadata",
+        "token",
+        "references",
+        "usage",
+        "done",
+    ]
+    assert events[1].data == {"text": "ok"}
+
+
 def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
     """Test non-streaming JSON response rendering."""
 

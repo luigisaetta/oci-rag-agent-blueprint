@@ -99,6 +99,17 @@ The client must stop reading the HTTP response as soon as it receives either a
 underlying connection open from making the CLI appear stuck after the agent has
 already completed.
 
+Some hosted gateways may preserve SSE `data:` frames while stripping explicit
+`event:` lines. In that case, the client must infer agent event names from the
+known payload shape:
+
+- `conversation_id` before metadata has been shown: `metadata`.
+- `text`: `token`.
+- `references`: `references`.
+- `usage`: `usage`.
+- `error`: `error`.
+- `conversation_id` after metadata has been shown: `done`.
+
 The client must handle the following Server-Sent Events:
 
 - `metadata`, used to display the active conversation identifier.
@@ -137,6 +148,7 @@ The output must show:
 - The client maps `--create-conversation` to `new_conversation`.
 - The client maps `--stream` to `stream`.
 - The client consumes Server-Sent Events from the agent endpoint.
+- The client handles hosted gateway responses that strip SSE event names.
 - The client exits streaming mode when the agent emits `done` or `error`.
 - The client consumes JSON responses from the agent endpoint.
 - The client displays references for both streaming and non-streaming responses.

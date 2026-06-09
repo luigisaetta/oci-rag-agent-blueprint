@@ -103,12 +103,16 @@ def parse_sse_lines(lines: Iterable[str]) -> Iterable[SseEvent]:
 
     event_name = "message"
     data_lines: list[str] = []
+    metadata_seen = False
 
     for line in lines:
         clean_line = line.rstrip("\n")
         if not clean_line:
             if data_lines:
-                yield _build_sse_event(event_name, data_lines)
+                event = _build_sse_event(event_name, data_lines, metadata_seen)
+                if event.name == "metadata":
+                    metadata_seen = True
+                yield event
             event_name = "message"
             data_lines = []
             continue
@@ -119,22 +123,70 @@ def parse_sse_lines(lines: Iterable[str]) -> Iterable[SseEvent]:
             data_lines.append(clean_line.split(":", 1)[1].strip())
 
     if data_lines:
-        yield _build_sse_event(event_name, data_lines)
+        yield _build_sse_event(event_name, data_lines, metadata_seen)
 
 
-def _build_sse_event(event_name: str, data_lines: list[str]) -> SseEvent:
+def _build_sse_event(
+    event_name: str,
+    data_lines: list[str],
+    metadata_seen: bool = False,
+) -> SseEvent:
     """Build one parsed Server-Sent Event.
 
     Args:
         event_name: SSE event name.
         data_lines: One or more SSE data lines.
+        metadata_seen: Whether a metadata event has already been parsed.
 
     Returns:
         SseEvent: Parsed event with JSON payload.
     """
 
     data = "\n".join(data_lines)
-    return SseEvent(name=event_name, data=json.loads(data))
+    payload = json.loads(data)
+    return SseEvent(
+        name=_normalize_sse_event_name(event_name, payload, metadata_seen),
+        data=payload,
+    )
+
+
+def _normalize_sse_event_name(
+    event_name: str,
+    payload: dict[str, object],
+    metadata_seen: bool,
+) -> str:
+    """Infer stripped SSE event names from their payload shape.
+
+    Some hosted gateways preserve `data:` frames but strip explicit `event:`
+    lines. When that happens, the SSE event defaults to `message`; the CLI still
+    needs to recognize the agent's payload contract and finish cleanly.
+
+    Args:
+        event_name: Event name parsed from the SSE frame.
+        payload: Parsed event payload.
+        metadata_seen: Whether a metadata event has already been parsed.
+
+    Returns:
+        str: Original or inferred SSE event name.
+    """
+
+    if event_name != "message":
+        return event_name
+
+    payload_key_events = {
+        "text": "token",
+        "references": "references",
+        "usage": "usage",
+        "error": "error",
+    }
+    for payload_key, inferred_event_name in payload_key_events.items():
+        if payload_key in payload:
+            return inferred_event_name
+
+    if "conversation_id" in payload:
+        return "done" if metadata_seen else "metadata"
+
+    return event_name
 
 
 def send_streaming_request(
