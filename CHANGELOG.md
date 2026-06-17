@@ -6,6 +6,11 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-17
+
+- Added a README section that explains practical use cases for the blueprint and
+  clarifies what users can build with the project.
+
 ## 2026-06-09
 
 - Marked version 1.0 as ready after Hosted Deployment validation, with both

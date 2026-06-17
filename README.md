@@ -21,6 +21,33 @@ non-streaming and streaming request modes. The Python CLI client and the Next.js
 reference UI both support the Hosted Application invoke gateway behavior where
 SSE `data:` frames are preserved but explicit `event:` names may be stripped.
 
+## What Can I Build With This?
+
+Use this blueprint when you need a working starting point for a production-style
+RAG assistant on OCI, not just a minimal API sample.
+
+Typical use cases include:
+
+- An internal knowledge assistant that answers questions from company
+  documentation, policies, runbooks, or onboarding material.
+- A support assistant that retrieves product, troubleshooting, or service
+  documentation before generating an answer.
+- A technical documentation chatbot for engineering teams, field teams, or
+  customers who need grounded answers with references.
+- A policy, compliance, or procedure assistant where answers must stay connected
+  to a controlled document collection.
+- A workshop or proof-of-concept environment that demonstrates OCI Vector Store,
+  the Responses API, streaming responses, short-term conversation memory, and a
+  deployable reference UI.
+- A reusable backend foundation for custom applications that need a
+  `/responses` API compatible with both local development and OCI Hosted
+  Application invoke endpoints.
+
+The repository gives you the pieces needed to go from synchronized documents in
+OCI Vector Store to a local or hosted chat experience: backend agent, request and
+response contracts, streaming behavior, command-line validation, reference UI,
+deployment guidance, and a guided Agent Factory workflow.
+
 ## Start Here
 
 Use these guides depending on what you want to do:
