@@ -320,7 +320,7 @@ Connector.
 When `Auth` is selected, the UI must reveal additional authentication fields:
 
 - Identity Domain compartment name or OCID.
-- Identity Domain name.
+- Identity Domain URL.
 - Scope.
 - Audience.
 
@@ -373,7 +373,7 @@ Agent Factory must collect the following inputs.
 | Hosted Application deployment name | Yes | Name for the deployment created inside the Hosted Application. |
 | JWT protection enabled | Yes | Defaults to `false`. When `true`, the Hosted Application inbound auth config must use IDCS authentication. |
 | Identity Domain compartment name or OCID | Conditional | Required when JWT protection is enabled. Captured for Identity Domain validation and future resolution. |
-| Identity Domain name | Conditional | Required when JWT protection is enabled. Identifies the Identity Domain associated with the confidential application. If the value is not a URL, the backend builds `https://<identity-domain-name>.identity.oraclecloud.com`. |
+| Identity Domain URL | Conditional | Required when JWT protection is enabled. Must be the exact `https://` Identity Domain URL from OCI Console. The backend must not derive this URL from a display name. |
 | Scope | Conditional | Required when JWT protection is enabled. Identifies the OAuth scope expected by the protected Hosted Application. |
 | Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT audience expected by the protected Hosted Application. |
 | Confidential application | No | The confidential application must already exist. Creating or managing its client credentials remains out of scope. |

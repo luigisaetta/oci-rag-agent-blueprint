@@ -29,7 +29,7 @@ SUPPORTED_MODEL_IDS = {
 }
 AUTH_REQUIRED_FIELDS = (
     "identity_domain_compartment",
-    "identity_domain_name",
+    "identity_domain_url",
     "auth_scope",
     "auth_audience",
 )
@@ -192,6 +192,12 @@ def validate_deployment_payload(payload: dict[str, Any]) -> ValidationResult:
         for field_name in AUTH_REQUIRED_FIELDS:
             if not _has_text(normalized.get(field_name)):
                 errors[field_name] = "This field is required when auth is enabled."
+        if _has_text(normalized.get("identity_domain_url")) and not str(
+            normalized["identity_domain_url"]
+        ).startswith("https://"):
+            errors["identity_domain_url"] = (
+                "Identity Domain URL must be the exact https:// URL from OCI Console."
+            )
 
     if normalized["endpoint_visibility"] != "public":
         errors["endpoint_visibility"] = "Only public endpoints are supported yet."
@@ -265,7 +271,9 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("connector_mode", "create")
     normalized.setdefault("jwt_protection_enabled", False)
     normalized.setdefault("identity_domain_compartment", "")
-    normalized.setdefault("identity_domain_name", "")
+    if "identity_domain_url" not in normalized and "identity_domain_name" in normalized:
+        normalized["identity_domain_url"] = normalized["identity_domain_name"]
+    normalized.setdefault("identity_domain_url", "")
     normalized.setdefault("auth_scope", "")
     normalized.setdefault("auth_audience", "")
     normalized.setdefault("endpoint_visibility", "public")

@@ -20,7 +20,7 @@ const INITIAL_FORM = {
   deployment_name: "",
   jwt_protection_enabled: false,
   identity_domain_compartment: "",
-  identity_domain_name: "",
+  identity_domain_url: "",
   auth_scope: "",
   auth_audience: "",
   endpoint_visibility: "public",
@@ -67,7 +67,7 @@ const REQUIRED_FIELDS = [
 
 const AUTH_REQUIRED_FIELDS = [
   "identity_domain_compartment",
-  "identity_domain_name",
+  "identity_domain_url",
   "auth_scope",
   "auth_audience"
 ];
@@ -782,11 +782,11 @@ export default function Home() {
                       error={fieldErrors.identity_domain_compartment}
                     />
                     <Field
-                      label="Identity Domain name"
-                      name="identity_domain_name"
-                      value={form.identity_domain_name}
+                      label="Identity Domain URL"
+                      name="identity_domain_url"
+                      value={form.identity_domain_url}
                       onChange={updateField}
-                      error={fieldErrors.identity_domain_name}
+                      error={fieldErrors.identity_domain_url}
                     />
                     <Field
                       label="Scope"

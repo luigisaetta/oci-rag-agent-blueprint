@@ -22,18 +22,16 @@ This can happen when the deployment uses `IDCS_AUTH_CONFIG`.
 
 The Hosted Application invoke gateway may return `404` when the IDCS inbound
 authentication configuration does not match a valid Identity Domain. A common
-cause is an incorrect Identity Domain URL or name in the authentication
-settings.
+cause is an incorrect Identity Domain URL in the authentication settings.
 
 **Fix**
 
 Check the authentication fields submitted through Agent Factory:
 
-- Confirm the Identity Domain name is correct.
-- If you provide a full Identity Domain URL, confirm it is the exact reachable
-  domain URL.
-- If you provide only the Identity Domain name, Agent Factory builds the URL as
-  `https://<identity-domain-name>.identity.oraclecloud.com`.
+- Confirm the Identity Domain URL is the exact `https://` URL shown in OCI
+  Console for the Identity Domain.
+- Do not use the Identity Domain display name, such as
+  `OracleIdentityCloudService`, in place of the URL.
 - Confirm the scope and audience match the confidential application
   configuration.
 

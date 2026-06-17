@@ -576,27 +576,11 @@ def _build_inbound_auth_config(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
         "idcsConfig": {
-            "domainUrl": _identity_domain_url(str(payload["identity_domain_name"])),
+            "domainUrl": str(payload["identity_domain_url"]).rstrip("/"),
             "scope": str(payload["auth_scope"]),
             "audience": str(payload["auth_audience"]),
         },
     }
-
-
-def _identity_domain_url(identity_domain_name: str) -> str:
-    """Convert an Identity Domain name or URL into an IDCS domain URL.
-
-    Args:
-        identity_domain_name: Submitted Identity Domain name or full URL.
-
-    Returns:
-        str: Full domain URL for the Hosted Application IDCS auth config.
-    """
-
-    domain = identity_domain_name.strip().rstrip("/")
-    if domain.startswith(("http://", "https://")):
-        return domain
-    return f"https://{domain}.identity.oraclecloud.com"
 
 
 def build_agent_runtime_environment(

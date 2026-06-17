@@ -32,6 +32,8 @@ changes, or documentation updates are introduced.
   default URL.
 - Added a troubleshooting FAQ entry for Hosted Application `/health` validation
   returning 404 after enabling IDCS authentication.
+- Changed Agent Factory IDCS authentication to require the exact Identity Domain
+  URL instead of deriving one from an Identity Domain display name.
 
 ## 2026-06-09
 

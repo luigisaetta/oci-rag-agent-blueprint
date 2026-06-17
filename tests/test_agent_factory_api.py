@@ -331,7 +331,7 @@ def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
         {
             "jwt_protection_enabled": True,
             "identity_domain_compartment": "Security",
-            "identity_domain_name": "mydomain",
+            "identity_domain_url": "https://idcs-example.identity.oraclecloud.com",
             "auth_scope": "urn:opc:resource:consumer::all",
             "auth_audience": "rag-agent",
         }
@@ -347,13 +347,15 @@ def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
     assert inbound_auth_config == {
         "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
         "idcsConfig": {
-            "domainUrl": "https://mydomain.identity.oraclecloud.com",
+            "domainUrl": "https://idcs-example.identity.oraclecloud.com",
             "scope": "urn:opc:resource:consumer::all",
             "audience": "rag-agent",
         },
     }
     assert payload["request"]["identity_domain_compartment"] == "Security"
-    assert payload["request"]["identity_domain_name"] == "mydomain"
+    assert payload["request"]["identity_domain_url"] == (
+        "https://idcs-example.identity.oraclecloud.com"
+    )
 
 
 def test_agent_factory_strips_surrounding_text_input_whitespace(monkeypatch) -> None:
@@ -483,10 +485,33 @@ def test_agent_factory_requires_auth_fields_when_jwt_is_enabled() -> None:
     field_errors = response.json()["field_errors"]
     assert field_errors == {
         "identity_domain_compartment": "This field is required when auth is enabled.",
-        "identity_domain_name": "This field is required when auth is enabled.",
+        "identity_domain_url": "This field is required when auth is enabled.",
         "auth_scope": "This field is required when auth is enabled.",
         "auth_audience": "This field is required when auth is enabled.",
     }
+
+
+def test_agent_factory_rejects_identity_domain_display_name_for_auth() -> None:
+    """Test IDCS auth requires the exact Identity Domain URL."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload.update(
+        {
+            "jwt_protection_enabled": True,
+            "identity_domain_compartment": "Security",
+            "identity_domain_url": "OracleIdentityCloudService",
+            "auth_scope": "urn:opc:resource:consumer::all",
+            "auth_audience": "rag-agent",
+        }
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 400
+    assert response.json()["field_errors"]["identity_domain_url"] == (
+        "Identity Domain URL must be the exact https:// URL from OCI Console."
+    )
 
 
 def test_agent_factory_rejects_unsupported_options() -> None:
