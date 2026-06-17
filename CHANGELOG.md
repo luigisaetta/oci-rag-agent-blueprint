@@ -30,6 +30,8 @@ changes, or documentation updates are introduced.
 - Added Agent Factory UI troubleshooting hints when credential checks or
   deployment submissions fail while the backend endpoint still points to a local
   default URL.
+- Added a troubleshooting FAQ entry for Hosted Application `/health` validation
+  returning 404 after enabling IDCS authentication.
 
 ## 2026-06-09
 

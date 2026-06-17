@@ -5,6 +5,41 @@ to diagnose and resolve them.
 
 ## Agent Factory
 
+### Hosted Application `/health` validation returns 404 after enabling IDCS auth
+
+**Symptom**
+
+Agent Factory creates the Hosted Application and deployment, but the final
+`Validate deployed health endpoint` step fails with:
+
+```text
+urllib.error.HTTPError: HTTP Error 404: Not Found
+```
+
+This can happen when the deployment uses `IDCS_AUTH_CONFIG`.
+
+**Cause**
+
+The Hosted Application invoke gateway may return `404` when the IDCS inbound
+authentication configuration does not match a valid Identity Domain. A common
+cause is an incorrect Identity Domain URL or name in the authentication
+settings.
+
+**Fix**
+
+Check the authentication fields submitted through Agent Factory:
+
+- Confirm the Identity Domain name is correct.
+- If you provide a full Identity Domain URL, confirm it is the exact reachable
+  domain URL.
+- If you provide only the Identity Domain name, Agent Factory builds the URL as
+  `https://<identity-domain-name>.identity.oraclecloud.com`.
+- Confirm the scope and audience match the confidential application
+  configuration.
+
+After correcting the IDCS values, rerun the deployment or update the Hosted
+Application authentication configuration and validate `/health` again.
+
 ### Factory API URL points to `localhost` when Agent Factory runs on a remote server
 
 **Symptom**
