@@ -300,6 +300,11 @@ The UI must allow users to:
 
 The UI must disable workflow submission while required inputs are invalid.
 
+When the OCIR credential check or deployment submission fails while the Factory
+API endpoint still points to `localhost`, `127.0.0.1`, or the default local
+backend URL, the UI must append a clear troubleshooting hint telling the user to
+verify that the Factory API endpoint is set to the reachable backend IP or host.
+
 The UI must use compact option controls for boolean or mode-style Hosted
 Application settings when that improves form density and clarity. In particular,
 Hosted Application authentication must be presented as a two-option control with

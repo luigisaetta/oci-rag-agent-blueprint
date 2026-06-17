@@ -27,6 +27,9 @@ changes, or documentation updates are introduced.
   choices from dropdowns to compact segmented controls.
 - Added Agent Factory backend validation and Hosted Application IDCS inbound auth
   artifact generation for authenticated deployments.
+- Added Agent Factory UI troubleshooting hints when credential checks or
+  deployment submissions fail while the backend endpoint still points to a local
+  default URL.
 
 ## 2026-06-09
 

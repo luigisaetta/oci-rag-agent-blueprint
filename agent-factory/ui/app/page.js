@@ -422,7 +422,10 @@ export default function Home() {
     } catch (error) {
       setOcirLoginCheck({
         status: "failed",
-        message: error.message || "Unable to check OCIR Docker login."
+        message: withBackendEndpointHint(
+          error.message || "Unable to check OCIR Docker login.",
+          backendUrl
+        )
       });
     } finally {
       setIsCheckingOcirLogin(false);
@@ -455,7 +458,12 @@ export default function Home() {
 
       setRun(payload);
     } catch (error) {
-      setErrorMessage(error.message || "Unable to start Agent Factory run.");
+      setErrorMessage(
+        withBackendEndpointHint(
+          error.message || "Unable to start Agent Factory run.",
+          backendUrl
+        )
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -964,6 +972,28 @@ function normalizeValue(name, value) {
   }
 
   return value;
+}
+
+function withBackendEndpointHint(message, backendUrl) {
+  const hint =
+    "Check the Factory API endpoint: it still looks like a local/default URL. " +
+    "If the backend runs on Proxima or another host, set this field to the " +
+    "reachable backend IP or hostname.";
+
+  if (!usesLocalBackendEndpoint(backendUrl) || message.includes(hint)) {
+    return message;
+  }
+
+  return `${message} ${hint}`;
+}
+
+function usesLocalBackendEndpoint(backendUrl) {
+  try {
+    const parsedUrl = new URL(backendUrl);
+    return ["localhost", "127.0.0.1"].includes(parsedUrl.hostname);
+  } catch {
+    return backendUrl === DEFAULT_BACKEND_URL || backendUrl === LOCAL_BACKEND_URL;
+  }
 }
 
 function deploymentStatusUrl(baseUrl, deploymentRunId) {
