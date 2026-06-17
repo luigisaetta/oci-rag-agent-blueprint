@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-17
 License: MIT
 Description: OCI resource managers for Agent Factory knowledge base setup.
 """
@@ -658,6 +658,10 @@ class VectorStoreConnectorManager:
 
         if connector_name.startswith("ocid1."):
             connector = self._retrieve_connector(connector_name)
+            _raise_if_resource_failed(
+                resource=connector,
+                resource_label=f"Connector {connector_name}",
+            )
             return _connector_result(connector, fallback_name=connector_name)
 
         existing_connector = self._find_connector_by_name(
@@ -670,10 +674,16 @@ class VectorStoreConnectorManager:
                 raise ResourceProvisioningError(
                     f"Connector not found: {connector_name}"
                 )
+            _raise_if_resource_failed(
+                resource=existing_connector,
+                resource_label=f"Connector {connector_name}",
+            )
             return _connector_result(existing_connector, fallback_name=connector_name)
 
         if mode == "create":
-            if existing_connector is not None:
+            if existing_connector is not None and not _is_resource_failed(
+                existing_connector
+            ):
                 return _connector_result(
                     existing_connector, fallback_name=connector_name
                 )
@@ -740,13 +750,23 @@ class VectorStoreConnectorManager:
 
         if connector_name.startswith("ocid1."):
             connector = self._retrieve_connector(connector_name)
+            _raise_if_resource_failed(
+                resource=connector,
+                resource_label=f"Connector {connector_name}",
+            )
             return _connector_result(connector, fallback_name=connector_name)
 
         existing_connector = self._find_connector_by_name(
             compartment_id=compartment_id,
             connector_name=connector_name,
         )
-        if existing_connector is not None:
+        if existing_connector is not None and not _is_resource_failed(
+            existing_connector
+        ):
+            _raise_if_resource_failed(
+                resource=existing_connector,
+                resource_label=f"Connector {connector_name}",
+            )
             return _connector_result(existing_connector, fallback_name=connector_name)
 
         if mode == "create":
@@ -758,6 +778,11 @@ class VectorStoreConnectorManager:
             )
 
         if mode == "reuse":
+            if existing_connector is not None:
+                _raise_if_resource_failed(
+                    resource=existing_connector,
+                    resource_label=f"Connector {connector_name}",
+                )
             raise ResourceProvisioningError(f"Connector not found: {connector_name}")
 
         raise ResourceProvisioningError(f"Unsupported connector mode: {mode}")
@@ -2048,6 +2073,19 @@ def _raise_if_resource_failed(*, resource: Any, resource_label: str) -> None:
         raise ResourceProvisioningError(
             f"{resource_label} entered failed state {state}."
         )
+
+
+def _is_resource_failed(resource: Any) -> bool:
+    """Return whether a resource reports a failed terminal state.
+
+    Args:
+        resource: OCI or OpenAI-compatible resource model.
+
+    Returns:
+        bool: True when the resource is deleted, deleting, or failed.
+    """
+
+    return _resource_state(resource) in FAILED_RESOURCE_STATES
 
 
 def _resource_state(resource: Any) -> str | None:

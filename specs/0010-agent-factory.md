@@ -261,6 +261,11 @@ After calling `create_vector_store_connector`, the backend must verify the
 connector exists through `get_vector_store_connector` when an OCID is returned,
 or by listing connectors by display name. The connector step must not be marked
 succeeded until that verification succeeds.
+When resolving connectors by name, the backend must not reuse connectors in
+failed or deleted lifecycle states. In `create` mode, deleted connectors with a
+matching display name must be ignored so a new connector can be created. In
+`reuse` mode, matching connectors in failed or deleted lifecycle states must
+fail the run with a clear error.
 
 ## UI Responsibilities
 
@@ -421,6 +426,13 @@ Agent Factory must run the deployment workflow in the following order.
 16. Wait for deployment activation or readiness with OCI CLI.
 17. Validate the deployed `GET /health` endpoint when reachable.
 18. Return final deployment outputs.
+
+Hosted Deployment readiness must not be treated as successful while the
+deployment reports a transitional lifecycle state such as `CREATING` or
+`IN_PROGRESS`. The backend must poll the deployment status until it reports a
+ready state, fail when it reports a failed terminal state, or fail after the
+configured timeout. Health validation must use the deterministic Hosted
+Application invoke health URL once the Hosted Application OCID is known.
 
 The backend must stop the sequence on the first unrecoverable failure.
 Non-dry-run deployments must not mark planned Docker, OCIR, or Hosted

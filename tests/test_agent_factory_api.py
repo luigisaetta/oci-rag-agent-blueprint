@@ -1478,6 +1478,60 @@ def test_connector_manager_creates_object_storage_connector() -> None:
     assert client.created_details.schedule_config.state == "ENABLED"
 
 
+def test_connector_manager_ignores_deleted_connector_when_creating() -> None:
+    """Test create mode ignores deleted connectors with the requested name."""
+
+    client = FakeConnectorClient(
+        connectors=[
+            {
+                "id": "ocid1.vectorstoreconnector.oc1..deleted",
+                "display_name": "agent-factory-connector",
+                "lifecycle_state": "DELETED",
+            }
+        ]
+    )
+    manager = VectorStoreConnectorManager(client)
+
+    result = manager.create_reuse_or_skip(
+        compartment_id="ocid1.compartment.oc1..example",
+        connector_name="agent-factory-connector",
+        mode="create",
+        vector_store_id="ocid1.vectorstore.oc1..created",
+        namespace_name="test-namespace",
+        bucket_name="agent-factory-docs",
+    )
+
+    assert result is not None
+    assert result.created is True
+    assert result.lifecycle_state == "ACTIVE"
+    assert client.created_details is not None
+
+
+def test_connector_manager_rejects_deleted_connector_when_reusing() -> None:
+    """Test reuse mode rejects deleted connectors with the requested name."""
+
+    client = FakeConnectorClient(
+        connectors=[
+            {
+                "id": "ocid1.vectorstoreconnector.oc1..deleted",
+                "display_name": "agent-factory-connector",
+                "lifecycle_state": "DELETED",
+            }
+        ]
+    )
+    manager = VectorStoreConnectorManager(client)
+
+    with pytest.raises(ResourceProvisioningError, match="DELETED"):
+        manager.create_reuse_or_skip(
+            compartment_id="ocid1.compartment.oc1..example",
+            connector_name="agent-factory-connector",
+            mode="reuse",
+            vector_store_id="ocid1.vectorstore.oc1..created",
+            namespace_name="test-namespace",
+            bucket_name="agent-factory-docs",
+        )
+
+
 def test_connector_manager_requires_post_create_verification(monkeypatch) -> None:
     """Test connector create fails when the connector cannot be verified."""
 
@@ -1494,6 +1548,56 @@ def test_connector_manager_requires_post_create_verification(monkeypatch) -> Non
             vector_store_id="ocid1.vectorstore.oc1..created",
             namespace_name="test-namespace",
             bucket_name="agent-factory-docs",
+        )
+
+
+def test_deployment_readiness_waits_past_creating_state(monkeypatch) -> None:
+    """Test Hosted Deployment readiness does not accept CREATING as ready."""
+
+    states = iter(["CREATING", "ACTIVE"])
+    seen_events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def fake_run_json_step(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        _ = args, kwargs
+        return {"data": {"lifecycle-state": next(states)}}
+
+    monkeypatch.setattr(factory_executor, "_run_json_step", fake_run_json_step)
+    monkeypatch.setattr(factory_executor.time, "sleep", lambda _: None)
+
+    output = (
+        factory_executor._wait_for_deployment_ready(  # pylint: disable=protected-access
+            command=["oci", "generative-ai", "hosted-deployment", "get"],
+            progress_callback=lambda step_id, status, outputs: seen_events.append(
+                (step_id, status, outputs)
+            ),
+            cwd=PROJECT_ROOT,
+            secrets=[],
+        )
+    )
+
+    assert output == {"data": {"lifecycle-state": "ACTIVE"}}
+    assert (
+        "deployment-readiness",
+        "running",
+        {"lifecycle_state": "CREATING", "waiting": True},
+    ) in seen_events
+
+
+def test_deployment_readiness_fails_terminal_state(monkeypatch) -> None:
+    """Test Hosted Deployment readiness fails on terminal failed states."""
+
+    def fake_run_json_step(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        _ = args, kwargs
+        return {"data": {"lifecycle-state": "FAILED"}}
+
+    monkeypatch.setattr(factory_executor, "_run_json_step", fake_run_json_step)
+
+    with pytest.raises(CommandExecutionError, match="FAILED"):
+        factory_executor._wait_for_deployment_ready(  # pylint: disable=protected-access
+            command=["oci", "generative-ai", "hosted-deployment", "get"],
+            progress_callback=lambda *_: None,
+            cwd=PROJECT_ROOT,
+            secrets=[],
         )
 
 
@@ -1840,11 +1944,16 @@ class FakeControlPlaneClient:
 class FakeConnectorClient:
     """Fake OCI Generative AI client used by connector manager tests."""
 
-    def __init__(self, projects: list[dict[str, str]] | None = None) -> None:
+    def __init__(
+        self,
+        projects: list[dict[str, str]] | None = None,
+        connectors: list[dict[str, str]] | None = None,
+    ) -> None:
         """Initialize the fake client."""
 
         self.created_details: Any | None = None
         self._created_connector: dict[str, str] | None = None
+        self._connectors = connectors or []
         self._projects = projects or [
             {
                 "id": "ocid1.generativeaiproject.oc1..example",
@@ -1881,7 +1990,7 @@ class FakeConnectorClient:
         """
 
         assert compartment_id == "ocid1.compartment.oc1..example"
-        return FakeResponse(FakeListData([]))
+        return FakeResponse(FakeListData(self._connectors))
 
     def create_vector_store_connector(self, create_details: Any) -> FakeResponse:
         """Create a fake connector.

@@ -1,17 +1,20 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-17
 License: MIT
 Description: Live command execution helpers for Agent Factory deployments.
 """
 
 from __future__ import annotations
 
+# pylint: disable=duplicate-code,too-many-lines
+
 import json
 import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -26,6 +29,19 @@ ProgressCallback = Callable[[str, str, dict[str, Any] | None], None]
 ENTITY_OCID_PREFIXES = {
     "HOSTED_APPLICATION": "ocid1.generativeaihostedapplication.",
     "HOSTED_DEPLOYMENT": "ocid1.generativeaihosteddeployment.",
+}
+HOSTED_APPLICATION_API_VERSION = "20251112"
+DEFAULT_DEPLOYMENT_WAIT_INTERVAL_SECONDS = 15.0
+DEFAULT_DEPLOYMENT_WAIT_TIMEOUT_SECONDS = 900.0
+DEPLOYMENT_WAIT_INTERVAL_ENV_VAR = "AGENT_FACTORY_DEPLOYMENT_WAIT_INTERVAL_SECONDS"
+DEPLOYMENT_WAIT_TIMEOUT_ENV_VAR = "AGENT_FACTORY_DEPLOYMENT_WAIT_TIMEOUT_SECONDS"
+READY_DEPLOYMENT_STATES = {"ACTIVE", "SUCCEEDED"}
+FAILED_DEPLOYMENT_STATES = {
+    "CANCELED",
+    "CANCELING",
+    "DELETED",
+    "DELETING",
+    "FAILED",
 }
 
 
@@ -177,37 +193,31 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             )
         outputs["hosted_deployment_id"] = hosted_deployment_id
 
-        readiness_output = _run_json_step(
-            "deployment-readiness",
+        readiness_command = _replace_placeholders(
+            _command(commands_by_step_id, "deployment-readiness"),
+            {"<hosted-deployment-ocid>": hosted_deployment_id},
+        )
+        readiness_output = _wait_for_deployment_ready(
+            command=readiness_command,
+            progress_callback=progress_callback,
+            cwd=repo_root,
+            secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+        )
+        endpoint_url = _find_endpoint_url(readiness_output) or _build_invoke_url(
+            region=str(payload["region"]),
+            hosted_application_id=hosted_application_id,
+        )
+        outputs["endpoint_url"] = endpoint_url
+        _run_step(
+            "health",
             _replace_placeholders(
-                _command(commands_by_step_id, "deployment-readiness"),
-                {"<hosted-deployment-ocid>": hosted_deployment_id},
+                _command(commands_by_step_id, "health"),
+                {"<deployed-health-endpoint>": endpoint_url.rstrip("/")},
             ),
             progress_callback,
             cwd=repo_root,
             secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
         )
-        endpoint_url = _find_endpoint_url(readiness_output)
-        if endpoint_url:
-            outputs["endpoint_url"] = endpoint_url
-            _run_step(
-                "health",
-                _replace_placeholders(
-                    _command(commands_by_step_id, "health"),
-                    {"<deployed-health-endpoint>": endpoint_url.rstrip("/")},
-                ),
-                progress_callback,
-                cwd=repo_root,
-                secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
-            )
-        else:
-            progress_callback(
-                "health",
-                "skipped",
-                {
-                    "reason": "Deployment readiness output did not include an endpoint URL."
-                },
-            )
 
     return outputs
 
@@ -281,6 +291,67 @@ def _run_json_step(
         secrets=secrets,
     )
     return _load_json_output(step_id, result, secrets or [])
+
+
+def _wait_for_deployment_ready(
+    *,
+    command: list[str],
+    progress_callback: ProgressCallback,
+    cwd: Path,
+    secrets: list[str],
+) -> dict[str, Any]:
+    """Poll Hosted Deployment status until it is ready or fails.
+
+    Args:
+        command: OCI CLI get command for the Hosted Deployment.
+        progress_callback: Callback used to update step state.
+        cwd: Working directory for the command.
+        secrets: Secret values to redact from command outputs.
+
+    Returns:
+        dict[str, Any]: Last readiness command output.
+
+    Raises:
+        CommandExecutionError: If the deployment fails or times out.
+    """
+
+    deadline = time.monotonic() + _deployment_wait_timeout_seconds()
+    interval = _deployment_wait_interval_seconds()
+    last_state = "UNKNOWN"
+
+    while True:
+        output = _run_json_step(
+            "deployment-readiness",
+            command,
+            progress_callback,
+            cwd=cwd,
+            secrets=secrets,
+        )
+        state = _deployment_lifecycle_state(output)
+        if state:
+            last_state = state
+        if state in READY_DEPLOYMENT_STATES:
+            return output
+        if state in FAILED_DEPLOYMENT_STATES:
+            raise CommandExecutionError(
+                "deployment-readiness",
+                f"Hosted Deployment entered failed state {state}.",
+            )
+        if not state and _find_endpoint_url(output):
+            return output
+        if time.monotonic() >= deadline:
+            raise CommandExecutionError(
+                "deployment-readiness",
+                "Hosted Deployment was not ready after "
+                f"{_deployment_wait_timeout_seconds():g} seconds. "
+                f"Last state: {last_state}.",
+            )
+        progress_callback(
+            "deployment-readiness",
+            "running",
+            {"lifecycle_state": last_state, "waiting": True},
+        )
+        time.sleep(interval)
 
 
 def _load_json_output(
@@ -784,6 +855,80 @@ def _find_endpoint_url(command_output: dict[str, Any]) -> str | None:
             if "endpoint" in normalized_key or normalized_key.endswith("url"):
                 return value
     return None
+
+
+def _deployment_lifecycle_state(command_output: dict[str, Any]) -> str | None:
+    """Return the normalized Hosted Deployment lifecycle state.
+
+    Args:
+        command_output: Parsed OCI CLI Hosted Deployment output.
+
+    Returns:
+        str | None: Upper-case lifecycle state when present.
+    """
+
+    data = command_output.get("data")
+    if not isinstance(data, dict):
+        return None
+    state = _first_string(data, "lifecycle-state", "lifecycleState", "status")
+    return state.upper() if state else None
+
+
+def _build_invoke_url(*, region: str, hosted_application_id: str) -> str:
+    """Build the deterministic Hosted Application invoke URL.
+
+    Args:
+        region: OCI region that hosts the application.
+        hosted_application_id: Hosted Application OCID.
+
+    Returns:
+        str: Public invoke base URL.
+    """
+
+    return (
+        f"https://inference.generativeai.{region}.oci.oraclecloud.com/"
+        f"{HOSTED_APPLICATION_API_VERSION}/hostedApplications/"
+        f"{hosted_application_id}/actions/invoke"
+    )
+
+
+def _deployment_wait_interval_seconds() -> float:
+    """Return the Hosted Deployment readiness poll interval."""
+
+    return _positive_float_from_env(
+        env_var=DEPLOYMENT_WAIT_INTERVAL_ENV_VAR,
+        default=DEFAULT_DEPLOYMENT_WAIT_INTERVAL_SECONDS,
+    )
+
+
+def _deployment_wait_timeout_seconds() -> float:
+    """Return the Hosted Deployment readiness timeout."""
+
+    return _positive_float_from_env(
+        env_var=DEPLOYMENT_WAIT_TIMEOUT_ENV_VAR,
+        default=DEFAULT_DEPLOYMENT_WAIT_TIMEOUT_SECONDS,
+    )
+
+
+def _positive_float_from_env(*, env_var: str, default: float) -> float:
+    """Read a positive float environment variable.
+
+    Args:
+        env_var: Environment variable name.
+        default: Default value when unset or invalid.
+
+    Returns:
+        float: Parsed positive value or default.
+    """
+
+    raw_value = os.environ.get(env_var)
+    if raw_value is None:
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _walk_values(value: Any) -> list[Any]:

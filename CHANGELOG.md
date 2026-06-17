@@ -12,6 +12,10 @@ changes, or documentation updates are introduced.
   clarifies what users can build with the project.
 - Updated Agent Factory outputs to show the Hosted Application invoke base URL,
   health URL, and `/responses` URL after successful live deployments.
+- Fixed Agent Factory connector provisioning so deleted connectors are not reused
+  in create mode and are rejected clearly in reuse mode.
+- Fixed Agent Factory Hosted Deployment readiness so deployments still in
+  transitional states are polled instead of being marked successful immediately.
 
 ## 2026-06-09
 
