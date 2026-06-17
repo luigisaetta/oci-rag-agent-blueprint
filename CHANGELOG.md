@@ -10,6 +10,8 @@ changes, or documentation updates are introduced.
 
 - Added a README section that explains practical use cases for the blueprint and
   clarifies what users can build with the project.
+- Updated Agent Factory outputs to show the Hosted Application invoke base URL,
+  health URL, and `/responses` URL after successful live deployments.
 
 ## 2026-06-09
 

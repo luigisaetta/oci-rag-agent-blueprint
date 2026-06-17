@@ -765,6 +765,25 @@ export default function Home() {
                   <dd>{run.outputs?.image_reference ?? "n/a"}</dd>
                   <dt>Endpoint</dt>
                   <dd>{run.outputs?.endpoint_url ?? "Pending real deployment"}</dd>
+                  <dt>Hosted Application ID</dt>
+                  <dd>{run.outputs?.hosted_application_id ?? "Pending real deployment"}</dd>
+                  <dt>Hosted Deployment ID</dt>
+                  <dd>{run.outputs?.hosted_deployment_id ?? "Pending real deployment"}</dd>
+                  <dt>Invoke base URL</dt>
+                  <dd>
+                    {run.outputs?.hosted_application_invoke_url ??
+                      "Pending real deployment"}
+                  </dd>
+                  <dt>Health URL</dt>
+                  <dd>
+                    {run.outputs?.hosted_application_health_url ??
+                      "Pending real deployment"}
+                  </dd>
+                  <dt>Responses URL</dt>
+                  <dd>
+                    {run.outputs?.hosted_application_responses_url ??
+                      "Pending real deployment"}
+                  </dd>
                   <dt>Compartment ID</dt>
                   <dd>{run.outputs?.resolved_identifiers?.compartment_id ?? "n/a"}</dd>
                   <dt>GenAI Project ID</dt>

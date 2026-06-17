@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-17
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -23,7 +23,11 @@ sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 
 import agent_factory_api.resources as factory_resources  # pylint: disable=wrong-import-position
 import agent_factory_api.executor as factory_executor  # pylint: disable=wrong-import-position
-from agent_factory_api.app import RUNS, app  # pylint: disable=wrong-import-position
+from agent_factory_api.app import (  # pylint: disable=wrong-import-position
+    RUNS,
+    _build_hosted_application_urls,
+    app,
+)
 from agent_factory_api.commands import (  # pylint: disable=wrong-import-position
     AGENT_RUNTIME_ENVIRONMENT_VARIABLES,
     build_resolved_identifiers,
@@ -950,6 +954,48 @@ def test_agent_factory_apply_provisions_bucket_and_vector_store(monkeypatch) -> 
     assert payload["outputs"]["hosted_deployment_id"] == (
         "ocid1.generativeaihosteddeployment.oc1..example"
     )
+    assert payload["outputs"]["hosted_application_invoke_url"] == (
+        "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/"
+        "20251112/hostedApplications/"
+        "ocid1.generativeaihostedapplication.oc1..example/actions/invoke"
+    )
+    assert payload["outputs"]["hosted_application_health_url"] == (
+        "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/"
+        "20251112/hostedApplications/"
+        "ocid1.generativeaihostedapplication.oc1..example/actions/invoke/health"
+    )
+    assert payload["outputs"]["hosted_application_responses_url"] == (
+        "https://inference.generativeai.eu-frankfurt-1.oci.oraclecloud.com/"
+        "20251112/hostedApplications/"
+        "ocid1.generativeaihostedapplication.oc1..example/actions/invoke/responses"
+    )
+
+
+def test_agent_factory_builds_hosted_application_invoke_urls() -> None:
+    """Test Hosted Application invoke URLs are derived from region and OCID."""
+
+    urls = _build_hosted_application_urls(
+        region="us-chicago-1",
+        hosted_application_id="ocid1.generativeaihostedapplication.oc1..sample",
+    )
+
+    assert urls == {
+        "hosted_application_invoke_url": (
+            "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/"
+            "20251112/hostedApplications/"
+            "ocid1.generativeaihostedapplication.oc1..sample/actions/invoke"
+        ),
+        "hosted_application_health_url": (
+            "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/"
+            "20251112/hostedApplications/"
+            "ocid1.generativeaihostedapplication.oc1..sample/actions/invoke/health"
+        ),
+        "hosted_application_responses_url": (
+            "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/"
+            "20251112/hostedApplications/"
+            "ocid1.generativeaihostedapplication.oc1..sample/actions/invoke/responses"
+        ),
+    }
 
 
 def test_agent_factory_apply_fails_when_live_command_execution_fails(

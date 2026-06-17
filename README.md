@@ -206,6 +206,7 @@ backend container:
 - Create or reuse a Hosted Application.
 - Create a Hosted Deployment from the container artifact.
 - Track command output and deployment status.
+- Show the final Hosted Application invoke, health, and `/responses` URLs.
 
 See [Agent Factory](agent-factory/README.md) for setup and usage.
 

@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-17
 License: MIT
 Description: FastAPI backend skeleton for Agent Factory deployment orchestration.
 """
@@ -43,6 +43,7 @@ from agent_factory_api.resources import (
 )
 
 RUNS: dict[str, DeploymentRun] = {}
+HOSTED_APPLICATION_API_VERSION = "20251112"
 
 app = FastAPI(title="Agent Factory API")
 app.add_middleware(
@@ -475,13 +476,21 @@ def _build_run_outputs(
         ),
     }
     if execution_outputs:
+        hosted_application_id = execution_outputs.get("hosted_application_id")
         outputs.update(
             {
                 "endpoint_url": execution_outputs.get("endpoint_url"),
-                "hosted_application_id": execution_outputs.get("hosted_application_id"),
+                "hosted_application_id": hosted_application_id,
                 "hosted_deployment_id": execution_outputs.get("hosted_deployment_id"),
             }
         )
+        if hosted_application_id:
+            outputs.update(
+                _build_hosted_application_urls(
+                    region=str(plan_payload["region"]),
+                    hosted_application_id=str(hosted_application_id),
+                )
+            )
 
     if resource_result is not None:
         outputs["foundation_resources"] = {
@@ -515,6 +524,31 @@ def _build_run_outputs(
         }
 
     return outputs
+
+
+def _build_hosted_application_urls(
+    *, region: str, hosted_application_id: str
+) -> dict[str, str]:
+    """Build public invoke URLs for a Hosted Application.
+
+    Args:
+        region: OCI region that hosts the application.
+        hosted_application_id: Hosted Application OCID.
+
+    Returns:
+        dict[str, str]: Invoke base, health, and Responses API URLs.
+    """
+
+    invoke_url = (
+        f"https://inference.generativeai.{region}.oci.oraclecloud.com/"
+        f"{HOSTED_APPLICATION_API_VERSION}/hostedApplications/"
+        f"{hosted_application_id}/actions/invoke"
+    )
+    return {
+        "hosted_application_invoke_url": invoke_url,
+        "hosted_application_health_url": f"{invoke_url}/health",
+        "hosted_application_responses_url": f"{invoke_url}/responses",
+    }
 
 
 def _failed_resource_run(

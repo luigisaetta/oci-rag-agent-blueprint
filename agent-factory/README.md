@@ -74,3 +74,8 @@ Dry runs validate inputs and generate command plans without creating OCI
 resources. Non-dry-run deployments create or reuse the configured OCI resources,
 build and push the RAG agent backend image, and create the Hosted Application
 deployment.
+
+After a successful live deployment, the UI outputs include the Hosted
+Application invoke base URL plus ready-to-use health and `/responses` URLs. Use
+the `/responses` URL with the reference UI or Python CLI client when validating
+the hosted RAG agent.

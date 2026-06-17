@@ -287,6 +287,8 @@ The UI must allow users to:
   without waiting for the full workflow to finish.
 - See created or reused resource identifiers.
 - See the final Hosted Application deployment endpoint.
+- See the Hosted Application invoke base URL and ready-to-use health and
+  `/responses` URLs after a live deployment succeeds.
 - See actionable error messages when a step fails.
 
 The UI must disable workflow submission while required inputs are invalid.
@@ -465,6 +467,19 @@ The Docker push command must push the final OCI Container Registry image
 reference.
 
 The pushed image reference must be stored in the deployment run outputs.
+
+After a live deployment creates or reuses a Hosted Application, the backend must
+return the deterministic public invoke URLs derived from the selected region and
+Hosted Application OCID:
+
+- `hosted_application_invoke_url`: the Hosted Application invoke base URL ending
+  in `/actions/invoke`.
+- `hosted_application_health_url`: the invoke URL for `GET /health`.
+- `hosted_application_responses_url`: the invoke URL for `POST /responses`.
+
+These URLs must be included only after a real Hosted Application OCID is known.
+Dry-run outputs must continue to avoid presenting placeholder invoke URLs as
+usable endpoints.
 
 ## Deployed Agent Runtime Environment
 
@@ -758,6 +773,8 @@ Live OCI integration tests must not be required for the default test suite.
 - The deployed agent receives the resolved GenAI project OCID and submitted API
   key.
 - The UI displays step-by-step progress and final outputs.
+- The UI displays the Hosted Application invoke base URL, health URL, and
+  `/responses` URL when a live deployment succeeds.
 - The backend does not return secrets in deployment status responses.
 - Unit tests cover validation, workflow ordering, status transitions, and
   runtime environment construction.
