@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-17
 License: MIT
 Description: Command planning helpers for Agent Factory deployment runs.
 """
@@ -247,11 +247,7 @@ def _build_dry_run_commands(
             "--hosted-deployment-id",
             "<hosted-deployment-ocid>",
         ],
-        [
-            "curl",
-            "-fsS",
-            "<deployed-health-endpoint>/health",
-        ],
+        _build_health_check_command(),
     ]
 
 
@@ -430,11 +426,26 @@ def _build_apply_commands(
             "--hosted-deployment-id",
             "<hosted-deployment-ocid>",
         ],
-        [
-            "curl",
-            "-fsS",
-            "<deployed-health-endpoint>/health",
-        ],
+        _build_health_check_command(),
+    ]
+
+
+def _build_health_check_command() -> list[str]:
+    """Build a portable health check command for the hosted agent.
+
+    Returns:
+        list[str]: Python command that validates the health endpoint without
+        requiring curl to be installed in the Agent Factory API container.
+    """
+
+    return [
+        "python",
+        "-c",
+        (
+            "import sys, urllib.request; "
+            "urllib.request.urlopen(sys.argv[1], timeout=30).read()"
+        ),
+        "<deployed-health-endpoint>/health",
     ]
 
 

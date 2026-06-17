@@ -48,16 +48,23 @@ FAILED_DEPLOYMENT_STATES = {
 class CommandExecutionError(RuntimeError):
     """Raised when a live deployment command fails."""
 
-    def __init__(self, step_id: str, message: str) -> None:
+    def __init__(
+        self,
+        step_id: str,
+        message: str,
+        partial_outputs: dict[str, Any] | None = None,
+    ) -> None:
         """Initialize the command execution error.
 
         Args:
             step_id: Workflow step that failed.
             message: Sanitized failure message.
+            partial_outputs: Non-secret outputs collected before failure.
         """
 
         super().__init__(message)
         self.step_id = step_id
+        self.partial_outputs = partial_outputs or {}
 
 
 def execute_live_deployment_commands(  # pylint: disable=too-many-locals
@@ -208,16 +215,23 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             hosted_application_id=hosted_application_id,
         )
         outputs["endpoint_url"] = endpoint_url
-        _run_step(
-            "health",
-            _replace_placeholders(
-                _command(commands_by_step_id, "health"),
-                {"<deployed-health-endpoint>": endpoint_url.rstrip("/")},
-            ),
-            progress_callback,
-            cwd=repo_root,
-            secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
-        )
+        try:
+            _run_step(
+                "health",
+                _replace_placeholders(
+                    _command(commands_by_step_id, "health"),
+                    {"<deployed-health-endpoint>": endpoint_url.rstrip("/")},
+                ),
+                progress_callback,
+                cwd=repo_root,
+                secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+            )
+        except CommandExecutionError as exc:
+            raise CommandExecutionError(
+                exc.step_id,
+                str(exc),
+                partial_outputs=outputs,
+            ) from exc
 
     return outputs
 

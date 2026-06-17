@@ -424,7 +424,13 @@ def _execute_live_run(deployment_run_id: str, payload: dict[str, Any]) -> None:
             update_progress,
         )
     except CommandExecutionError as exc:
-        _mark_live_run_failed(deployment_run, plan_payload, str(exc), exc.step_id)
+        _mark_live_run_failed(
+            deployment_run,
+            plan_payload,
+            str(exc),
+            exc.step_id,
+            execution_outputs=exc.partial_outputs,
+        )
         return
     deployment_run.outputs = _build_run_outputs(
         plan_payload=plan_payload,
@@ -607,6 +613,7 @@ def _mark_live_run_failed(
     payload: dict[str, Any],
     error_message: str,
     failed_step_id: str | None = None,
+    execution_outputs: dict[str, Any] | None = None,
 ) -> None:
     """Mark a live deployment run as failed.
 
@@ -615,6 +622,7 @@ def _mark_live_run_failed(
         payload: Normalized deployment payload.
         error_message: Sanitized provisioning error.
         failed_step_id: Explicit failed step identifier, if known.
+        execution_outputs: Non-secret outputs collected before failure.
     """
 
     timestamp = utc_now()
@@ -634,19 +642,17 @@ def _mark_live_run_failed(
     plan = build_deployment_plan(payload, dry_run=False)
     deployment_run.status = "failed"
     deployment_run.completed_at = timestamp
-    deployment_run.outputs = {
-        "image_reference": plan["image_reference"],
-        "hosted_application_name": payload["hosted_application_name"],
-        "deployment_name": payload["deployment_name"],
-        "endpoint_url": None,
-        "resolved_identifiers": plan["resolved_identifiers"],
-        "runtime_environment": redact_runtime_environment(plan["runtime_environment"]),
-        "dry_run_artifacts": plan["artifacts"],
-        "note": (
-            "Live deployment failed before completion. Previously completed "
-            "steps may have created resources."
-        ),
-    }
+    deployment_run.outputs = _build_run_outputs(
+        plan_payload=payload,
+        plan=plan,
+        resource_result=None,
+        dry_run=False,
+        execution_outputs=execution_outputs,
+    )
+    deployment_run.outputs["note"] = (
+        "Live deployment failed before completion. Previously completed "
+        "steps may have created resources."
+    )
     deployment_run.error = error_message
 
 

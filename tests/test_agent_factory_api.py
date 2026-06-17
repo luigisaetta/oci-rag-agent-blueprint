@@ -242,6 +242,8 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     assert "test-ocir-password" not in response.text
     assert "docker build --platform linux/amd64" in payload["commands_text"]
     assert "docker manifest inspect" in payload["commands_text"]
+    assert "curl -fsS" not in payload["commands_text"]
+    assert "urllib.request.urlopen" in payload["commands_text"]
     assert "json.tool" not in payload["commands_text"]
     assert "--wait-for-state SUCCEEDED" in payload["commands_text"]
     assert "hosted-application-collection list-hosted-applications" in (
@@ -1067,6 +1069,95 @@ def test_agent_factory_apply_fails_when_live_command_execution_fails(
     assert steps_by_id["docker-build"]["status"] == "failed"
     assert steps_by_id["registry"]["status"] == "pending"
     assert payload["outputs"]["note"].startswith("Live deployment failed")
+
+
+def test_agent_factory_apply_preserves_partial_outputs_after_health_failure(
+    monkeypatch,
+) -> None:
+    """Test UI outputs keep Hosted Application details when health fails."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["dry_run"] = False
+
+    def fake_provision(
+        payload: dict[str, Any],
+        progress_callback: Any | None = None,
+    ) -> FoundationResourcesResult:
+        _notify_fake_resource_progress(progress_callback)
+        return FoundationResourcesResult(
+            compartment_id="ocid1.compartment.oc1..example",
+            project=ProjectResult(
+                project_id="ocid1.generativeaiproject.oc1..example",
+                name=payload["genai_project"],
+            ),
+            bucket=BucketResult(
+                bucket_name=payload["bucket_name"],
+                namespace_name="test-namespace",
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+            vector_store=VectorStoreResult(
+                vector_store_id="vs_fra_example",
+                name=payload["vector_store_name"],
+                created=False,
+            ),
+            connector=ConnectorResult(
+                connector_id="ocid1.vectorstoreconnector.oc1..example",
+                name=payload["connector_name"],
+                lifecycle_state="ACTIVE",
+                created=False,
+            ),
+        )
+
+    def fake_execute(
+        payload: dict[str, Any],
+        commands_by_step_id: dict[str, list[str]],
+        progress_callback: Any,
+    ) -> dict[str, Any]:
+        _ = payload, commands_by_step_id
+        progress_callback("health", "running", None)
+        raise CommandExecutionError(
+            "health",
+            "health could not start",
+            partial_outputs={
+                "hosted_application_id": (
+                    "ocid1.generativeaihostedapplication.oc1..example"
+                ),
+                "hosted_deployment_id": (
+                    "ocid1.generativeaihosteddeployment.oc1..example"
+                ),
+                "endpoint_url": "https://agent.example.test/actions/invoke",
+            },
+        )
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.provision_foundation_resources",
+        fake_provision,
+    )
+    monkeypatch.setattr(
+        "agent_factory_api.app.execute_live_deployment_commands",
+        fake_execute,
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = _fetch_run(client, response.json()["deployment_run_id"])
+    assert payload["status"] == "failed"
+    assert payload["outputs"]["endpoint_url"] == (
+        "https://agent.example.test/actions/invoke"
+    )
+    assert payload["outputs"]["hosted_application_id"] == (
+        "ocid1.generativeaihostedapplication.oc1..example"
+    )
+    assert payload["outputs"]["hosted_deployment_id"] == (
+        "ocid1.generativeaihosteddeployment.oc1..example"
+    )
+    assert payload["outputs"]["hosted_application_responses_url"].endswith(
+        "/actions/invoke/responses"
+    )
 
 
 def test_live_deployment_failure_does_not_leave_running_steps(

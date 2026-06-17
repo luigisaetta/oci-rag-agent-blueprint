@@ -16,6 +16,9 @@ changes, or documentation updates are introduced.
   in create mode and are rejected clearly in reuse mode.
 - Fixed Agent Factory Hosted Deployment readiness so deployments still in
   transitional states are polled instead of being marked successful immediately.
+- Replaced the Agent Factory health validation command with a Python standard
+  library check and preserved partial Hosted Application outputs when health
+  validation fails.
 
 ## 2026-06-09
 
