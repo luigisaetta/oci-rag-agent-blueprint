@@ -37,6 +37,7 @@ from agent_factory_api.executor import (  # pylint: disable=wrong-import-positio
     _extract_identifier,
     _find_existing_hosted_application_id,
     _load_json_output,
+    _replace_placeholders,
 )
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
     BucketResult,
@@ -1690,6 +1691,27 @@ def test_deployment_readiness_fails_terminal_state(monkeypatch) -> None:
             cwd=PROJECT_ROOT,
             secrets=[],
         )
+
+
+def test_executor_replaces_embedded_placeholders() -> None:
+    """Test placeholder replacement also works inside command arguments."""
+
+    command = [
+        "python",
+        "-c",
+        "print('ok')",
+        "<deployed-health-endpoint>/health",
+    ]
+
+    assert _replace_placeholders(
+        command,
+        {"<deployed-health-endpoint>": "https://agent.example.test/actions/invoke"},
+    ) == [
+        "python",
+        "-c",
+        "print('ok')",
+        "https://agent.example.test/actions/invoke/health",
+    ]
 
 
 def test_control_plane_auth_mode_defaults_to_user_principal() -> None:

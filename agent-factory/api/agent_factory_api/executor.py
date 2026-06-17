@@ -764,9 +764,23 @@ def _resolve_artifact_paths(command: list[str], artifact_dir: Path) -> list[str]
 def _replace_placeholders(
     command: list[str], replacements: dict[str, str]
 ) -> list[str]:
-    """Replace placeholder arguments in a planned command."""
+    """Replace placeholder arguments or embedded placeholder text.
 
-    return [replacements.get(argument, argument) for argument in command]
+    Args:
+        command: Planned command arguments.
+        replacements: Placeholder values keyed by placeholder token.
+
+    Returns:
+        list[str]: Command arguments with placeholders replaced.
+    """
+
+    resolved_command = []
+    for argument in command:
+        resolved_argument = argument
+        for placeholder, replacement in replacements.items():
+            resolved_argument = resolved_argument.replace(placeholder, replacement)
+        resolved_command.append(resolved_argument)
+    return resolved_command
 
 
 def _command(commands_by_step_id: dict[str, list[str]], step_id: str) -> list[str]:

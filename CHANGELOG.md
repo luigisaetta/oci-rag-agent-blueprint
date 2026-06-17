@@ -19,6 +19,8 @@ changes, or documentation updates are introduced.
 - Replaced the Agent Factory health validation command with a Python standard
   library check and preserved partial Hosted Application outputs when health
   validation fails.
+- Fixed Agent Factory command placeholder replacement so embedded placeholders
+  such as `<deployed-health-endpoint>/health` are resolved before execution.
 
 ## 2026-06-09
 
