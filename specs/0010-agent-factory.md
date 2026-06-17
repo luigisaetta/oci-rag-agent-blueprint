@@ -298,6 +298,25 @@ The UI must allow users to:
 
 The UI must disable workflow submission while required inputs are invalid.
 
+The UI must use compact option controls for boolean or mode-style Hosted
+Application settings when that improves form density and clarity. In particular,
+Hosted Application authentication must be presented as a two-option control with
+`No auth` selected by default and `Auth` available as a preview of the future
+JWT-protected deployment flow.
+
+When `Auth` is selected in this UI-only increment, the UI must reveal additional
+authentication fields:
+
+- Identity Domain compartment name or OCID.
+- Identity Domain name.
+- Scope.
+- Audience.
+
+These fields describe the confidential application linkage that will be wired in
+a later backend increment. Until backend support exists, selecting `Auth` must
+make the UI show a clear pending-support notice and prevent workflow submission
+instead of sending a request that the backend will reject.
+
 The UI must display secret fields as password inputs and must not reveal secrets
 after submission.
 
@@ -341,8 +360,12 @@ Agent Factory must collect the following inputs.
 | Data Sync Connector name or identifier | Conditional | Required when connector mode is `create` or `reuse`. |
 | Hosted Application name | Yes | Name for the OCI Enterprise AI Hosted Application. |
 | Hosted Application deployment name | Yes | Name for the deployment created inside the Hosted Application. |
-| JWT protection enabled | Yes | Must be fixed to `false` in the first implementation. |
-| Confidential application | No | Reserved for future JWT support. Must be disabled in the first implementation. |
+| JWT protection enabled | Yes | Must default to `false`. The UI may expose an `Auth` preview mode, but backend submission with `true` remains disabled until JWT support is implemented. |
+| Identity Domain compartment name or OCID | Conditional | Required by the UI when the authentication preview mode is selected. The backend implementation must later resolve or validate this value before configuring JWT protection. |
+| Identity Domain name | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the Identity Domain associated with the confidential application. |
+| Scope | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the OAuth scope expected by the protected Hosted Application. |
+| Audience | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the JWT audience expected by the protected Hosted Application. |
+| Confidential application | No | Reserved for future JWT support. The first UI increment collects the Identity Domain, scope, and audience planning fields but does not configure the confidential application in OCI. |
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
 | Custom network | No | Reserved for future private/custom networking support. |
@@ -365,6 +388,11 @@ The first implementation must not allow users to select:
 
 These controls may be visible as disabled fields if the UI clearly marks them as
 not available in the first implementation.
+
+The authentication preview fields are intentionally UI-only in this increment.
+They must not change backend behavior, deployment command generation, runtime
+environment variables, or Hosted Application JSON artifacts until the backend
+authentication specification and implementation are completed.
 
 ## Resource Modes
 
@@ -562,6 +590,12 @@ The first implementation must not enable JWT protection.
 
 The first implementation must not configure a confidential application.
 
+The first authentication UI increment may collect Identity Domain compartment,
+Identity Domain name, scope, and audience values for design validation only. The
+backend must continue to reject JWT-protected deployment submissions until a
+later backend authentication increment defines the OCI CLI payloads, validation,
+secret handling, and confidential application linkage behavior.
+
 The first implementation must not configure private endpoint networking or
 custom VCN/subnet resources.
 
@@ -720,7 +754,10 @@ Secrets must not be written to ordinary logs.
 Secrets must not be returned from status APIs.
 
 JWT protection for the deployed Hosted Application is out of scope for the first
-implementation and must be fixed to disabled.
+backend implementation and must remain disabled for deployable requests. The UI
+may expose a non-submittable authentication preview so users can review the
+additional Identity Domain, scope, and audience inputs before backend wiring is
+implemented.
 
 Private networking is out of scope for the first implementation and must be
 fixed to public endpoint plus Oracle-managed networking.

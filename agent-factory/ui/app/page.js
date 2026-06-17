@@ -19,6 +19,10 @@ const INITIAL_FORM = {
   hosted_application_name: "",
   deployment_name: "",
   jwt_protection_enabled: false,
+  identity_domain_compartment: "",
+  identity_domain_name: "",
+  auth_scope: "",
+  auth_audience: "",
   endpoint_visibility: "public",
   network_mode: "oracle_managed",
   genai_project: "",
@@ -59,6 +63,13 @@ const REQUIRED_FIELDS = [
   "ocir_password",
   "container_repository_name",
   "container_image_tag"
+];
+
+const AUTH_REQUIRED_FIELDS = [
+  "identity_domain_compartment",
+  "identity_domain_name",
+  "auth_scope",
+  "auth_audience"
 ];
 
 const ACTIVE_RUN_STATUSES = new Set(["running"]);
@@ -120,6 +131,35 @@ function SelectField({
   );
 }
 
+function SegmentedField({
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  notice = ""
+}) {
+  return (
+    <div className="segmentedField">
+      <span>{label}</span>
+      <div className="segmentedControl" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={option.value === value ? "segmentButton active" : "segmentButton"}
+            disabled={disabled || option.disabled}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {notice ? <small>{notice}</small> : null}
+    </div>
+  );
+}
+
 function StepList({ steps }) {
   if (!steps?.length) {
     return (
@@ -173,17 +213,27 @@ export default function Home() {
   const [ocirCredentialStorage, setOcirCredentialStorage] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
+  const isAuthPreviewSelected = form.jwt_protection_enabled;
 
   const missingRequiredFields = useMemo(
-    () =>
-      REQUIRED_FIELDS.filter((fieldName) => {
+    () => {
+      const requiredFields = form.jwt_protection_enabled
+        ? [...REQUIRED_FIELDS, ...AUTH_REQUIRED_FIELDS]
+        : REQUIRED_FIELDS;
+
+      return requiredFields.filter((fieldName) => {
         const value = form[fieldName];
         return typeof value !== "string" || value.trim().length === 0;
-      }),
+      });
+    },
     [form]
   );
 
-  const canSubmit = missingRequiredFields.length === 0 && !isSubmitting && !isRunActive;
+  const canSubmit =
+    missingRequiredFields.length === 0 &&
+    !isSubmitting &&
+    !isRunActive &&
+    !isAuthPreviewSelected;
   const canCheckOcirLogin =
     Boolean(form.region?.trim()) &&
     Boolean(form.ocir_username?.trim()) &&
@@ -313,6 +363,17 @@ export default function Home() {
     if (["region", "ocir_username", "ocir_password"].includes(name)) {
       setOcirLoginCheck(null);
     }
+  }
+
+  function updateAuthenticationMode(mode) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      jwt_protection_enabled: mode === "auth"
+    }));
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      jwt_protection_enabled: ""
+    }));
   }
 
   async function checkOcirLogin() {
@@ -499,11 +560,19 @@ export default function Home() {
 
         <div className="summaryPanel">
           <span>Readiness</span>
-          <strong>{canSubmit ? "Ready" : "Missing inputs"}</strong>
+          <strong>
+            {canSubmit
+              ? "Ready"
+              : isAuthPreviewSelected
+                ? "Auth pending"
+                : "Missing inputs"}
+          </strong>
           <p>
             {canSubmit
               ? "The request can be submitted."
-              : `${missingRequiredFields.length} required fields are empty.`}
+              : isAuthPreviewSelected
+                ? "Authentication UI is ready for review; backend wiring is still pending."
+                : `${missingRequiredFields.length} required fields are empty.`}
           </p>
         </div>
       </aside>
@@ -646,34 +715,87 @@ export default function Home() {
                   onChange={updateField}
                   error={fieldErrors.deployment_name}
                 />
-                <SelectField
-                  label="JWT protection"
-                  name="jwt_protection_enabled"
-                  value="false"
-                  onChange={updateField}
-                  disabled
-                >
-                  <option value="false">No</option>
-                </SelectField>
-                <SelectField
+                <SegmentedField
+                  label="Authentication"
+                  value={form.jwt_protection_enabled ? "auth" : "none"}
+                  onChange={updateAuthenticationMode}
+                  options={[
+                    { value: "none", label: "No auth" },
+                    { value: "auth", label: "Auth" }
+                  ]}
+                  notice={
+                    form.jwt_protection_enabled
+                      ? "Backend deployment support is not wired yet."
+                      : ""
+                  }
+                />
+                <SegmentedField
                   label="Endpoint"
-                  name="endpoint_visibility"
                   value={form.endpoint_visibility}
-                  onChange={updateField}
+                  onChange={() => {}}
                   disabled
-                >
-                  <option value="public">Public</option>
-                </SelectField>
-                <SelectField
+                  options={[
+                    { value: "public", label: "Public" },
+                    { value: "private", label: "Private" }
+                  ]}
+                />
+                <SegmentedField
                   label="Network"
-                  name="network_mode"
                   value={form.network_mode}
-                  onChange={updateField}
+                  onChange={() => {}}
                   disabled
-                >
-                  <option value="oracle_managed">Oracle managed</option>
-                </SelectField>
+                  options={[
+                    { value: "oracle_managed", label: "Oracle managed" },
+                    { value: "custom", label: "Custom" }
+                  ]}
+                />
               </div>
+              {form.jwt_protection_enabled ? (
+                <div className="conditionalPanel">
+                  <div>
+                    <strong>Confidential application authentication</strong>
+                    <p>
+                      These values will link the Hosted Application to an
+                      Identity Domain confidential application in the backend
+                      implementation.
+                    </p>
+                  </div>
+                  <div className="fieldGrid">
+                    <Field
+                      label="Identity Domain compartment name or OCID"
+                      name="identity_domain_compartment"
+                      value={form.identity_domain_compartment}
+                      onChange={updateField}
+                      error={fieldErrors.identity_domain_compartment}
+                    />
+                    <Field
+                      label="Identity Domain name"
+                      name="identity_domain_name"
+                      value={form.identity_domain_name}
+                      onChange={updateField}
+                      error={fieldErrors.identity_domain_name}
+                    />
+                    <Field
+                      label="Scope"
+                      name="auth_scope"
+                      value={form.auth_scope}
+                      onChange={updateField}
+                      error={fieldErrors.auth_scope}
+                    />
+                    <Field
+                      label="Audience"
+                      name="auth_audience"
+                      value={form.auth_audience}
+                      onChange={updateField}
+                      error={fieldErrors.auth_audience}
+                    />
+                  </div>
+                  <p className="inlineNotice">
+                    Authenticated deployments are disabled until backend support
+                    is implemented.
+                  </p>
+                </div>
+              ) : null}
             </section>
 
             <section className="formSection">

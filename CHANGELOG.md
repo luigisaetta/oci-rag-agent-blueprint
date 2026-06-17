@@ -21,6 +21,9 @@ changes, or documentation updates are introduced.
   validation fails.
 - Fixed Agent Factory command placeholder replacement so embedded placeholders
   such as `<deployed-health-endpoint>/health` are resolved before execution.
+- Added the Agent Factory authentication UI preview specification and form
+  controls for future confidential application linkage without enabling backend
+  authenticated deployments yet.
 
 ## 2026-06-09
 

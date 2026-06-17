@@ -111,6 +111,7 @@ select:disabled {
 .brand p,
 .topBar p,
 .field span,
+.segmentedField > span,
 .modePanel > span,
 .summaryPanel > span,
 .panelHeader span,
@@ -151,9 +152,47 @@ select:disabled {
 }
 
 .field small,
+.segmentedField small,
 .errorText {
   color: var(--danger);
   font-size: 0.78rem;
+}
+
+.segmentedField {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.segmentedControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 42px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.segmentButton {
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.segmentButton.active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(32, 35, 34, 0.12);
+}
+
+.segmentButton:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .modePanel,
@@ -292,6 +331,41 @@ select:disabled {
   display: grid;
   gap: 16px;
   padding: 18px;
+}
+
+.conditionalPanel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #c9d8d5;
+  border-radius: 8px;
+  background: #f7fbfa;
+}
+
+.conditionalPanel strong,
+.conditionalPanel p,
+.inlineNotice {
+  margin: 0;
+}
+
+.conditionalPanel strong {
+  color: var(--ink);
+}
+
+.conditionalPanel p,
+.inlineNotice {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.inlineNotice {
+  padding: 10px 11px;
+  border: 1px solid #e4c27e;
+  border-radius: 8px;
+  background: #fff8ea;
+  color: var(--warning);
+  font-weight: 800;
 }
 
 .formSection h3,
