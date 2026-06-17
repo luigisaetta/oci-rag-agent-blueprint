@@ -142,7 +142,12 @@ function SegmentedField({
   return (
     <div className="segmentedField">
       <span>{label}</span>
-      <div className="segmentedControl" role="group" aria-label={label}>
+      <div
+        className="segmentedControl"
+        role="group"
+        aria-label={label}
+        style={{ "--segment-count": options.length }}
+      >
         {options.map((option) => (
           <button
             key={option.value}
@@ -374,6 +379,14 @@ export default function Home() {
       ...currentErrors,
       jwt_protection_enabled: ""
     }));
+  }
+
+  function updateModeField(name, value) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value
+    }));
+    setFieldErrors((currentErrors) => ({ ...currentErrors, [name]: "" }));
   }
 
   async function checkOcirLogin() {
@@ -645,15 +658,15 @@ export default function Home() {
             <section className="formSection">
               <h3>Knowledge Base</h3>
               <div className="fieldGrid">
-                <SelectField
+                <SegmentedField
                   label="Bucket mode"
-                  name="bucket_mode"
                   value={form.bucket_mode}
-                  onChange={updateField}
-                >
-                  <option value="create">Create</option>
-                  <option value="reuse">Reuse</option>
-                </SelectField>
+                  onChange={(value) => updateModeField("bucket_mode", value)}
+                  options={[
+                    { value: "create", label: "Create" },
+                    { value: "reuse", label: "Reuse" }
+                  ]}
+                />
                 <Field
                   label="Bucket name"
                   name="bucket_name"
@@ -661,15 +674,15 @@ export default function Home() {
                   onChange={updateField}
                   error={fieldErrors.bucket_name}
                 />
-                <SelectField
+                <SegmentedField
                   label="Vector Store mode"
-                  name="vector_store_mode"
                   value={form.vector_store_mode}
-                  onChange={updateField}
-                >
-                  <option value="create">Create</option>
-                  <option value="reuse">Reuse</option>
-                </SelectField>
+                  onChange={(value) => updateModeField("vector_store_mode", value)}
+                  options={[
+                    { value: "create", label: "Create" },
+                    { value: "reuse", label: "Reuse" }
+                  ]}
+                />
                 <Field
                   label="Vector Store name or OCID"
                   name="vector_store_name"
@@ -677,16 +690,16 @@ export default function Home() {
                   onChange={updateField}
                   error={fieldErrors.vector_store_name}
                 />
-                <SelectField
+                <SegmentedField
                   label="Connector mode"
-                  name="connector_mode"
                   value={form.connector_mode}
-                  onChange={updateField}
-                >
-                  <option value="create">Create</option>
-                  <option value="reuse">Reuse</option>
-                  <option value="skip">Skip</option>
-                </SelectField>
+                  onChange={(value) => updateModeField("connector_mode", value)}
+                  options={[
+                    { value: "create", label: "Create" },
+                    { value: "reuse", label: "Reuse" },
+                    { value: "skip", label: "Skip" }
+                  ]}
+                />
                 <Field
                   label="Connector name"
                   name="connector_name"

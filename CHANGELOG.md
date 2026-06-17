@@ -24,6 +24,8 @@ changes, or documentation updates are introduced.
 - Added the Agent Factory authentication UI preview specification and form
   controls for future confidential application linkage without enabling backend
   authenticated deployments yet.
+- Changed Agent Factory bucket, Vector Store, and Data Sync Connector mode
+  choices from dropdowns to compact segmented controls.
 
 ## 2026-06-09
 

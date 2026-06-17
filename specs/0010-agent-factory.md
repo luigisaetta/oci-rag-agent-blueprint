@@ -304,6 +304,12 @@ Hosted Application authentication must be presented as a two-option control with
 `No auth` selected by default and `Auth` available as a preview of the future
 JWT-protected deployment flow.
 
+The UI must also present Object Storage bucket mode, Vector Store mode, and Data
+Sync Connector mode as compact option controls instead of dropdowns. These
+controls must preserve the existing submitted values: `create` and `reuse` for
+bucket and Vector Store, and `create`, `reuse`, and `skip` for Data Sync
+Connector.
+
 When `Auth` is selected in this UI-only increment, the UI must reveal additional
 authentication fields:
 
