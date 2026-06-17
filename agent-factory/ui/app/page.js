@@ -977,14 +977,14 @@ function normalizeValue(name, value) {
 function withBackendEndpointHint(message, backendUrl) {
   const hint =
     "Check the Factory API endpoint: it still looks like a local/default URL. " +
-    "If the backend runs on Proxima or another host, set this field to the " +
-    "reachable backend IP or hostname.";
+    "If the backend runs on another host, set this field to the reachable " +
+    "backend IP address or hostname.";
 
   if (!usesLocalBackendEndpoint(backendUrl) || message.includes(hint)) {
     return message;
   }
 
-  return `${message} ${hint}`;
+  return `${message.replace(/[.。]*$/, "")}. ${hint}`;
 }
 
 function usesLocalBackendEndpoint(backendUrl) {
