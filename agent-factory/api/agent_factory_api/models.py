@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-08
+Date last modified: 2026-06-17
 License: MIT
 Description: Data models and validation helpers for Agent Factory deployment runs.
 """
@@ -27,6 +27,12 @@ SUPPORTED_MODEL_IDS = {
     "google.gemini-2.5-pro",
     "openai.gpt-oss-120b",
 }
+AUTH_REQUIRED_FIELDS = (
+    "identity_domain_compartment",
+    "identity_domain_name",
+    "auth_scope",
+    "auth_audience",
+)
 
 
 @dataclass(frozen=True)
@@ -179,8 +185,13 @@ def validate_deployment_payload(payload: dict[str, Any]) -> ValidationResult:
     ):
         errors["connector_name"] = "Connector name is required for this mode."
 
-    if normalized["jwt_protection_enabled"] is not False:
-        errors["jwt_protection_enabled"] = "JWT protection is not supported yet."
+    if not isinstance(normalized["jwt_protection_enabled"], bool):
+        errors["jwt_protection_enabled"] = "Expected a boolean value."
+
+    if normalized["jwt_protection_enabled"] is True:
+        for field_name in AUTH_REQUIRED_FIELDS:
+            if not _has_text(normalized.get(field_name)):
+                errors[field_name] = "This field is required when auth is enabled."
 
     if normalized["endpoint_visibility"] != "public":
         errors["endpoint_visibility"] = "Only public endpoints are supported yet."
@@ -253,6 +264,10 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("vector_store_mode", "create")
     normalized.setdefault("connector_mode", "create")
     normalized.setdefault("jwt_protection_enabled", False)
+    normalized.setdefault("identity_domain_compartment", "")
+    normalized.setdefault("identity_domain_name", "")
+    normalized.setdefault("auth_scope", "")
+    normalized.setdefault("auth_audience", "")
     normalized.setdefault("endpoint_visibility", "public")
     normalized.setdefault("network_mode", "oracle_managed")
     normalized.setdefault("file_search_max_num_results", 10)

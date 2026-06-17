@@ -320,6 +320,42 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
     }
 
 
+def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
+    """Test dry-run planning for IDCS-protected Hosted Applications."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
+    request_payload = _valid_payload()
+    request_payload.update(
+        {
+            "jwt_protection_enabled": True,
+            "identity_domain_compartment": "Security",
+            "identity_domain_name": "mydomain",
+            "auth_scope": "urn:opc:resource:consumer::all",
+            "auth_audience": "rag-agent",
+        }
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    payload = response.json()
+    inbound_auth_config = payload["outputs"]["dry_run_artifacts"][
+        "hosted-application-inbound-auth-config.json"
+    ]
+    assert inbound_auth_config == {
+        "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
+        "idcsConfig": {
+            "domainUrl": "https://mydomain.identity.oraclecloud.com",
+            "scope": "urn:opc:resource:consumer::all",
+            "audience": "rag-agent",
+        },
+    }
+    assert payload["request"]["identity_domain_compartment"] == "Security"
+    assert payload["request"]["identity_domain_name"] == "mydomain"
+
+
 def test_agent_factory_strips_surrounding_text_input_whitespace(monkeypatch) -> None:
     """Test pasted text values are normalized before planning and login checks."""
 
@@ -434,12 +470,30 @@ def test_agent_factory_resolves_names_before_downstream_commands(monkeypatch) ->
     )
 
 
+def test_agent_factory_requires_auth_fields_when_jwt_is_enabled() -> None:
+    """Test JWT protection requires Identity Domain auth settings."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["jwt_protection_enabled"] = True
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 400
+    field_errors = response.json()["field_errors"]
+    assert field_errors == {
+        "identity_domain_compartment": "This field is required when auth is enabled.",
+        "identity_domain_name": "This field is required when auth is enabled.",
+        "auth_scope": "This field is required when auth is enabled.",
+        "auth_audience": "This field is required when auth is enabled.",
+    }
+
+
 def test_agent_factory_rejects_unsupported_options() -> None:
     """Test first-version disabled options are rejected."""
 
     client = TestClient(app)
     request_payload = _valid_payload()
-    request_payload["jwt_protection_enabled"] = True
     request_payload["endpoint_visibility"] = "private"
     request_payload["network_mode"] = "custom"
 
@@ -447,7 +501,6 @@ def test_agent_factory_rejects_unsupported_options() -> None:
 
     assert response.status_code == 400
     field_errors = response.json()["field_errors"]
-    assert "jwt_protection_enabled" in field_errors
     assert "endpoint_visibility" in field_errors
     assert "network_mode" in field_errors
 

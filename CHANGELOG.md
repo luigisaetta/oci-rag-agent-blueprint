@@ -21,11 +21,12 @@ changes, or documentation updates are introduced.
   validation fails.
 - Fixed Agent Factory command placeholder replacement so embedded placeholders
   such as `<deployed-health-endpoint>/health` are resolved before execution.
-- Added the Agent Factory authentication UI preview specification and form
-  controls for future confidential application linkage without enabling backend
-  authenticated deployments yet.
+- Added Agent Factory authentication UI controls for confidential application
+  linkage.
 - Changed Agent Factory bucket, Vector Store, and Data Sync Connector mode
   choices from dropdowns to compact segmented controls.
+- Added Agent Factory backend validation and Hosted Application IDCS inbound auth
+  artifact generation for authenticated deployments.
 
 ## 2026-06-09
 

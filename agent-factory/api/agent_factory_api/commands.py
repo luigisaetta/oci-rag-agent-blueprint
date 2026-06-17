@@ -510,9 +510,9 @@ def build_hosted_application_artifacts(
     compartment_id = resolved_identifiers["compartment_id"]
     container_uri, tag = image_reference.rsplit(":", maxsplit=1)
     return {
-        "hosted-application-inbound-auth-config.json": {
-            "inboundAuthConfigType": "NO_AUTH_CONFIG"
-        },
+        "hosted-application-inbound-auth-config.json": (
+            _build_inbound_auth_config(payload)
+        ),
         "hosted-application-networking-config.json": {
             "inboundNetworkingConfig": {
                 "endpointMode": "PUBLIC",
@@ -558,6 +558,45 @@ def build_hosted_application_artifacts(
             "imageUri": image_reference,
         },
     }
+
+
+def _build_inbound_auth_config(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the Hosted Application inbound authentication configuration.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        dict[str, Any]: OCI CLI JSON payload for inbound authentication.
+    """
+
+    if not payload.get("jwt_protection_enabled"):
+        return {"inboundAuthConfigType": "NO_AUTH_CONFIG"}
+
+    return {
+        "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
+        "idcsConfig": {
+            "domainUrl": _identity_domain_url(str(payload["identity_domain_name"])),
+            "scope": str(payload["auth_scope"]),
+            "audience": str(payload["auth_audience"]),
+        },
+    }
+
+
+def _identity_domain_url(identity_domain_name: str) -> str:
+    """Convert an Identity Domain name or URL into an IDCS domain URL.
+
+    Args:
+        identity_domain_name: Submitted Identity Domain name or full URL.
+
+    Returns:
+        str: Full domain URL for the Hosted Application IDCS auth config.
+    """
+
+    domain = identity_domain_name.strip().rstrip("/")
+    if domain.startswith(("http://", "https://")):
+        return domain
+    return f"https://{domain}.identity.oraclecloud.com"
 
 
 def build_agent_runtime_environment(

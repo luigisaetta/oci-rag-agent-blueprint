@@ -32,13 +32,15 @@ This specification covers:
 - Hosted Application and deployment creation behavior.
 - Runtime environment variables for the deployed RAG agent.
 - Status, progress, error handling, and retry expectations.
-- Initial exclusions for JWT protection and private networking.
+- Initial exclusions for confidential application secret management and private
+  networking.
 
 This specification does not cover:
 
 - Implementation details of every OCI SDK call.
 - Full IAM policy automation.
-- JWT-protected Hosted Application deployments.
+- Confidential application creation, client secret management, and token
+  acquisition flows.
 - Private endpoint deployments.
 - Custom VCN/subnet network setup.
 - Multi-agent deployments.
@@ -301,8 +303,8 @@ The UI must disable workflow submission while required inputs are invalid.
 The UI must use compact option controls for boolean or mode-style Hosted
 Application settings when that improves form density and clarity. In particular,
 Hosted Application authentication must be presented as a two-option control with
-`No auth` selected by default and `Auth` available as a preview of the future
-JWT-protected deployment flow.
+`No auth` selected by default and `Auth` available for IDCS-protected Hosted
+Application deployments.
 
 The UI must also present Object Storage bucket mode, Vector Store mode, and Data
 Sync Connector mode as compact option controls instead of dropdowns. These
@@ -310,18 +312,16 @@ controls must preserve the existing submitted values: `create` and `reuse` for
 bucket and Vector Store, and `create`, `reuse`, and `skip` for Data Sync
 Connector.
 
-When `Auth` is selected in this UI-only increment, the UI must reveal additional
-authentication fields:
+When `Auth` is selected, the UI must reveal additional authentication fields:
 
 - Identity Domain compartment name or OCID.
 - Identity Domain name.
 - Scope.
 - Audience.
 
-These fields describe the confidential application linkage that will be wired in
-a later backend increment. Until backend support exists, selecting `Auth` must
-make the UI show a clear pending-support notice and prevent workflow submission
-instead of sending a request that the backend will reject.
+These fields describe the Identity Domain configuration used by the Hosted
+Application inbound authentication payload. When `Auth` is selected, the UI must
+require these fields before workflow submission.
 
 The UI must display secret fields as password inputs and must not reveal secrets
 after submission.
@@ -366,12 +366,12 @@ Agent Factory must collect the following inputs.
 | Data Sync Connector name or identifier | Conditional | Required when connector mode is `create` or `reuse`. |
 | Hosted Application name | Yes | Name for the OCI Enterprise AI Hosted Application. |
 | Hosted Application deployment name | Yes | Name for the deployment created inside the Hosted Application. |
-| JWT protection enabled | Yes | Must default to `false`. The UI may expose an `Auth` preview mode, but backend submission with `true` remains disabled until JWT support is implemented. |
-| Identity Domain compartment name or OCID | Conditional | Required by the UI when the authentication preview mode is selected. The backend implementation must later resolve or validate this value before configuring JWT protection. |
-| Identity Domain name | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the Identity Domain associated with the confidential application. |
-| Scope | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the OAuth scope expected by the protected Hosted Application. |
-| Audience | Conditional | Required by the UI when the authentication preview mode is selected. Identifies the JWT audience expected by the protected Hosted Application. |
-| Confidential application | No | Reserved for future JWT support. The first UI increment collects the Identity Domain, scope, and audience planning fields but does not configure the confidential application in OCI. |
+| JWT protection enabled | Yes | Defaults to `false`. When `true`, the Hosted Application inbound auth config must use IDCS authentication. |
+| Identity Domain compartment name or OCID | Conditional | Required when JWT protection is enabled. Captured for Identity Domain validation and future resolution. |
+| Identity Domain name | Conditional | Required when JWT protection is enabled. Identifies the Identity Domain associated with the confidential application. If the value is not a URL, the backend builds `https://<identity-domain-name>.identity.oraclecloud.com`. |
+| Scope | Conditional | Required when JWT protection is enabled. Identifies the OAuth scope expected by the protected Hosted Application. |
+| Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT audience expected by the protected Hosted Application. |
+| Confidential application | No | The confidential application must already exist. Creating or managing its client credentials remains out of scope. |
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
 | Custom network | No | Reserved for future private/custom networking support. |
@@ -388,17 +388,16 @@ Agent Factory must collect the following inputs.
 
 The first implementation must not allow users to select:
 
-- `JWT protection enabled=true`.
 - `Endpoint visibility=private`.
 - `Network mode=custom`.
 
 These controls may be visible as disabled fields if the UI clearly marks them as
 not available in the first implementation.
 
-The authentication preview fields are intentionally UI-only in this increment.
-They must not change backend behavior, deployment command generation, runtime
-environment variables, or Hosted Application JSON artifacts until the backend
-authentication specification and implementation are completed.
+When JWT protection is enabled, the backend must generate
+`hosted-application-inbound-auth-config.json` with
+`inboundAuthConfigType=IDCS_AUTH_CONFIG` and an `idcsConfig` containing
+`domainUrl`, `scope`, and `audience`.
 
 ## Resource Modes
 
@@ -592,15 +591,9 @@ The first implementation must create only public endpoint deployments.
 
 The first implementation must use Oracle-managed networking.
 
-The first implementation must not enable JWT protection.
-
-The first implementation must not configure a confidential application.
-
-The first authentication UI increment may collect Identity Domain compartment,
-Identity Domain name, scope, and audience values for design validation only. The
-backend must continue to reject JWT-protected deployment submissions until a
-later backend authentication increment defines the OCI CLI payloads, validation,
-secret handling, and confidential application linkage behavior.
+When requested, the backend must enable Hosted Application inbound authentication
+by generating an IDCS auth config. The backend must not create or modify the
+confidential application, store client secrets, or acquire end-user tokens.
 
 The first implementation must not configure private endpoint networking or
 custom VCN/subnet resources.
@@ -759,11 +752,10 @@ Secrets must not be written to ordinary logs.
 
 Secrets must not be returned from status APIs.
 
-JWT protection for the deployed Hosted Application is out of scope for the first
-backend implementation and must remain disabled for deployable requests. The UI
-may expose a non-submittable authentication preview so users can review the
-additional Identity Domain, scope, and audience inputs before backend wiring is
-implemented.
+Full confidential application lifecycle management is out of scope. The backend
+may configure Hosted Application IDCS inbound authentication from an existing
+Identity Domain, scope, and audience, but it must not create confidential
+applications or manage client secrets.
 
 Private networking is out of scope for the first implementation and must be
 fixed to public endpoint plus Oracle-managed networking.
@@ -803,7 +795,7 @@ Live OCI integration tests must not be required for the default test suite.
 - Dry-run responses include the generated OCI CLI command plan and Hosted
   Application JSON artifacts for auth, networking, environment variables, and
   active Docker artifact configuration.
-- JWT protection is fixed to disabled in the first implementation.
+- JWT protection can be enabled through IDCS inbound auth configuration.
 - Endpoint visibility is fixed to public in the first implementation.
 - Network mode is fixed to Oracle-managed in the first implementation.
 - The backend validates deployment inputs before creating OCI resources.
@@ -845,5 +837,5 @@ Live OCI integration tests must not be required for the default test suite.
 - Best protected secret storage mechanism for Hosted Application runtime
   environment variables.
 - Rollback or cleanup behavior after partial failures.
-- JWT confidential application support.
+- Confidential application lifecycle and client secret support.
 - Private endpoint and custom networking support.

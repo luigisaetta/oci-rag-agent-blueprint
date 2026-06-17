@@ -218,7 +218,6 @@ export default function Home() {
   const [ocirCredentialStorage, setOcirCredentialStorage] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
-  const isAuthPreviewSelected = form.jwt_protection_enabled;
 
   const missingRequiredFields = useMemo(
     () => {
@@ -237,8 +236,7 @@ export default function Home() {
   const canSubmit =
     missingRequiredFields.length === 0 &&
     !isSubmitting &&
-    !isRunActive &&
-    !isAuthPreviewSelected;
+    !isRunActive;
   const canCheckOcirLogin =
     Boolean(form.region?.trim()) &&
     Boolean(form.ocir_username?.trim()) &&
@@ -574,18 +572,12 @@ export default function Home() {
         <div className="summaryPanel">
           <span>Readiness</span>
           <strong>
-            {canSubmit
-              ? "Ready"
-              : isAuthPreviewSelected
-                ? "Auth pending"
-                : "Missing inputs"}
+            {canSubmit ? "Ready" : "Missing inputs"}
           </strong>
           <p>
             {canSubmit
               ? "The request can be submitted."
-              : isAuthPreviewSelected
-                ? "Authentication UI is ready for review; backend wiring is still pending."
-                : `${missingRequiredFields.length} required fields are empty.`}
+              : `${missingRequiredFields.length} required fields are empty.`}
           </p>
         </div>
       </aside>
@@ -738,7 +730,7 @@ export default function Home() {
                   ]}
                   notice={
                     form.jwt_protection_enabled
-                      ? "Backend deployment support is not wired yet."
+                      ? "Identity Domain settings will protect the Hosted Application."
                       : ""
                   }
                 />
@@ -804,8 +796,8 @@ export default function Home() {
                     />
                   </div>
                   <p className="inlineNotice">
-                    Authenticated deployments are disabled until backend support
-                    is implemented.
+                    The backend will generate an IDCS inbound auth configuration
+                    for this Hosted Application.
                   </p>
                 </div>
               ) : null}
