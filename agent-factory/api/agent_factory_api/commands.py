@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-17
+Date last modified: 2026-06-18
 License: MIT
 Description: Command planning helpers for Agent Factory deployment runs.
 """
@@ -577,10 +577,25 @@ def _build_inbound_auth_config(payload: dict[str, Any]) -> dict[str, Any]:
         "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
         "idcsConfig": {
             "domainUrl": str(payload["identity_domain_url"]).rstrip("/"),
-            "scope": str(payload["auth_scope"]),
+            "scope": _build_idcs_scope(payload),
             "audience": str(payload["auth_audience"]),
         },
     }
+
+
+def _build_idcs_scope(payload: dict[str, Any]) -> str:
+    """Build the IDCS scope expected by OCI Hosted Applications.
+
+    Args:
+        payload: Normalized deployment payload containing auth audience and
+            scope values.
+
+    Returns:
+        str: Concatenation of the primary audience and UI-provided scope value,
+            without separators.
+    """
+
+    return f"{payload['auth_audience']}{payload['auth_scope']}"
 
 
 def build_agent_runtime_environment(

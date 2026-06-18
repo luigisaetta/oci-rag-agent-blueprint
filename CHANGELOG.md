@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-18
 
+- Changed Agent Factory IDCS Hosted Application auth rendering so
+  `idcsConfig.scope` is built by concatenating the primary audience and
+  UI-provided scope value without separators.
 - Added Python CLI support for requesting and printing an IDCS access token from
   OCI IAM using confidential application credentials loaded from `.env` or the
   process environment.
