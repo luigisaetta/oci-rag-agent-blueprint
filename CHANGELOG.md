@@ -17,6 +17,7 @@ changes, or documentation updates are introduced.
   so issued token claims can be inspected without decoding the signature.
 - Documented the CLI-only IDCS token environment variables in `.env.sample`,
   client documentation, and environment variable reference.
+- Added the standalone IDCS token validation step to the quickstart.
 
 ## 2026-06-17
 

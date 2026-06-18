@@ -153,7 +153,32 @@ The agent should:
 
 For CLI usage, see [CLI Test Client](clients/README.md).
 
-## 7. Build The Container Image
+## 7. Validate IDCS Token Acquisition
+
+For Hosted Applications protected with `IDCS_AUTH_CONFIG`, validate that the
+confidential application settings can issue a JWT access token before testing
+the protected endpoint.
+
+Make sure `.env` contains:
+
+```text
+IDENTITY_DOMAIN_URL
+CONFIDENTIAL_APPLICATION_ID
+CONFIDENTIAL_APPLICATION_SECRET
+IDCS_SCOPE
+```
+
+Then run:
+
+```bash
+python -m clients.idcs_token_client
+```
+
+The standalone client contacts OCI IAM Identity Domains, prints the raw access
+token, and decodes the JWT header and payload for inspection. It does not call
+the RAG agent endpoint.
+
+## 8. Build The Container Image
 
 For local development on Apple Silicon or other ARM-based machines, `./start_demo.sh --build` can build and run native ARM images. This is valid for local testing only.
 
@@ -167,7 +192,7 @@ docker build -t oci-rag-agent-blueprint-agent:latest .
 
 The resulting container exposes HTTP on port `8080` and expects all runtime configuration through environment variables.
 
-## 8. Push The Image To OCI Container Registry
+## 9. Push The Image To OCI Container Registry
 
 Tag the image for OCI Container Registry:
 
@@ -188,7 +213,7 @@ Use a non-floating tag for customer deployments, for example:
 0.1.0
 ```
 
-## 9. Deploy In OCI Enterprise AI
+## 10. Deploy In OCI Enterprise AI
 
 Create a Hosted Application in OCI Enterprise AI / OCI Generative AI.
 
@@ -207,7 +232,7 @@ Activate the deployment.
 
 For the detailed hosted deployment procedure, see [OCI Enterprise AI Deployment Guide](docs/oci-enterprise-ai-deployment.md).
 
-## 10. Final Validation
+## 11. Final Validation
 
 Validate the hosted deployment:
 
