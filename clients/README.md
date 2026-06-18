@@ -86,6 +86,12 @@ python -m clients.agent_cli \
   --print-token-only
 ```
 
+Or use the standalone token client:
+
+```bash
+python -m clients.idcs_token_client
+```
+
 When `--auth auto` is used, the client requests and prints a token only when all
 IDCS variables are present. In this increment, the token is printed for
 validation; sending it as a `Bearer` header to the agent endpoint will be added

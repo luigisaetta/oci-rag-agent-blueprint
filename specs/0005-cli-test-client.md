@@ -62,6 +62,17 @@ The client must accept `--print-token-only`. When this flag is used with IDCS
 authentication, the client must request a token, print it, and exit without
 calling the agent endpoint.
 
+The repository must also provide a standalone IDCS token test client runnable
+from the repository root with:
+
+```bash
+python -m clients.idcs_token_client
+```
+
+This standalone client must only contact OCI IAM Identity Domains, request an
+OAuth access token, print the token, and exit. It must not require agent endpoint
+arguments, conversation arguments, or a RAG user request.
+
 ## IDCS Token Acquisition
 
 The client must support obtaining an OAuth access token from OCI IAM Identity
@@ -99,6 +110,10 @@ grant_type=client_credentials&scope=<IDCS_SCOPE>
 In this increment, the client must print the acquired access token so the user
 can validate the IDCS configuration. Sending the token as a `Bearer` header to
 the agent endpoint is reserved for a later increment.
+
+The standalone token client must use the same `.env` loading, required variable
+validation, token endpoint construction, and token request implementation as the
+full CLI test client.
 
 ## Request Payload
 
@@ -211,5 +226,7 @@ The output must show:
   variables are absent.
 - The client fails clearly in `idcs` mode when required IDCS variables are
   missing.
+- The standalone IDCS token client can request and print a token without any
+  RAG agent request arguments.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
   JSON response handling.
