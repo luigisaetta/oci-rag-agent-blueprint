@@ -195,6 +195,39 @@ For Hosted Application validation, replace the endpoint with:
 https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses
 ```
 
+For a Hosted Application protected with `IDCS_AUTH_CONFIG`, set the client-side
+IDCS values in the root `.env` file:
+
+```text
+IDENTITY_DOMAIN_URL=https://idcs-example.identity.oraclecloud.com
+CONFIDENTIAL_APPLICATION_ID=replace-with-confidential-application-id
+CONFIDENTIAL_APPLICATION_SECRET=replace-with-confidential-application-secret
+IDCS_SCOPE=replace-with-primary-audience-plus-scope
+```
+
+Then run the Python client with `--auth idcs`:
+
+```bash
+python -m clients.agent_cli \
+  --endpoint "https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses" \
+  --auth idcs \
+  --create-conversation true \
+  --stream true \
+  "Answer with only: ok"
+```
+
+For OCI IAM IDCS auth, the Hosted Application keeps `audience` and `scope`
+separate, while the client token request uses the concatenated `IDCS_SCOPE`
+value. For example, Hosted Application `audience=hello_world` and `scope=invoke`
+means client `IDCS_SCOPE=hello_worldinvoke`. See
+[OCI IAM IDCS Audience And Scope](docs/idcs-audience-and-scope.md).
+
+For a complete hosted diagnostic run, edit and execute:
+
+```bash
+./test_hosted_application.sh
+```
+
 ## Agent Factory
 
 The `agent-factory/` application provides a guided deployment workflow for the

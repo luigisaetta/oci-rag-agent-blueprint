@@ -13,6 +13,8 @@ changes, or documentation updates are introduced.
   `/responses`, and streaming `/responses`.
 - Added an optional Hosted Application self-test switch for printing agent
   response text when manual answer inspection is needed.
+- Added protected Hosted Application Python CLI examples with `--auth idcs` to
+  the main README.
 - Added Agent Factory IDCS token validation from the UI, including client
   credentials token acquisition, JWT claim diagnostics, and separate audience
   and scope claim checks.
