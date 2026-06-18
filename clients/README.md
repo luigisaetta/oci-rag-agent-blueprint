@@ -92,6 +92,10 @@ Or use the standalone token client:
 python -m clients.idcs_token_client
 ```
 
+The standalone client prints the raw access token and decodes the JWT header and
+payload for inspection. It does not verify, decode, or render the signature as a
+separate section.
+
 When `--auth auto` is used, the client requests and prints a token only when all
 IDCS variables are present. In this increment, the token is printed for
 validation; sending it as a `Bearer` header to the agent endpoint will be added

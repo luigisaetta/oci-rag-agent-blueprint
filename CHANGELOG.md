@@ -13,6 +13,8 @@ changes, or documentation updates are introduced.
   process environment.
 - Added a standalone IDCS token test client that only contacts OCI IAM, prints
   the access token, and exits without requiring RAG agent request arguments.
+- Added JWT header and payload decoding to the standalone IDCS token test client
+  so issued token claims can be inspected without decoding the signature.
 - Documented the CLI-only IDCS token environment variables in `.env.sample`,
   client documentation, and environment variable reference.
 

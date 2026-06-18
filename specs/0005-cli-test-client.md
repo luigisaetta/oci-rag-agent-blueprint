@@ -73,6 +73,14 @@ This standalone client must only contact OCI IAM Identity Domains, request an
 OAuth access token, print the token, and exit. It must not require agent endpoint
 arguments, conversation arguments, or a RAG user request.
 
+Because the IDCS access token is expected to be a JWT, the standalone client
+must decode the JWT header and payload without verifying the signature and print
+both sections as formatted JSON. The client must not decode, verify, or print
+the signature as a separate section. The raw token remains visible in full so it
+can be copied for manual testing. If the access token is not a three-part JWT,
+the client must keep printing the raw token and add a readable warning that JWT
+details could not be decoded.
+
 ## IDCS Token Acquisition
 
 The client must support obtaining an OAuth access token from OCI IAM Identity
@@ -228,5 +236,7 @@ The output must show:
   missing.
 - The standalone IDCS token client can request and print a token without any
   RAG agent request arguments.
+- The standalone IDCS token client decodes and prints JWT header and payload
+  details without printing or interpreting the signature.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
   JSON response handling.
