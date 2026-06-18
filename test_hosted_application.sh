@@ -5,13 +5,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Edit these values before running the script.
-HOSTED_APPLICATION_RESPONSES_URL="https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses"
+HOSTED_APPLICATION_RESPONSES_URL="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20251112/hostedApplications/ocid1.generativeaihostedapplication.oc1.us-chicago-1.amaaaaaa2xxap7yat562pyqvzvi6lfe5ru7butezfqo3p234kc3g23dxdrdq/actions/invoke/responses"
 AUTH_MODE="idcs"
 ENV_FILE=".env"
 CREATE_CONVERSATION="true"
 CONVERSATION_ID=""
 STREAM="true"
-USER_REQUEST="Explain the documents in the vector store."
+USER_REQUEST="What are the known side effects of metformin?"
 
 # Optional: override the Python executable from the shell, for example:
 # PYTHON_BIN=python3 ./test_hosted_application.sh
@@ -78,9 +78,5 @@ if [[ "${CREATE_CONVERSATION}" == "false" ]]; then
 fi
 
 COMMAND+=("${USER_REQUEST}")
-
-echo "Testing Hosted Application endpoint:"
-echo "${HOSTED_APPLICATION_RESPONSES_URL}"
-echo
 
 "${COMMAND[@]}"
