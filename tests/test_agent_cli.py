@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-18
 License: MIT
 Description: Unit tests for the OCI RAG agent command-line test client.
 """
@@ -8,13 +8,20 @@ Description: Unit tests for the OCI RAG agent command-line test client.
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 from typing import Any, Iterator
 
 import pytest
 
 from clients import agent_cli
 from clients.agent_cli import (
+    IdcsTokenConfig,
+    build_client_environment,
     build_payload,
+    build_token_endpoint_url,
+    fetch_idcs_access_token,
+    maybe_fetch_idcs_access_token,
     parse_bool,
     parse_sse_lines,
     render_json_response,
@@ -91,6 +98,135 @@ def test_parse_bool_rejects_invalid_values() -> None:
 
     with pytest.raises(argparse.ArgumentTypeError, match="value must be true or false"):
         parse_bool("yes")
+
+
+def test_build_token_endpoint_url() -> None:
+    """Test IDCS token endpoint URL construction."""
+
+    assert (
+        build_token_endpoint_url("https://idcs.example.identity.oraclecloud.com/")
+        == "https://idcs.example.identity.oraclecloud.com/oauth2/v1/token"
+    )
+
+
+def test_build_client_environment_prefers_process_values(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test `.env` loading with process environment override."""
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "IDENTITY_DOMAIN_URL=https://from-file.example.com",
+                "CONFIDENTIAL_APPLICATION_ID=file-client",
+                "CONFIDENTIAL_APPLICATION_SECRET='file-secret'",
+                'IDCS_SCOPE="file-scope"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CONFIDENTIAL_APPLICATION_ID", "process-client")
+
+    environment = build_client_environment(str(env_file))
+
+    assert environment["IDENTITY_DOMAIN_URL"] == "https://from-file.example.com"
+    assert environment["CONFIDENTIAL_APPLICATION_ID"] == "process-client"
+    assert environment["CONFIDENTIAL_APPLICATION_SECRET"] == "file-secret"
+    assert environment["IDCS_SCOPE"] == "file-scope"
+
+
+def test_fetch_idcs_access_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test IDCS token request construction and parsing."""
+
+    captured_request: dict[str, Any] = {}
+
+    class FakeResponse:
+        """Context manager response for the fake IDCS token endpoint."""
+
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            """Return a fake token response body."""
+
+            return json.dumps({"access_token": "jwt-token"}).encode("utf-8")
+
+    def fake_urlopen(http_request: Any, timeout: int) -> FakeResponse:
+        """Capture the outgoing token request and return a fake response."""
+
+        captured_request["url"] = http_request.full_url
+        captured_request["timeout"] = timeout
+        captured_request["body"] = http_request.data.decode("utf-8")
+        captured_request["authorization"] = http_request.headers["Authorization"]
+        captured_request["content_type"] = http_request.headers["Content-type"]
+        return FakeResponse()
+
+    monkeypatch.setattr(agent_cli.request, "urlopen", fake_urlopen)
+
+    token = fetch_idcs_access_token(
+        IdcsTokenConfig(
+            identity_domain_url="https://idcs.example.identity.oraclecloud.com",
+            confidential_application_id="client-id",
+            confidential_application_secret="client-secret",
+            scope="demo-agent/.default",
+        )
+    )
+
+    expected_auth = base64.b64encode(b"client-id:client-secret").decode("ascii")
+    assert token == "jwt-token"
+    assert (
+        captured_request["url"]
+        == "https://idcs.example.identity.oraclecloud.com/oauth2/v1/token"
+    )
+    assert captured_request["timeout"] == 60
+    assert captured_request["authorization"] == f"Basic {expected_auth}"
+    assert captured_request["content_type"] == "application/x-www-form-urlencoded"
+    assert "grant_type=client_credentials" in captured_request["body"]
+    assert "scope=demo-agent%2F.default" in captured_request["body"]
+
+
+def test_maybe_fetch_idcs_access_token_auto_without_config() -> None:
+    """Test auto auth skips token acquisition when config is absent."""
+
+    assert maybe_fetch_idcs_access_token("auto", {}) is None
+
+
+def test_maybe_fetch_idcs_access_token_idcs_requires_config() -> None:
+    """Test explicit IDCS auth reports missing configuration."""
+
+    with pytest.raises(RuntimeError, match="Missing IDCS token configuration"):
+        maybe_fetch_idcs_access_token("idcs", {})
+
+
+def test_main_prints_token_only(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
+    """Test token-only mode prints the acquired IDCS token and exits."""
+
+    monkeypatch.setattr(
+        agent_cli,
+        "build_client_environment",
+        lambda _env_file: {
+            "IDENTITY_DOMAIN_URL": "https://idcs.example.identity.oraclecloud.com",
+            "CONFIDENTIAL_APPLICATION_ID": "client-id",
+            "CONFIDENTIAL_APPLICATION_SECRET": "client-secret",
+            "IDCS_SCOPE": "demo-agent/.default",
+        },
+    )
+    monkeypatch.setattr(
+        agent_cli,
+        "fetch_idcs_access_token",
+        lambda _config: "jwt-token",
+    )
+
+    exit_code = agent_cli.main(["--auth", "idcs", "--print-token-only"])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "IDCS access token" in output
+    assert "jwt-token" in output
 
 
 def test_parse_sse_lines() -> None:

@@ -64,6 +64,33 @@ python -m clients.agent_cli \
   "What is the configured vector store?"
 ```
 
+## IDCS Token Check
+
+For Hosted Applications protected by `IDCS_AUTH_CONFIG`, the client can request
+an OAuth access token from OCI IAM Identity Domains.
+
+Set these values in `.env` or in the process environment:
+
+```text
+IDENTITY_DOMAIN_URL=https://idcs-example.identity.oraclecloud.com
+CONFIDENTIAL_APPLICATION_ID=replace-with-confidential-application-id
+CONFIDENTIAL_APPLICATION_SECRET=replace-with-confidential-application-secret
+IDCS_SCOPE=replace-with-oauth-scope
+```
+
+Print only the token:
+
+```bash
+python -m clients.agent_cli \
+  --auth idcs \
+  --print-token-only
+```
+
+When `--auth auto` is used, the client requests and prints a token only when all
+IDCS variables are present. In this increment, the token is printed for
+validation; sending it as a `Bearer` header to the agent endpoint will be added
+later.
+
 ## Output
 
 The client prints:
@@ -71,6 +98,7 @@ The client prints:
 - Target endpoint.
 - Whether a new conversation is being created.
 - Whether streaming is enabled.
+- IDCS access token when IDCS token acquisition is enabled and succeeds.
 - The active conversation identifier when returned by the stream.
 - Response text, either token by token or from the JSON response.
 - Stream errors, when returned by the agent.

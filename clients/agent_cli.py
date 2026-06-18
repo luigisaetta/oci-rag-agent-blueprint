@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-18
 License: MIT
 Description: Command-line client for testing the local OCI RAG agent endpoint.
 """
@@ -8,15 +8,23 @@ Description: Command-line client for testing the local OCI RAG agent endpoint.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import Iterable
-from urllib import error, request
+from urllib import error, parse, request
 
 DEFAULT_ENDPOINT = "http://localhost:8080/responses"
 JSON_HEADERS = {"Content-Type": "application/json", "Accept": "application/json"}
 STREAM_HEADERS = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+IDCS_AUTH_ENV_VARS = (
+    "IDENTITY_DOMAIN_URL",
+    "CONFIDENTIAL_APPLICATION_ID",
+    "CONFIDENTIAL_APPLICATION_SECRET",
+    "IDCS_SCOPE",
+)
 
 
 @dataclass(frozen=True)
@@ -30,6 +38,23 @@ class SseEvent:
 
     name: str
     data: dict[str, object]
+
+
+@dataclass(frozen=True)
+class IdcsTokenConfig:
+    """Configuration required to request an IDCS access token.
+
+    Attributes:
+        identity_domain_url: Exact Identity Domain URL from OCI Console.
+        confidential_application_id: Confidential application client identifier.
+        confidential_application_secret: Confidential application client secret.
+        scope: OAuth scope requested for the Hosted Application.
+    """
+
+    identity_domain_url: str
+    confidential_application_id: str
+    confidential_application_secret: str
+    scope: str
 
 
 def parse_bool(value: str) -> bool:
@@ -52,6 +77,195 @@ def parse_bool(value: str) -> bool:
         return False
 
     raise argparse.ArgumentTypeError("value must be true or false")
+
+
+def load_env_file(path: str) -> dict[str, str]:
+    """Load simple key-value pairs from a dotenv-style file.
+
+    Args:
+        path: Path to the environment file.
+
+    Returns:
+        dict[str, str]: Parsed environment values. Missing files return an empty
+        dictionary.
+    """
+
+    if not path or not os.path.exists(path):
+        return {}
+
+    values: dict[str, str] = {}
+    with open(path, encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, value = line.split("=", maxsplit=1)
+            values[name.strip()] = _strip_env_value(value.strip())
+    return values
+
+
+def _strip_env_value(value: str) -> str:
+    """Strip optional dotenv quotes from an environment value.
+
+    Args:
+        value: Raw value text.
+
+    Returns:
+        str: Unquoted value.
+    """
+
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def build_client_environment(env_file: str) -> dict[str, str]:
+    """Build the client environment from `.env` and process variables.
+
+    Args:
+        env_file: Dotenv file path.
+
+    Returns:
+        dict[str, str]: Combined environment where process variables win.
+    """
+
+    environment = load_env_file(env_file)
+    environment.update(os.environ)
+    return environment
+
+
+def resolve_idcs_token_config(environment: dict[str, str]) -> IdcsTokenConfig | None:
+    """Resolve IDCS token configuration from environment values.
+
+    Args:
+        environment: Environment values.
+
+    Returns:
+        IdcsTokenConfig | None: Token config when all required values are set.
+    """
+
+    values = {name: environment.get(name, "").strip() for name in IDCS_AUTH_ENV_VARS}
+    if not all(values.values()):
+        return None
+    return IdcsTokenConfig(
+        identity_domain_url=values["IDENTITY_DOMAIN_URL"],
+        confidential_application_id=values["CONFIDENTIAL_APPLICATION_ID"],
+        confidential_application_secret=values["CONFIDENTIAL_APPLICATION_SECRET"],
+        scope=values["IDCS_SCOPE"],
+    )
+
+
+def missing_idcs_env_vars(environment: dict[str, str]) -> list[str]:
+    """Return missing IDCS token environment variable names.
+
+    Args:
+        environment: Environment values.
+
+    Returns:
+        list[str]: Missing or empty variable names.
+    """
+
+    return [
+        name for name in IDCS_AUTH_ENV_VARS if not environment.get(name, "").strip()
+    ]
+
+
+def build_token_endpoint_url(identity_domain_url: str) -> str:
+    """Build the IDCS OAuth token endpoint URL.
+
+    Args:
+        identity_domain_url: Exact Identity Domain URL.
+
+    Returns:
+        str: OAuth token endpoint URL.
+    """
+
+    return f"{identity_domain_url.rstrip('/')}/oauth2/v1/token"
+
+
+def fetch_idcs_access_token(config: IdcsTokenConfig) -> str:
+    """Request an IDCS access token with client credentials.
+
+    Args:
+        config: IDCS token configuration.
+
+    Returns:
+        str: Access token returned by IDCS.
+
+    Raises:
+        RuntimeError: If IDCS rejects the request or omits the access token.
+    """
+
+    credentials = (
+        f"{config.confidential_application_id}:"
+        f"{config.confidential_application_secret}"
+    ).encode("utf-8")
+    auth_header = base64.b64encode(credentials).decode("ascii")
+    form_body = parse.urlencode(
+        {
+            "grant_type": "client_credentials",
+            "scope": config.scope,
+        }
+    ).encode("utf-8")
+    token_request = request.Request(
+        build_token_endpoint_url(config.identity_domain_url),
+        data=form_body,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(token_request, timeout=60) as response:
+            token_payload = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        message = exc.read().decode("utf-8")
+        raise RuntimeError(
+            f"IDCS token request failed with HTTP {exc.code}: {message}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(
+            f"Unable to reach IDCS token endpoint: {exc.reason}"
+        ) from exc
+
+    access_token = token_payload.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise RuntimeError("IDCS token response did not include access_token.")
+    return access_token
+
+
+def maybe_fetch_idcs_access_token(
+    auth_mode: str,
+    environment: dict[str, str],
+) -> str | None:
+    """Fetch an IDCS token when requested by the selected auth mode.
+
+    Args:
+        auth_mode: One of `auto`, `none`, or `idcs`.
+        environment: Client environment values.
+
+    Returns:
+        str | None: Access token when fetched.
+
+    Raises:
+        RuntimeError: If `idcs` mode is selected and required values are missing.
+    """
+
+    if auth_mode == "none":
+        return None
+
+    token_config = resolve_idcs_token_config(environment)
+    if token_config:
+        return fetch_idcs_access_token(token_config)
+
+    if auth_mode == "idcs":
+        missing_values = ", ".join(missing_idcs_env_vars(environment))
+        raise RuntimeError(f"Missing IDCS token configuration: {missing_values}")
+
+    return None
 
 
 def build_payload(
@@ -414,7 +628,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--create-conversation",
-        required=True,
         type=parse_bool,
         help="Use true to create a new conversation, false to reuse one.",
     )
@@ -428,7 +641,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_bool,
         help="Use true for SSE streaming, false for a JSON response. Default: true.",
     )
-    parser.add_argument("user_request", help="User request text.")
+    parser.add_argument(
+        "--auth",
+        choices=("auto", "none", "idcs"),
+        default="auto",
+        help=(
+            "Token acquisition mode. auto fetches an IDCS token when all "
+            "required variables are set. Default: auto."
+        ),
+    )
+    parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="Environment file for optional IDCS token settings. Default: .env",
+    )
+    parser.add_argument(
+        "--print-token-only",
+        action="store_true",
+        help="Fetch and print the IDCS token, then exit without calling the agent.",
+    )
+    parser.add_argument("user_request", nargs="?", help="User request text.")
     return parser
 
 
@@ -446,6 +678,29 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        access_token = maybe_fetch_idcs_access_token(
+            args.auth,
+            build_client_environment(args.env_file),
+        )
+        if access_token:
+            print("IDCS access token")
+            print("=================")
+            print(access_token)
+            print()
+        if args.print_token_only:
+            if not access_token:
+                raise RuntimeError(
+                    "--print-token-only requires IDCS token configuration."
+                )
+            return 0
+
+        if args.create_conversation is None:
+            parser.error(
+                "--create-conversation is required unless --print-token-only is used"
+            )
+        if not args.user_request:
+            parser.error("user_request is required unless --print-token-only is used")
+
         payload = build_payload(
             create_conversation=args.create_conversation,
             conversation_id=args.conversation_id,

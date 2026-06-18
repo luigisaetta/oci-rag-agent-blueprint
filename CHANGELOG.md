@@ -6,6 +6,14 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-18
+
+- Added Python CLI support for requesting and printing an IDCS access token from
+  OCI IAM using confidential application credentials loaded from `.env` or the
+  process environment.
+- Documented the CLI-only IDCS token environment variables in `.env.sample`,
+  client documentation, and environment variable reference.
+
 ## 2026-06-17
 
 - Added a README section that explains practical use cases for the blueprint and
