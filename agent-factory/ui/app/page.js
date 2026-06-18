@@ -789,14 +789,14 @@ export default function Home() {
                       error={fieldErrors.identity_domain_url}
                     />
                     <Field
-                      label="Scope"
+                      label="Scope claim"
                       name="auth_scope"
                       value={form.auth_scope}
                       onChange={updateField}
                       error={fieldErrors.auth_scope}
                     />
                     <Field
-                      label="Audience"
+                      label="Audience claim"
                       name="auth_audience"
                       value={form.auth_audience}
                       onChange={updateField}
@@ -804,8 +804,9 @@ export default function Home() {
                     />
                   </div>
                   <p className="inlineNotice">
-                    The backend will generate an IDCS inbound auth configuration
-                    for this Hosted Application.
+                    The Hosted Application auth config keeps audience and scope
+                    as separate JWT claim expectations. The client token request
+                    uses a concatenated IDCS_SCOPE value.
                   </p>
                 </div>
               ) : null}

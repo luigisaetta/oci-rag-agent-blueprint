@@ -40,7 +40,7 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `IDENTITY_DOMAIN_URL` | Client only | `https://idcs-example.identity.oraclecloud.com` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Exact Identity Domain URL from OCI Console for protected Hosted Application testing. |
 | `CONFIDENTIAL_APPLICATION_ID` | Client only | `ocid-or-client-id` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Confidential application client identifier. |
 | `CONFIDENTIAL_APPLICATION_SECRET` | Client only | `secret` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Confidential application client secret. Never log or commit this value. |
-| `IDCS_SCOPE` | Client only | `my-agent/.default` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | OAuth scope requested by the CLI token request. |
+| `IDCS_SCOPE` | Client only | `hello_worldinvoke` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | OAuth scope requested by the CLI token request. For OCI IAM IDCS Hosted Application auth, this is usually the primary audience concatenated with the scope claim. |
 
 ## Streaming Finalization
 
@@ -87,6 +87,10 @@ not configure the local agent runtime. When all four variables are present and
 the CLI runs with `--auth auto`, the CLI requests and prints an IDCS access
 token before sending the test request. When a token is acquired, the CLI sends
 it to the agent endpoint as an `Authorization: Bearer <token>` header.
+
+For the difference between Hosted Application `audience` and `scope` values and
+the concatenated client-side `IDCS_SCOPE` value, see
+[OCI IAM IDCS Audience And Scope](idcs-audience-and-scope.md).
 
 ## Security Rules
 

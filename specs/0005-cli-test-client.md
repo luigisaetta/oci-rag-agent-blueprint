@@ -100,7 +100,7 @@ configured `.env` file:
 | `IDENTITY_DOMAIN_URL` | Yes | Exact Identity Domain URL from OCI Console. |
 | `CONFIDENTIAL_APPLICATION_ID` | Yes | Confidential application client identifier. |
 | `CONFIDENTIAL_APPLICATION_SECRET` | Yes | Confidential application client secret. |
-| `IDCS_SCOPE` | Yes | OAuth scope requested for the Hosted Application. |
+| `IDCS_SCOPE` | Yes | OAuth scope requested for the Hosted Application token request. For OCI IAM IDCS Hosted Application auth, this is the primary audience concatenated with the scope claim, for example `hello_worldinvoke`. |
 
 Process environment values must override values loaded from `.env`.
 
@@ -120,6 +120,12 @@ Content-Type: application/x-www-form-urlencoded
 
 grant_type=client_credentials&scope=<IDCS_SCOPE>
 ```
+
+For OCI IAM IDCS Hosted Application auth, `IDCS_SCOPE` is not necessarily the
+same value as the Hosted Application `idcsConfig.scope`. The Hosted Application
+auth config validates decoded JWT claims and must keep `audience` and `scope`
+separate. The token request uses the concatenated value accepted by OCI IAM
+Identity Domains.
 
 When token acquisition succeeds and the client calls the agent endpoint, the
 client must include the token as an HTTP `Authorization: Bearer <token>` header

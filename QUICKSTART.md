@@ -168,6 +168,11 @@ CONFIDENTIAL_APPLICATION_SECRET
 IDCS_SCOPE
 ```
 
+For OCI IAM IDCS Hosted Application auth, `IDCS_SCOPE` is the concatenated token
+request value, for example `hello_worldinvoke`, while the Hosted Application
+auth config keeps `audience=hello_world` and `scope=invoke` separate. See
+[OCI IAM IDCS Audience And Scope](docs/idcs-audience-and-scope.md).
+
 Then run:
 
 ```bash

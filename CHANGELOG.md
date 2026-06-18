@@ -10,11 +10,14 @@ changes, or documentation updates are introduced.
 
 - Added a root `test_hosted_application.sh` helper script for manual validation
   of protected Hosted Application `/responses` endpoints.
+- Added detailed documentation explaining the difference between separated
+  Hosted Application IDCS `audience`/`scope` values and concatenated client
+  token-request `IDCS_SCOPE` values.
+- Fixed Agent Factory IDCS Hosted Application auth rendering so
+  `idcsConfig.audience` and `idcsConfig.scope` remain separate JWT claim
+  expectations.
 - Updated the Python CLI client to send acquired IDCS access tokens as Bearer
   authorization headers when calling protected Hosted Application endpoints.
-- Changed Agent Factory IDCS Hosted Application auth rendering so
-  `idcsConfig.scope` is built by concatenating the primary audience and
-  UI-provided scope value without separators.
 - Added Python CLI support for requesting and printing an IDCS access token from
   OCI IAM using confidential application credentials loaded from `.env` or the
   process environment.

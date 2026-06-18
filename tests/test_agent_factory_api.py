@@ -332,7 +332,7 @@ def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
             "jwt_protection_enabled": True,
             "identity_domain_compartment": "Security",
             "identity_domain_url": "https://idcs-example.identity.oraclecloud.com",
-            "auth_scope": "/.default",
+            "auth_scope": "invoke",
             "auth_audience": "rag-agent",
         }
     )
@@ -348,7 +348,7 @@ def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
         "inboundAuthConfigType": "IDCS_AUTH_CONFIG",
         "idcsConfig": {
             "domainUrl": "https://idcs-example.identity.oraclecloud.com",
-            "scope": "rag-agent/.default",
+            "scope": "invoke",
             "audience": "rag-agent",
         },
     }

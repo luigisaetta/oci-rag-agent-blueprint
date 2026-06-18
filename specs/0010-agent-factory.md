@@ -374,8 +374,8 @@ Agent Factory must collect the following inputs.
 | JWT protection enabled | Yes | Defaults to `false`. When `true`, the Hosted Application inbound auth config must use IDCS authentication. |
 | Identity Domain compartment name or OCID | Conditional | Required when JWT protection is enabled. Captured for Identity Domain validation and future resolution. |
 | Identity Domain URL | Conditional | Required when JWT protection is enabled. Must be the exact `https://` Identity Domain URL from OCI Console. The backend must not derive this URL from a display name. |
-| Scope | Conditional | Required when JWT protection is enabled. Identifies the UI-provided OAuth scope suffix. The backend must concatenate this value after the primary audience without adding separators when rendering `idcsConfig.scope`. |
-| Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT primary audience expected by the protected Hosted Application and prefixes the rendered `idcsConfig.scope`. |
+| Scope | Conditional | Required when JWT protection is enabled. Identifies the JWT `scope` claim expected by the protected Hosted Application. The backend must keep this value separate from the audience when rendering `idcsConfig.scope`. |
+| Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT `aud` claim expected by the protected Hosted Application. |
 | Confidential application | No | The confidential application must already exist. Creating or managing its client credentials remains out of scope. |
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
@@ -404,8 +404,10 @@ When JWT protection is enabled, the backend must generate
 `inboundAuthConfigType=IDCS_AUTH_CONFIG` and an `idcsConfig` containing
 `domainUrl`, `scope`, and `audience`. The `idcsConfig.audience` value must be
 the primary audience entered in the UI. The `idcsConfig.scope` value must be the
-simple concatenation of the primary audience and the scope value entered in the
-UI, without separators or additional normalization.
+scope claim entered in the UI. The backend must not concatenate audience and
+scope in the Hosted Application inbound auth config. The audience and scope
+concatenation is used only by OAuth token requests made by clients, as described
+in [OCI IAM IDCS Audience and Scope](../docs/idcs-audience-and-scope.md).
 
 ## Resource Modes
 

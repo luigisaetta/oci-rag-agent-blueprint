@@ -75,8 +75,14 @@ Set these values in `.env` or in the process environment:
 IDENTITY_DOMAIN_URL=https://idcs-example.identity.oraclecloud.com
 CONFIDENTIAL_APPLICATION_ID=replace-with-confidential-application-id
 CONFIDENTIAL_APPLICATION_SECRET=replace-with-confidential-application-secret
-IDCS_SCOPE=replace-with-oauth-scope
+IDCS_SCOPE=replace-with-primary-audience-plus-scope
 ```
+
+For OCI IAM IDCS Hosted Application auth, keep `audience` and `scope` separate
+in the Hosted Application configuration, but use the concatenated value in
+`IDCS_SCOPE`. For example, Hosted Application `audience=hello_world` and
+`scope=invoke` means client `IDCS_SCOPE=hello_worldinvoke`. See
+[OCI IAM IDCS Audience And Scope](../docs/idcs-audience-and-scope.md).
 
 Print only the token:
 
