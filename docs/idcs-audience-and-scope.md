@@ -173,6 +173,20 @@ Then request a new token and retry the Hosted Application call.
 
 ## How To Inspect The Token
 
+In Agent Factory, enable authentication, fill in the Identity Domain URL,
+audience claim, scope claim, confidential application client ID, and
+confidential application secret, then select `Validate token`. The check requests
+an access token, decodes the JWT, and verifies that:
+
+```text
+JWT aud   = Hosted Application audience claim
+JWT scope = Hosted Application scope claim
+```
+
+The UI shows the computed token request scope, decoded audience, decoded scope,
+and expiration timestamp. It never displays the access token or confidential
+application secret.
+
 Use the standalone token client:
 
 ```bash

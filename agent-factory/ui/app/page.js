@@ -23,6 +23,8 @@ const INITIAL_FORM = {
   identity_domain_url: "",
   auth_scope: "",
   auth_audience: "",
+  confidential_application_id: "",
+  confidential_application_secret: "",
   endpoint_visibility: "public",
   network_mode: "oracle_managed",
   genai_project: "",
@@ -214,7 +216,9 @@ export default function Home() {
   const [run, setRun] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingOcirLogin, setIsCheckingOcirLogin] = useState(false);
+  const [isCheckingIdcsToken, setIsCheckingIdcsToken] = useState(false);
   const [ocirLoginCheck, setOcirLoginCheck] = useState(null);
+  const [idcsTokenCheck, setIdcsTokenCheck] = useState(null);
   const [ocirCredentialStorage, setOcirCredentialStorage] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const isRunActive = ACTIVE_RUN_STATUSES.has(run?.status);
@@ -244,6 +248,14 @@ export default function Home() {
     !isCheckingOcirLogin;
   const canSaveOcirCredentials =
     Boolean(form.ocir_username?.trim()) && Boolean(form.ocir_password?.trim());
+  const canValidateIdcsToken =
+    form.jwt_protection_enabled &&
+    Boolean(form.identity_domain_url?.trim()) &&
+    Boolean(form.auth_scope?.trim()) &&
+    Boolean(form.auth_audience?.trim()) &&
+    Boolean(form.confidential_application_id?.trim()) &&
+    Boolean(form.confidential_application_secret?.trim()) &&
+    !isCheckingIdcsToken;
 
   useEffect(() => {
     if (!run?.deployment_run_id || !isRunActive) {
@@ -366,6 +378,17 @@ export default function Home() {
     if (["region", "ocir_username", "ocir_password"].includes(name)) {
       setOcirLoginCheck(null);
     }
+    if (
+      [
+        "identity_domain_url",
+        "auth_scope",
+        "auth_audience",
+        "confidential_application_id",
+        "confidential_application_secret"
+      ].includes(name)
+    ) {
+      setIdcsTokenCheck(null);
+    }
   }
 
   function updateAuthenticationMode(mode) {
@@ -377,6 +400,7 @@ export default function Home() {
       ...currentErrors,
       jwt_protection_enabled: ""
     }));
+    setIdcsTokenCheck(null);
   }
 
   function updateModeField(name, value) {
@@ -432,6 +456,58 @@ export default function Home() {
     }
   }
 
+  async function checkIdcsToken() {
+    if (!canValidateIdcsToken) {
+      return;
+    }
+
+    setIsCheckingIdcsToken(true);
+    setIdcsTokenCheck(null);
+
+    try {
+      const response = await fetch(idcsTokenCheckUrl(backendUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identity_domain_url: form.identity_domain_url,
+          auth_scope: form.auth_scope,
+          auth_audience: form.auth_audience,
+          confidential_application_id: form.confidential_application_id,
+          confidential_application_secret: form.confidential_application_secret
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setFieldErrors(payload.field_errors ?? {});
+        setIdcsTokenCheck({
+          status: "failed",
+          message: payload.error ?? `Backend returned HTTP ${response.status}`
+        });
+        return;
+      }
+
+      setIdcsTokenCheck({
+        status: "succeeded",
+        message: payload.message ?? "IDCS token validation succeeded.",
+        tokenRequestScope: payload.token_request_scope,
+        jwtAudience: payload.jwt_audience,
+        jwtScope: payload.jwt_scope,
+        jwtExpiresAt: payload.jwt_expires_at
+      });
+    } catch (error) {
+      setIdcsTokenCheck({
+        status: "failed",
+        message: withBackendEndpointHint(
+          error.message || "Unable to validate IDCS token.",
+          backendUrl
+        )
+      });
+    } finally {
+      setIsCheckingIdcsToken(false);
+    }
+  }
+
   async function submitFactoryRun(event) {
     event.preventDefault();
 
@@ -447,7 +523,7 @@ export default function Home() {
       const response = await fetch(backendUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify(buildDeploymentPayload(form))
       });
       const payload = await response.json();
 
@@ -802,7 +878,48 @@ export default function Home() {
                       onChange={updateField}
                       error={fieldErrors.auth_audience}
                     />
+                    <Field
+                      label="Confidential application client ID"
+                      name="confidential_application_id"
+                      value={form.confidential_application_id}
+                      onChange={updateField}
+                      error={fieldErrors.confidential_application_id}
+                    />
+                    <Field
+                      label="Confidential application secret"
+                      name="confidential_application_secret"
+                      type="password"
+                      value={form.confidential_application_secret}
+                      onChange={updateField}
+                      error={fieldErrors.confidential_application_secret}
+                      autoComplete="new-password"
+                    />
                   </div>
+                  <button
+                    className="secondaryAction"
+                    disabled={!canValidateIdcsToken}
+                    onClick={checkIdcsToken}
+                    type="button"
+                  >
+                    {isCheckingIdcsToken ? "Validating..." : "Validate token"}
+                  </button>
+                  {idcsTokenCheck ? (
+                    <div className={`checkStatus ${idcsTokenCheck.status}`}>
+                      <p>{idcsTokenCheck.message}</p>
+                      {idcsTokenCheck.status === "succeeded" ? (
+                        <dl>
+                          <dt>Token request scope</dt>
+                          <dd>{idcsTokenCheck.tokenRequestScope}</dd>
+                          <dt>JWT audience</dt>
+                          <dd>{String(idcsTokenCheck.jwtAudience ?? "n/a")}</dd>
+                          <dt>JWT scope</dt>
+                          <dd>{String(idcsTokenCheck.jwtScope ?? "n/a")}</dd>
+                          <dt>Expires at</dt>
+                          <dd>{String(idcsTokenCheck.jwtExpiresAt ?? "n/a")}</dd>
+                        </dl>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <p className="inlineNotice">
                     The Hosted Application auth config keeps audience and scope
                     as separate JWT claim expectations. The client token request
@@ -975,6 +1092,14 @@ function normalizeValue(name, value) {
   return value;
 }
 
+function buildDeploymentPayload(form) {
+  const deploymentPayload = { ...form };
+  delete deploymentPayload.confidential_application_id;
+  delete deploymentPayload.confidential_application_secret;
+
+  return deploymentPayload;
+}
+
 function withBackendEndpointHint(message, backendUrl) {
   const hint =
     "Check the Factory API endpoint: it still looks like a local/default URL. " +
@@ -1003,4 +1128,8 @@ function deploymentStatusUrl(baseUrl, deploymentRunId) {
 
 function ocirLoginCheckUrl(baseUrl) {
   return `${baseUrl.replace(/\/factory\/deployments\/?$/, "")}/factory/ocir-login/check`;
+}
+
+function idcsTokenCheckUrl(baseUrl) {
+  return `${baseUrl.replace(/\/factory\/deployments\/?$/, "")}/factory/idcs-token/check`;
 }

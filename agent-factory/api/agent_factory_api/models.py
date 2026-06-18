@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-17
+Date last modified: 2026-06-18
 License: MIT
 Description: Data models and validation helpers for Agent Factory deployment runs.
 """
@@ -232,6 +232,8 @@ def redact_payload(payload: dict[str, Any]) -> dict[str, Any]:
         redacted["openai_api_key"] = "********"
     if redacted.get("ocir_password"):
         redacted["ocir_password"] = "********"
+    if redacted.get("confidential_application_secret"):
+        redacted["confidential_application_secret"] = "********"
     return redacted
 
 
@@ -276,6 +278,8 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("identity_domain_url", "")
     normalized.setdefault("auth_scope", "")
     normalized.setdefault("auth_audience", "")
+    normalized.setdefault("confidential_application_id", "")
+    normalized.setdefault("confidential_application_secret", "")
     normalized.setdefault("endpoint_visibility", "public")
     normalized.setdefault("network_mode", "oracle_managed")
     normalized.setdefault("file_search_max_num_results", 10)

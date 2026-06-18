@@ -376,6 +376,8 @@ Agent Factory must collect the following inputs.
 | Identity Domain URL | Conditional | Required when JWT protection is enabled. Must be the exact `https://` Identity Domain URL from OCI Console. The backend must not derive this URL from a display name. |
 | Scope | Conditional | Required when JWT protection is enabled. Identifies the JWT `scope` claim expected by the protected Hosted Application. The backend must keep this value separate from the audience when rendering `idcsConfig.scope`. |
 | Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT `aud` claim expected by the protected Hosted Application. |
+| Confidential application client ID | Token validation only | Required only when the user validates an IDCS token from the UI. Must not be written to Hosted Application runtime config. |
+| Confidential application secret | Token validation only | Required only when the user validates an IDCS token from the UI. Must never be returned in API responses. |
 | Confidential application | No | The confidential application must already exist. Creating or managing its client credentials remains out of scope. |
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
@@ -408,6 +410,23 @@ scope claim entered in the UI. The backend must not concatenate audience and
 scope in the Hosted Application inbound auth config. The audience and scope
 concatenation is used only by OAuth token requests made by clients, as described
 in [OCI IAM IDCS Audience and Scope](../docs/idcs-audience-and-scope.md).
+
+The UI must expose a `Validate token` action when JWT protection is enabled.
+The action must be enabled only when Identity Domain URL, audience claim, scope
+claim, confidential application client ID, and confidential application secret
+are present. The backend validation endpoint must:
+
+- Build the token request scope by concatenating audience claim and scope claim
+  without separators.
+- Request an OCI IAM Identity Domains access token using client credentials.
+- Decode the JWT header and payload without verifying the signature locally.
+- Verify that the decoded `aud` claim matches the audience claim entered in the
+  UI.
+- Verify that the decoded `scope` claim contains the scope claim entered in the
+  UI.
+- Return only non-secret diagnostics: token request scope, decoded audience,
+  decoded scope, expiration timestamp, and a readable validation message.
+- Never return the access token or confidential application secret.
 
 ## Resource Modes
 

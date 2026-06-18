@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-17
+Date last modified: 2026-06-18
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -10,6 +10,8 @@ from __future__ import annotations
 # pylint: disable=duplicate-code,too-few-public-methods,too-many-lines
 
 import sys
+import base64
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ sys.path.insert(0, str(AGENT_FACTORY_API_PATH))
 
 import agent_factory_api.resources as factory_resources  # pylint: disable=wrong-import-position
 import agent_factory_api.executor as factory_executor  # pylint: disable=wrong-import-position
+import agent_factory_api.idcs as factory_idcs  # pylint: disable=wrong-import-position
 from agent_factory_api.app import (  # pylint: disable=wrong-import-position
     RUNS,
     _build_hosted_application_urls,
@@ -134,6 +137,20 @@ def test_agent_factory_ui_exposes_ocir_login_check() -> None:
     assert "ocirLoginCheck" in page_source
 
 
+def test_agent_factory_ui_exposes_idcs_token_check() -> None:
+    """Test UI exposes a direct IDCS token validation action."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Validate token" in page_source
+    assert "/factory/idcs-token/check" in page_source
+    assert "canValidateIdcsToken" in page_source
+    assert "confidential_application_secret" in page_source
+    assert "buildDeploymentPayload" in page_source
+
+
 def test_agent_factory_ui_exposes_local_ocir_credential_storage() -> None:
     """Test UI can save and reload OCIR credentials locally."""
 
@@ -222,6 +239,158 @@ def test_agent_factory_ocir_login_check_returns_actionable_failure(
     assert payload["status"] == "failed"
     assert payload["error"] == "OCIR Docker login failed for fra.ocir.io: unauthorized"
     assert "test-ocir-password" not in response.text
+
+
+def test_agent_factory_checks_idcs_token(monkeypatch) -> None:
+    """Test IDCS token check endpoint returns non-secret diagnostics."""
+
+    client = TestClient(app)
+
+    def fake_validate_idcs_token(token_input: Any) -> dict[str, Any]:
+        assert token_input.identity_domain_url == (
+            "https://idcs-example.identity.oraclecloud.com"
+        )
+        assert token_input.confidential_application_id == "client-id"
+        assert token_input.confidential_application_secret == "client-secret"
+        assert token_input.audience_claim == "hello_world"
+        assert token_input.scope_claim == "invoke"
+        return {
+            "status": "succeeded",
+            "message": "IDCS token validation succeeded.",
+            "token_request_scope": "hello_worldinvoke",
+            "jwt_audience": "hello_world",
+            "jwt_scope": "invoke",
+            "jwt_expires_at": 1781777936,
+        }
+
+    monkeypatch.setattr(
+        "agent_factory_api.app.validate_idcs_token",
+        fake_validate_idcs_token,
+    )
+
+    response = client.post(
+        "/factory/idcs-token/check",
+        json={
+            "identity_domain_url": " https://idcs-example.identity.oraclecloud.com ",
+            "auth_scope": " invoke ",
+            "auth_audience": " hello_world ",
+            "confidential_application_id": " client-id ",
+            "confidential_application_secret": " client-secret ",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "status": "succeeded",
+        "message": "IDCS token validation succeeded.",
+        "token_request_scope": "hello_worldinvoke",
+        "jwt_audience": "hello_world",
+        "jwt_scope": "invoke",
+        "jwt_expires_at": 1781777936,
+    }
+    assert "client-secret" not in response.text
+
+
+def test_agent_factory_idcs_token_check_validates_input() -> None:
+    """Test IDCS token check endpoint validates required fields."""
+
+    client = TestClient(app)
+
+    response = client.post(
+        "/factory/idcs-token/check",
+        json={
+            "identity_domain_url": "OracleIdentityCloudService",
+            "auth_scope": "",
+            "auth_audience": "",
+            "confidential_application_id": "",
+            "confidential_application_secret": "",
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"] == "IDCS token validation input failed."
+    assert payload["field_errors"]["identity_domain_url"] == (
+        "Identity Domain URL must be the exact https:// URL from OCI Console."
+    )
+    assert payload["field_errors"]["auth_scope"] == "This field is required."
+    assert payload["field_errors"]["auth_audience"] == "This field is required."
+    assert payload["field_errors"]["confidential_application_id"] == (
+        "This field is required."
+    )
+    assert payload["field_errors"]["confidential_application_secret"] == (
+        "This field is required."
+    )
+
+
+def test_agent_factory_idcs_token_validation_decodes_claims(monkeypatch) -> None:
+    """Test IDCS token validation decodes and verifies JWT claims."""
+
+    captured_request: dict[str, Any] = {}
+
+    class FakeTokenResponse:
+        """Context manager response for a fake IDCS token endpoint."""
+
+        def __enter__(self) -> "FakeTokenResponse":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            """Return a fake IDCS token response body."""
+
+            header = _encode_jwt_section({"alg": "RS256", "typ": "JWT"})
+            payload = _encode_jwt_section(
+                {
+                    "aud": "hello_world",
+                    "scope": "invoke",
+                    "exp": 1781777936,
+                }
+            )
+            return json.dumps({"access_token": f"{header}.{payload}.signature"}).encode(
+                "utf-8"
+            )
+
+    def fake_urlopen(http_request: Any, timeout: int) -> FakeTokenResponse:
+        """Capture the outgoing token request and return a fake token."""
+
+        captured_request["url"] = http_request.full_url
+        captured_request["body"] = http_request.data.decode("utf-8")
+        captured_request["authorization"] = http_request.headers["Authorization"]
+        captured_request["timeout"] = timeout
+        return FakeTokenResponse()
+
+    monkeypatch.setattr(factory_idcs.request, "urlopen", fake_urlopen)
+
+    result = factory_idcs.validate_idcs_token(
+        factory_idcs.IdcsTokenValidationInput(
+            identity_domain_url="https://idcs-example.identity.oraclecloud.com",
+            confidential_application_id="client-id",
+            confidential_application_secret="client-secret",
+            audience_claim="hello_world",
+            scope_claim="invoke",
+        )
+    )
+
+    expected_auth = base64.b64encode(b"client-id:client-secret").decode("ascii")
+    assert captured_request["url"] == (
+        "https://idcs-example.identity.oraclecloud.com/oauth2/v1/token"
+    )
+    assert captured_request["body"] == (
+        "grant_type=client_credentials&scope=hello_worldinvoke"
+    )
+    assert captured_request["authorization"] == f"Basic {expected_auth}"
+    assert captured_request["timeout"] == 60
+    assert result == {
+        "status": "succeeded",
+        "message": "IDCS token validation succeeded.",
+        "token_request_scope": "hello_worldinvoke",
+        "jwt_audience": "hello_world",
+        "jwt_scope": "invoke",
+        "jwt_expires_at": 1781777936,
+    }
 
 
 def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> None:
@@ -2747,3 +2916,17 @@ def _notify_fake_resource_progress(
             "skipped": False,
         },
     )
+
+
+def _encode_jwt_section(payload: dict[str, Any]) -> str:
+    """Encode a JSON object as a base64url JWT section for tests.
+
+    Args:
+        payload: JSON object to encode.
+
+    Returns:
+        str: Base64url-encoded JWT section without padding.
+    """
+
+    raw_json = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw_json).decode("ascii").rstrip("=")

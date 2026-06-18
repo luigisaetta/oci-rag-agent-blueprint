@@ -1,13 +1,13 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-17
+Date last modified: 2026-06-18
 License: MIT
 Description: FastAPI backend skeleton for Agent Factory deployment orchestration.
 """
 
 from __future__ import annotations
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-lines
 
 from typing import Any
 from uuid import uuid4
@@ -24,6 +24,11 @@ from agent_factory_api.commands import (
 from agent_factory_api.executor import (
     CommandExecutionError,
     execute_live_deployment_commands,
+)
+from agent_factory_api.idcs import (
+    IdcsTokenValidationError,
+    IdcsTokenValidationInput,
+    validate_idcs_token,
 )
 from agent_factory_api.models import (
     DeploymentRun,
@@ -130,6 +135,98 @@ async def check_ocir_login(request: Request) -> JSONResponse:
             "ocir_username": result["ocir_username"],
         }
     )
+
+
+@app.post("/factory/idcs-token/check")
+async def check_idcs_token(request: Request) -> JSONResponse:
+    """Validate IDCS confidential application token settings.
+
+    Args:
+        request: FastAPI request containing IDCS token validation settings.
+
+    Returns:
+        JSONResponse: Validation status, non-secret diagnostics, or field
+            errors.
+    """
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload.", "field_errors": {}},
+            status_code=400,
+        )
+
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            {"error": "Payload must be a JSON object.", "field_errors": {}},
+            status_code=400,
+        )
+
+    validation_errors = _validate_idcs_token_check_payload(payload)
+    if validation_errors:
+        return JSONResponse(
+            {
+                "error": "IDCS token validation input failed.",
+                "field_errors": validation_errors,
+            },
+            status_code=400,
+        )
+
+    token_input = IdcsTokenValidationInput(
+        identity_domain_url=str(payload["identity_domain_url"]).strip(),
+        confidential_application_id=str(payload["confidential_application_id"]).strip(),
+        confidential_application_secret=str(
+            payload["confidential_application_secret"]
+        ).strip(),
+        audience_claim=str(payload["auth_audience"]).strip(),
+        scope_claim=str(payload["auth_scope"]).strip(),
+    )
+    try:
+        result = validate_idcs_token(token_input)
+    except IdcsTokenValidationError as exc:
+        return JSONResponse(
+            {
+                "status": "failed",
+                "error": str(exc),
+                "field_errors": {},
+            },
+            status_code=400,
+        )
+
+    return JSONResponse(result)
+
+
+def _validate_idcs_token_check_payload(payload: dict[str, Any]) -> dict[str, str]:
+    """Validate the minimal payload required for IDCS token checks.
+
+    Args:
+        payload: Raw JSON payload.
+
+    Returns:
+        dict[str, str]: Validation errors keyed by field name.
+    """
+
+    errors: dict[str, str] = {}
+    required_fields = (
+        "identity_domain_url",
+        "auth_scope",
+        "auth_audience",
+        "confidential_application_id",
+        "confidential_application_secret",
+    )
+    for field_name in required_fields:
+        value = payload.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            errors[field_name] = "This field is required."
+
+    domain_url = str(payload.get("identity_domain_url", "")).strip()
+    if domain_url and not domain_url.startswith("https://"):
+        errors["identity_domain_url"] = (
+            "Identity Domain URL must be the exact https:// URL from OCI Console."
+        )
+
+    return errors
 
 
 @app.post("/factory/deployments")

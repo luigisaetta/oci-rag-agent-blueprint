@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-18
 
+- Added Agent Factory IDCS token validation from the UI, including client
+  credentials token acquisition, JWT claim diagnostics, and separate audience
+  and scope claim checks.
 - Added a root `test_hosted_application.sh` helper script for manual validation
   of protected Hosted Application `/responses` endpoints.
 - Added detailed documentation explaining the difference between separated
