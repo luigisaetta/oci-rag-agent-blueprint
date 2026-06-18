@@ -81,6 +81,12 @@ can be copied for manual testing. If the access token is not a three-part JWT,
 the client must keep printing the raw token and add a readable warning that JWT
 details could not be decoded.
 
+The repository must provide a root-level Bash helper script for manual Hosted
+Application validation. The script must call `python -m clients.agent_cli`, keep
+the Hosted Application `/actions/invoke/responses` URL and request parameters as
+easy-to-edit variables near the top of the file, and support IDCS authentication
+by default.
+
 ## IDCS Token Acquisition
 
 The client must support obtaining an OAuth access token from OCI IAM Identity
@@ -241,5 +247,7 @@ The output must show:
   RAG agent request arguments.
 - The standalone IDCS token client decodes and prints JWT header and payload
   details without printing or interpreting the signature.
+- The root Hosted Application test script can launch the full CLI client against
+  a configured Hosted Application endpoint.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
   JSON response handling.

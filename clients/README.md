@@ -111,10 +111,17 @@ Example against a protected Hosted Application:
 
 ```bash
 python -m clients.agent_cli \
-  --endpoint https://<hosted-application-url>/actions/invoke/api/responses \
+  --endpoint https://<hosted-application-url>/actions/invoke/responses \
   --auth idcs \
   --create-conversation true \
   "Explain the documents in the vector store."
+```
+
+The repository root also includes `test_hosted_application.sh`, a small wrapper
+around this command. Edit the variables at the top of that script and run:
+
+```bash
+./test_hosted_application.sh
 ```
 
 ## Output

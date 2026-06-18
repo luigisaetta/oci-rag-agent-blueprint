@@ -8,6 +8,8 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-18
 
+- Added a root `test_hosted_application.sh` helper script for manual validation
+  of protected Hosted Application `/responses` endpoints.
 - Updated the Python CLI client to send acquired IDCS access tokens as Bearer
   authorization headers when calling protected Hosted Application endpoints.
 - Changed Agent Factory IDCS Hosted Application auth rendering so

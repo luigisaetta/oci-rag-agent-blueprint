@@ -183,7 +183,7 @@ Hosted Application invoke URL and enable IDCS auth:
 
 ```bash
 python -m clients.agent_cli \
-  --endpoint https://<hosted-application-url>/actions/invoke/api/responses \
+  --endpoint https://<hosted-application-url>/actions/invoke/responses \
   --auth idcs \
   --create-conversation true \
   "Explain the documents in the vector store."
@@ -191,6 +191,12 @@ python -m clients.agent_cli \
 
 The client requests the IDCS access token, prints it for inspection, and sends it
 to the Hosted Application as an `Authorization: Bearer <token>` header.
+
+You can also edit and run the root helper script:
+
+```bash
+./test_hosted_application.sh
+```
 
 ## 8. Build The Container Image
 
