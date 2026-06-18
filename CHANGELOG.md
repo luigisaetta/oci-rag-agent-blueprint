@@ -8,6 +8,8 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-18
 
+- Updated the Python CLI client to send acquired IDCS access tokens as Bearer
+  authorization headers when calling protected Hosted Application endpoints.
 - Changed Agent Factory IDCS Hosted Application auth rendering so
   `idcsConfig.scope` is built by concatenating the primary audience and
   UI-provided scope value without separators.

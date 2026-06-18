@@ -178,6 +178,20 @@ The standalone client contacts OCI IAM Identity Domains, prints the raw access
 token, and decodes the JWT header and payload for inspection. It does not call
 the RAG agent endpoint.
 
+To call a protected Hosted Application with the full Python CLI client, use the
+Hosted Application invoke URL and enable IDCS auth:
+
+```bash
+python -m clients.agent_cli \
+  --endpoint https://<hosted-application-url>/actions/invoke/api/responses \
+  --auth idcs \
+  --create-conversation true \
+  "Explain the documents in the vector store."
+```
+
+The client requests the IDCS access token, prints it for inspection, and sends it
+to the Hosted Application as an `Authorization: Bearer <token>` header.
+
 ## 8. Build The Container Image
 
 For local development on Apple Silicon or other ARM-based machines, `./start_demo.sh --build` can build and run native ARM images. This is valid for local testing only.

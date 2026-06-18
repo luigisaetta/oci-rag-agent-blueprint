@@ -202,6 +202,93 @@ def test_maybe_fetch_idcs_access_token_idcs_requires_config() -> None:
         maybe_fetch_idcs_access_token("idcs", {})
 
 
+def test_send_json_request_adds_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test agent requests include a Bearer token when one is available."""
+
+    captured_headers: dict[str, str] = {}
+
+    class FakeResponse:
+        """Context manager response for a fake agent endpoint."""
+
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            """Return a fake agent response body."""
+
+            return json.dumps({"agent_response": "ok"}).encode("utf-8")
+
+    def fake_urlopen(http_request: Any, timeout: int) -> FakeResponse:
+        """Capture the outgoing agent request and return a fake response."""
+
+        captured_headers.update(http_request.headers)
+        assert timeout == 120
+        return FakeResponse()
+
+    monkeypatch.setattr(agent_cli.request, "urlopen", fake_urlopen)
+
+    response = agent_cli.send_json_request(
+        "https://example.com/actions/invoke/api/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": False,
+        },
+        "jwt-token",
+    )
+
+    assert response == {"agent_response": "ok"}
+    assert captured_headers["Authorization"] == "Bearer jwt-token"
+
+
+def test_send_json_request_omits_authorization_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test agent requests remain unauthenticated when no token is available."""
+
+    captured_headers: dict[str, str] = {}
+
+    class FakeResponse:
+        """Context manager response for a fake agent endpoint."""
+
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            """Return a fake agent response body."""
+
+            return json.dumps({"agent_response": "ok"}).encode("utf-8")
+
+    def fake_urlopen(http_request: Any, timeout: int) -> FakeResponse:
+        """Capture the outgoing agent request and return a fake response."""
+
+        captured_headers.update(http_request.headers)
+        assert timeout == 120
+        return FakeResponse()
+
+    monkeypatch.setattr(agent_cli.request, "urlopen", fake_urlopen)
+
+    response = agent_cli.send_json_request(
+        "http://localhost:8080/responses",
+        {
+            "new_conversation": True,
+            "user_request": "Hello",
+            "stream": False,
+        },
+    )
+
+    assert response == {"agent_response": "ok"}
+    assert "Authorization" not in captured_headers
+
+
 def test_main_prints_token_only(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> None:
     """Test token-only mode prints the acquired IDCS token and exits."""
 
@@ -227,6 +314,65 @@ def test_main_prints_token_only(monkeypatch: pytest.MonkeyPatch, capsys: Any) ->
     output = capsys.readouterr().out
     assert "IDCS access token" in output
     assert "jwt-token" in output
+
+
+def test_main_passes_idcs_token_to_agent_request(
+    monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    """Test full CLI calls use the acquired IDCS token as request auth."""
+
+    captured_request: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        agent_cli,
+        "build_client_environment",
+        lambda _env_file: {
+            "IDENTITY_DOMAIN_URL": "https://idcs.example.identity.oraclecloud.com",
+            "CONFIDENTIAL_APPLICATION_ID": "client-id",
+            "CONFIDENTIAL_APPLICATION_SECRET": "client-secret",
+            "IDCS_SCOPE": "demo-agent/.default",
+        },
+    )
+    monkeypatch.setattr(
+        agent_cli,
+        "fetch_idcs_access_token",
+        lambda _config: "jwt-token",
+    )
+
+    def fake_render_json_response(
+        endpoint: str,
+        payload: dict[str, object],
+        access_token: str | None = None,
+    ) -> None:
+        """Capture the final request parameters passed by main."""
+
+        captured_request["endpoint"] = endpoint
+        captured_request["payload"] = payload
+        captured_request["access_token"] = access_token
+
+    monkeypatch.setattr(agent_cli, "render_json_response", fake_render_json_response)
+
+    exit_code = agent_cli.main(
+        [
+            "--auth",
+            "idcs",
+            "--stream",
+            "false",
+            "--create-conversation",
+            "true",
+            "Hello",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_request["access_token"] == "jwt-token"
+    assert captured_request["endpoint"] == "http://localhost:8080/responses"
+    assert captured_request["payload"] == {
+        "new_conversation": True,
+        "user_request": "Hello",
+        "stream": False,
+    }
+    assert "jwt-token" in capsys.readouterr().out
 
 
 def test_parse_sse_lines() -> None:
@@ -318,12 +464,14 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
     def fake_send_json_request(
         endpoint: str,
         payload: dict[str, object],
+        access_token: str | None = None,
     ) -> dict[str, object]:
         """Return a fake JSON response payload.
 
         Args:
             endpoint: Agent endpoint URL.
             payload: Agent request payload.
+            access_token: Optional IDCS access token.
 
         Returns:
             dict[str, object]: Fake agent response payload.
@@ -331,6 +479,7 @@ def test_render_json_response(monkeypatch: pytest.MonkeyPatch, capsys: Any) -> N
 
         assert endpoint == "http://localhost:8080/responses"
         assert payload["stream"] is False
+        assert access_token is None
         return {
             "conversation_id": "conv-123",
             "response_id": "resp-123",
@@ -374,12 +523,14 @@ def test_render_stream_prints_references(
     def fake_send_streaming_request(
         endpoint: str,
         payload: dict[str, object],
+        access_token: str | None = None,
     ) -> list[agent_cli.SseEvent]:
         """Return fake streaming events.
 
         Args:
             endpoint: Agent endpoint URL.
             payload: Agent request payload.
+            access_token: Optional IDCS access token.
 
         Returns:
             list[agent_cli.SseEvent]: Fake SSE events.
@@ -387,6 +538,7 @@ def test_render_stream_prints_references(
 
         assert endpoint == "http://localhost:8080/responses"
         assert payload["stream"] is True
+        assert access_token is None
         return [
             agent_cli.SseEvent("metadata", {"conversation_id": "conv-123"}),
             agent_cli.SseEvent("token", {"text": "Streaming answer"}),
@@ -439,12 +591,14 @@ def test_render_stream_stops_after_done(
     def fake_send_streaming_request(
         _endpoint: str,
         _payload: dict[str, object],
+        _access_token: str | None = None,
     ) -> Iterator[agent_cli.SseEvent]:
         """Yield a done event followed by an event that must not be consumed.
 
         Args:
             _endpoint: Agent endpoint URL.
             _payload: Agent request payload.
+            _access_token: Optional IDCS access token.
 
         Yields:
             SseEvent: Fake stream events.
@@ -489,12 +643,14 @@ def test_render_stream_stops_after_error(
     def fake_send_streaming_request(
         _endpoint: str,
         _payload: dict[str, object],
+        _access_token: str | None = None,
     ) -> Iterator[agent_cli.SseEvent]:
         """Yield an error event followed by an event that must not be consumed.
 
         Args:
             _endpoint: Agent endpoint URL.
             _payload: Agent request payload.
+            _access_token: Optional IDCS access token.
 
         Yields:
             SseEvent: Fake stream events.

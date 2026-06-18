@@ -115,9 +115,10 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=client_credentials&scope=<IDCS_SCOPE>
 ```
 
-In this increment, the client must print the acquired access token so the user
-can validate the IDCS configuration. Sending the token as a `Bearer` header to
-the agent endpoint is reserved for a later increment.
+When token acquisition succeeds and the client calls the agent endpoint, the
+client must include the token as an HTTP `Authorization: Bearer <token>` header
+on both streaming and non-streaming requests. The client must continue to print
+the acquired access token so the user can validate the IDCS configuration.
 
 The standalone token client must use the same `.env` loading, required variable
 validation, token endpoint construction, and token request implementation as the
@@ -230,6 +231,8 @@ The output must show:
 - The client displays references for both streaming and non-streaming responses.
 - The client can request and print an IDCS token using confidential application
   credentials.
+- The client sends the acquired IDCS token as a `Bearer` authorization header
+  when calling the agent endpoint.
 - The client does not request an IDCS token in `auto` mode when the required
   variables are absent.
 - The client fails clearly in `idcs` mode when required IDCS variables are

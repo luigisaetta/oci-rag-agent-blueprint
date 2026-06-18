@@ -404,13 +404,16 @@ def _normalize_sse_event_name(
 
 
 def send_streaming_request(
-    endpoint: str, payload: dict[str, object]
+    endpoint: str,
+    payload: dict[str, object],
+    access_token: str | None = None,
 ) -> Iterable[SseEvent]:
     """Send a streaming request to the agent endpoint.
 
     Args:
         endpoint: Agent endpoint URL.
         payload: JSON request payload.
+        access_token: Optional IDCS access token to send as a Bearer token.
 
     Yields:
         SseEvent: Events returned by the agent stream.
@@ -419,7 +422,7 @@ def send_streaming_request(
         RuntimeError: If the HTTP request fails.
     """
 
-    http_request = _build_post_request(endpoint, payload, STREAM_HEADERS)
+    http_request = _build_post_request(endpoint, payload, STREAM_HEADERS, access_token)
 
     try:
         with request.urlopen(http_request, timeout=120) as response:
@@ -432,12 +435,17 @@ def send_streaming_request(
         raise RuntimeError(f"Unable to reach agent endpoint: {exc.reason}") from exc
 
 
-def send_json_request(endpoint: str, payload: dict[str, object]) -> dict[str, object]:
+def send_json_request(
+    endpoint: str,
+    payload: dict[str, object],
+    access_token: str | None = None,
+) -> dict[str, object]:
     """Send a non-streaming JSON request to the agent endpoint.
 
     Args:
         endpoint: Agent endpoint URL.
         payload: JSON request payload.
+        access_token: Optional IDCS access token to send as a Bearer token.
 
     Returns:
         dict[str, object]: Parsed JSON response payload.
@@ -446,7 +454,7 @@ def send_json_request(endpoint: str, payload: dict[str, object]) -> dict[str, ob
         RuntimeError: If the HTTP request fails.
     """
 
-    http_request = _build_post_request(endpoint, payload, JSON_HEADERS)
+    http_request = _build_post_request(endpoint, payload, JSON_HEADERS, access_token)
 
     try:
         with request.urlopen(http_request, timeout=120) as response:
@@ -463,6 +471,7 @@ def _build_post_request(
     endpoint: str,
     payload: dict[str, object],
     headers: dict[str, str],
+    access_token: str | None = None,
 ) -> request.Request:
     """Build an HTTP POST request for the agent endpoint.
 
@@ -470,26 +479,36 @@ def _build_post_request(
         endpoint: Agent endpoint URL.
         payload: JSON request payload.
         headers: HTTP headers for the expected response mode.
+        access_token: Optional IDCS access token to send as a Bearer token.
 
     Returns:
         request.Request: Configured HTTP request.
     """
 
     request_body = json.dumps(payload).encode("utf-8")
+    request_headers = dict(headers)
+    if access_token:
+        request_headers["Authorization"] = f"Bearer {access_token}"
+
     return request.Request(
         endpoint,
         data=request_body,
-        headers=headers,
+        headers=request_headers,
         method="POST",
     )
 
 
-def render_stream(endpoint: str, payload: dict[str, object]) -> None:
+def render_stream(
+    endpoint: str,
+    payload: dict[str, object],
+    access_token: str | None = None,
+) -> None:
     """Render a streaming response to the console.
 
     Args:
         endpoint: Agent endpoint URL.
         payload: JSON request payload.
+        access_token: Optional IDCS access token to send as a Bearer token.
     """
 
     _print_request_header(endpoint, payload, stream=True)
@@ -498,7 +517,7 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
     references: list[object] = []
     usage: object = None
 
-    for event in send_streaming_request(endpoint, payload):
+    for event in send_streaming_request(endpoint, payload, access_token):
         if event.name == "metadata":
             conversation_id = event.data.get("conversation_id", "")
             print(f"\n[conversation: {conversation_id}]\n")
@@ -520,17 +539,22 @@ def render_stream(endpoint: str, payload: dict[str, object]) -> None:
             return
 
 
-def render_json_response(endpoint: str, payload: dict[str, object]) -> None:
+def render_json_response(
+    endpoint: str,
+    payload: dict[str, object],
+    access_token: str | None = None,
+) -> None:
     """Render a non-streaming JSON response to the console.
 
     Args:
         endpoint: Agent endpoint URL.
         payload: JSON request payload.
+        access_token: Optional IDCS access token to send as a Bearer token.
     """
 
     _print_request_header(endpoint, payload, stream=False)
 
-    response_payload = send_json_request(endpoint, payload)
+    response_payload = send_json_request(endpoint, payload, access_token)
     conversation_id = response_payload.get("conversation_id", "")
     if conversation_id:
         print(f"[conversation: {conversation_id}]\n")
@@ -708,9 +732,9 @@ def main(argv: list[str] | None = None) -> int:
             user_request=args.user_request,
         )
         if args.stream:
-            render_stream(args.endpoint, payload)
+            render_stream(args.endpoint, payload, access_token)
         else:
-            render_json_response(args.endpoint, payload)
+            render_json_response(args.endpoint, payload, access_token)
     except ValueError as exc:
         parser.error(str(exc))
     except RuntimeError as exc:

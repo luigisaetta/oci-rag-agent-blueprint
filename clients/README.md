@@ -97,9 +97,25 @@ payload for inspection. It does not verify, decode, or render the signature as a
 separate section.
 
 When `--auth auto` is used, the client requests and prints a token only when all
-IDCS variables are present. In this increment, the token is printed for
-validation; sending it as a `Bearer` header to the agent endpoint will be added
-later.
+IDCS variables are present. When token acquisition succeeds, the full CLI client
+also sends the token to the agent endpoint as:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+This lets the same client call Hosted Application endpoints protected with
+`IDCS_AUTH_CONFIG`.
+
+Example against a protected Hosted Application:
+
+```bash
+python -m clients.agent_cli \
+  --endpoint https://<hosted-application-url>/actions/invoke/api/responses \
+  --auth idcs \
+  --create-conversation true \
+  "Explain the documents in the vector store."
+```
 
 ## Output
 
@@ -109,6 +125,8 @@ The client prints:
 - Whether a new conversation is being created.
 - Whether streaming is enabled.
 - IDCS access token when IDCS token acquisition is enabled and succeeds.
+- Bearer authentication on the agent request when an IDCS access token is
+  available.
 - The active conversation identifier when returned by the stream.
 - Response text, either token by token or from the JSON response.
 - Stream errors, when returned by the agent.

@@ -85,7 +85,8 @@ Responses API.
 The IDCS client variables are used only by the Python CLI test client. They do
 not configure the local agent runtime. When all four variables are present and
 the CLI runs with `--auth auto`, the CLI requests and prints an IDCS access
-token before sending the test request.
+token before sending the test request. When a token is acquired, the CLI sends
+it to the agent endpoint as an `Authorization: Bearer <token>` header.
 
 ## Security Rules
 
