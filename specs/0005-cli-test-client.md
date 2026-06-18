@@ -82,10 +82,20 @@ the client must keep printing the raw token and add a readable warning that JWT
 details could not be decoded.
 
 The repository must provide a root-level Bash helper script for manual Hosted
-Application validation. The script must call `python -m clients.agent_cli`, keep
+Application validation. The script must call the hosted self-test client, keep
 the Hosted Application `/actions/invoke/responses` URL and request parameters as
 easy-to-edit variables near the top of the file, and support IDCS authentication
 by default.
+
+The root Hosted Application helper must run a diagnostic self-test instead of a
+single request. The self-test must validate client configuration, request and
+decode an IDCS token when authentication is enabled, check the Hosted
+Application `/health` endpoint, call `/responses` in non-streaming mode, and
+call `/responses` in streaming mode. It must print pass/fail status for each
+step and must not print the raw access token or confidential application secret.
+The helper must also provide a switch to print the agent response text when
+manual answer inspection is needed. This switch must default to disabled so
+diagnostic output remains compact.
 
 ## IDCS Token Acquisition
 
@@ -253,7 +263,8 @@ The output must show:
   RAG agent request arguments.
 - The standalone IDCS token client decodes and prints JWT header and payload
   details without printing or interpreting the signature.
-- The root Hosted Application test script can launch the full CLI client against
-  a configured Hosted Application endpoint.
+- The root Hosted Application test script can validate token acquisition,
+  health, non-streaming responses, and streaming responses against a configured
+  Hosted Application endpoint without printing secrets.
 - Unit tests cover payload construction, argument validation, SSE parsing, and
   JSON response handling.

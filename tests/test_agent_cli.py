@@ -15,6 +15,7 @@ from typing import Any, Iterator
 import pytest
 
 from clients import agent_cli
+from clients import hosted_application_self_test
 from clients.agent_cli import (
     IdcsTokenConfig,
     build_client_environment,
@@ -107,6 +108,91 @@ def test_build_token_endpoint_url() -> None:
         build_token_endpoint_url("https://idcs.example.identity.oraclecloud.com/")
         == "https://idcs.example.identity.oraclecloud.com/oauth2/v1/token"
     )
+
+
+def test_build_hosted_health_endpoint() -> None:
+    """Test hosted self-test derives the matching health endpoint."""
+
+    assert (
+        hosted_application_self_test.build_health_endpoint(
+            "https://example.com/actions/invoke/responses"
+        )
+        == "https://example.com/actions/invoke/health"
+    )
+    assert (
+        hosted_application_self_test.build_health_endpoint(
+            "https://example.com/actions/invoke/responses/"
+        )
+        == "https://example.com/actions/invoke/health"
+    )
+
+
+def test_hosted_self_test_runs_expected_steps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test hosted self-test orchestrates token, health, JSON, and stream checks."""
+
+    completed_steps: list[str] = []
+
+    monkeypatch.setattr(
+        hosted_application_self_test,
+        "build_client_environment",
+        lambda env_file: {"env_file": env_file},
+    )
+    monkeypatch.setattr(
+        hosted_application_self_test,
+        "_step_token",
+        lambda auth_mode, environment: completed_steps.append(
+            f"token:{auth_mode}:{environment['env_file']}"
+        )
+        or "jwt-token",
+    )
+    monkeypatch.setattr(
+        hosted_application_self_test,
+        "_step_health",
+        lambda health_endpoint, access_token: completed_steps.append(
+            f"health:{health_endpoint}:{access_token}"
+        ),
+    )
+    monkeypatch.setattr(
+        hosted_application_self_test,
+        "_step_json_response",
+        lambda config: (
+            completed_steps.append(
+                f"json:{config.endpoint}:{config.create_conversation}:"
+                f"{config.conversation_id}:{config.user_request}:"
+                f"{config.access_token}:{config.show_output}"
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        hosted_application_self_test,
+        "_step_streaming_response",
+        lambda config: (
+            completed_steps.append(
+                f"stream:{config.endpoint}:{config.create_conversation}:"
+                f"{config.conversation_id}:{config.user_request}:"
+                f"{config.access_token}:{config.show_output}"
+            )
+        ),
+    )
+
+    hosted_application_self_test.run_self_test(
+        hosted_application_self_test.HostedSelfTestConfig(
+            endpoint="https://example.com/actions/invoke/responses",
+            auth_mode="idcs",
+            env_file=".env.test",
+            create_conversation=True,
+            conversation_id=None,
+            user_request="Hello",
+            show_output=True,
+        )
+    )
+
+    assert completed_steps == [
+        "token:idcs:.env.test",
+        "health:https://example.com/actions/invoke/health:jwt-token",
+        "json:https://example.com/actions/invoke/responses:True:None:Hello:jwt-token:True",
+        "stream:https://example.com/actions/invoke/responses:True:None:Hello:jwt-token:True",
+    ]
 
 
 def test_build_client_environment_prefers_process_values(

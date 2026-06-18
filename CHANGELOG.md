@@ -8,6 +8,11 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-18
 
+- Expanded `test_hosted_application.sh` into a full Hosted Application self-test
+  covering IDCS token acquisition, JWT diagnostics, `/health`, non-streaming
+  `/responses`, and streaming `/responses`.
+- Added an optional Hosted Application self-test switch for printing agent
+  response text when manual answer inspection is needed.
 - Added Agent Factory IDCS token validation from the UI, including client
   credentials token acquisition, JWT claim diagnostics, and separate audience
   and scope claim checks.

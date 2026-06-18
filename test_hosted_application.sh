@@ -10,7 +10,7 @@ AUTH_MODE="idcs"
 ENV_FILE=".env"
 CREATE_CONVERSATION="true"
 CONVERSATION_ID=""
-STREAM="true"
+SHOW_AGENT_OUTPUT="${SHOW_AGENT_OUTPUT:-false}"
 USER_REQUEST="What are the known side effects of metformin?"
 
 # Optional: override the Python executable from the shell, for example:
@@ -22,8 +22,12 @@ usage() {
 Usage: ./test_hosted_application.sh
 
 Edit the variables near the top of this file, then run it from the repository
-root. The script calls the full Python CLI client and, when AUTH_MODE is idcs or
-auto with IDCS variables present, sends the acquired JWT as a Bearer token.
+root. The script calls the Hosted Application self-test client and, when
+AUTH_MODE is idcs or auto with IDCS variables present, sends the acquired JWT as
+a Bearer token.
+It validates token acquisition, JWT claims, /health, non-streaming /responses,
+and streaming /responses.
+Set SHOW_AGENT_OUTPUT=true near the top of the file to print the agent answer.
 
 Required .env values for AUTH_MODE=idcs:
   IDENTITY_DOMAIN_URL
@@ -60,7 +64,7 @@ fi
 COMMAND=(
   "${PYTHON_BIN}"
   -m
-  clients.agent_cli
+  clients.hosted_application_self_test
   --endpoint
   "${HOSTED_APPLICATION_RESPONSES_URL}"
   --auth
@@ -69,8 +73,8 @@ COMMAND=(
   "${ENV_FILE}"
   --create-conversation
   "${CREATE_CONVERSATION}"
-  --stream
-  "${STREAM}"
+  --show-output
+  "${SHOW_AGENT_OUTPUT}"
 )
 
 if [[ "${CREATE_CONVERSATION}" == "false" ]]; then

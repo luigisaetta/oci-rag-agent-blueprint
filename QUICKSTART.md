@@ -203,6 +203,12 @@ You can also edit and run the root helper script:
 ./test_hosted_application.sh
 ```
 
+The helper script runs a full Hosted Application self-test: IDCS token
+acquisition, decoded JWT claim summary, `/health`, non-streaming `/responses`,
+and streaming `/responses`.
+Set `SHOW_AGENT_OUTPUT=true` in the script when you also want to print the
+answer text returned by the agent.
+
 ## 8. Build The Container Image
 
 For local development on Apple Silicon or other ARM-based machines, `./start_demo.sh --build` can build and run native ARM images. This is valid for local testing only.

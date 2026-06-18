@@ -123,12 +123,22 @@ python -m clients.agent_cli \
   "Explain the documents in the vector store."
 ```
 
-The repository root also includes `test_hosted_application.sh`, a small wrapper
-around this command. Edit the variables at the top of that script and run:
+The repository root also includes `test_hosted_application.sh`, a diagnostic
+wrapper for Hosted Application validation. Edit the variables at the top of that
+script and run:
 
 ```bash
 ./test_hosted_application.sh
 ```
+
+The script validates IDCS token acquisition, JWT claim decoding, `/health`,
+non-streaming `/responses`, and streaming `/responses`. It prints pass/fail
+status for each step without printing the raw access token or confidential
+application secret.
+
+By default the diagnostic output only shows response sizes and reference counts.
+Set `SHOW_AGENT_OUTPUT=true` near the top of `test_hosted_application.sh` when
+you also want to print the actual answer returned by the agent.
 
 ## Output
 
