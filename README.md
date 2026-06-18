@@ -305,4 +305,10 @@ been tested with:
 - Hosted Deployment non-streaming `/responses` requests.
 - Hosted Deployment streaming `/responses` requests.
 - Python CLI streaming and non-streaming clients.
+- Python CLI authenticated requests using OCI IAM IDCS JWT Bearer tokens.
+- Hosted Applications protected with `IDCS_AUTH_CONFIG`.
+- Hosted Application self-test covering token acquisition, JWT diagnostics,
+  `/health`, non-streaming `/responses`, and streaming `/responses`.
+- Agent Factory guided deployment, OCIR credential validation, and IDCS token
+  validation.
 - Next.js UI streaming against Hosted Application invoke.

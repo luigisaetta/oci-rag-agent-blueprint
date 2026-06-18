@@ -15,6 +15,9 @@ changes, or documentation updates are introduced.
   response text when manual answer inspection is needed.
 - Added protected Hosted Application Python CLI examples with `--auth idcs` to
   the main README.
+- Updated the main README current status to include IDCS-protected hosted
+  applications, authenticated Python CLI requests, Agent Factory token
+  validation, and Hosted Application self-tests.
 - Added Agent Factory IDCS token validation from the UI, including client
   credentials token acquisition, JWT claim diagnostics, and separate audience
   and scope claim checks.
