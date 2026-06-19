@@ -4,12 +4,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { buildHealthUrl, buildTokenState, isAccessTokenUsable } from "./auth.mjs";
 import { parseSseFrame } from "./sse.mjs";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
 const EMPTY_TOKEN_TOTALS = {
   input: 0,
   output: 0
+};
+const EMPTY_IDCS_CONFIG = {
+  identityDomainUrl: "",
+  clientId: "",
+  clientSecret: "",
+  scope: ""
 };
 
 function createMessage(role, content, status = "complete") {
@@ -19,6 +26,15 @@ function createMessage(role, content, status = "complete") {
     content,
     status
   };
+}
+
+function hasIdcsConfig(config) {
+  return (
+    Boolean(config.identityDomainUrl.trim()) &&
+    Boolean(config.clientId.trim()) &&
+    Boolean(config.clientSecret.trim()) &&
+    Boolean(config.scope.trim())
+  );
 }
 
 function AssistantMessageContent({ message }) {
@@ -48,6 +64,11 @@ export default function Home() {
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [jwtEnabled, setJwtEnabled] = useState(false);
+  const [idcsConfig, setIdcsConfig] = useState(EMPTY_IDCS_CONFIG);
+  const [tokenState, setTokenState] = useState(null);
+  const [isTestingHealth, setIsTestingHealth] = useState(false);
+  const [healthStatus, setHealthStatus] = useState(null);
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -65,7 +86,11 @@ export default function Home() {
   const chatEndRef = useRef(null);
 
   const hasConversation = Boolean(conversationId);
-  const canSend = question.trim().length > 0 && !isSending;
+  const canSend =
+    question.trim().length > 0 &&
+    !isSending &&
+    (!jwtEnabled || hasIdcsConfig(idcsConfig));
+  const canTestHealth = !isTestingHealth && (!jwtEnabled || hasIdcsConfig(idcsConfig));
 
   const conversationLabel = useMemo(() => {
     if (!conversationId) {
@@ -91,6 +116,80 @@ export default function Home() {
     setTokenTotals(EMPTY_TOKEN_TOTALS);
     setErrorMessage("");
     setIsSending(false);
+  }
+
+  function updateIdcsConfig(fieldName, value) {
+    setIdcsConfig((currentConfig) => ({
+      ...currentConfig,
+      [fieldName]: value
+    }));
+    setTokenState(null);
+    setHealthStatus(null);
+  }
+
+  async function getBearerToken() {
+    if (!jwtEnabled) {
+      return null;
+    }
+
+    if (isAccessTokenUsable(tokenState)) {
+      return tokenState.accessToken;
+    }
+
+    const response = await fetch("/api/idcs-token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        identity_domain_url: idcsConfig.identityDomainUrl,
+        client_id: idcsConfig.clientId,
+        client_secret: idcsConfig.clientSecret,
+        scope: idcsConfig.scope
+      })
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload.error || `Token request returned HTTP ${response.status}`);
+    }
+
+    const nextTokenState = buildTokenState(payload);
+    setTokenState(nextTokenState);
+    return nextTokenState.accessToken;
+  }
+
+  async function testHealthAccess() {
+    if (!canTestHealth) {
+      return;
+    }
+
+    setIsTestingHealth(true);
+    setHealthStatus(null);
+    setErrorMessage("");
+
+    try {
+      const bearerToken = await getBearerToken();
+      const headers = bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {};
+      const response = await fetch(buildHealthUrl(backendUrl), { headers });
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        throw new Error(responseText || `Health check returned HTTP ${response.status}`);
+      }
+
+      setHealthStatus({
+        status: "succeeded",
+        message: responseText || "Health check succeeded."
+      });
+    } catch (error) {
+      setHealthStatus({
+        status: "failed",
+        message: error.message || "Health check failed."
+      });
+    } finally {
+      setIsTestingHealth(false);
+    }
   }
 
   function addUsageToTokenTotals(usage) {
@@ -163,12 +262,19 @@ export default function Home() {
     abortControllerRef.current = abortController;
 
     try {
+      const bearerToken = await getBearerToken();
+      const requestHeaders = {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream"
+      };
+
+      if (bearerToken) {
+        requestHeaders.Authorization = `Bearer ${bearerToken}`;
+      }
+
       const response = await fetch(backendUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream"
-        },
+        headers: requestHeaders,
         body: JSON.stringify(requestPayload),
         signal: abortController.signal
       });
@@ -267,6 +373,85 @@ export default function Home() {
             spellCheck="false"
           />
         </label>
+
+        <section className="authPanel" aria-label="JWT authentication">
+          <div className="authHeader">
+            <div>
+              <span>JWT authentication</span>
+              <small>{jwtEnabled ? "Enabled" : "Disabled"}</small>
+            </div>
+            <label className="switch">
+              <input
+                checked={jwtEnabled}
+                type="checkbox"
+                onChange={(event) => {
+                  setJwtEnabled(event.target.checked);
+                  setTokenState(null);
+                  setHealthStatus(null);
+                }}
+              />
+              <span aria-hidden="true" />
+            </label>
+          </div>
+
+          {jwtEnabled ? (
+            <div className="authFields">
+              <label className="field compact">
+                <span>Identity Domain URL</span>
+                <input
+                  value={idcsConfig.identityDomainUrl}
+                  onChange={(event) =>
+                    updateIdcsConfig("identityDomainUrl", event.target.value)
+                  }
+                  placeholder="https://idcs-..."
+                  spellCheck="false"
+                />
+              </label>
+              <label className="field compact">
+                <span>Client ID</span>
+                <input
+                  value={idcsConfig.clientId}
+                  onChange={(event) => updateIdcsConfig("clientId", event.target.value)}
+                  spellCheck="false"
+                />
+              </label>
+              <label className="field compact">
+                <span>Client secret</span>
+                <input
+                  value={idcsConfig.clientSecret}
+                  type="password"
+                  onChange={(event) =>
+                    updateIdcsConfig("clientSecret", event.target.value)
+                  }
+                  spellCheck="false"
+                />
+              </label>
+              <label className="field compact">
+                <span>IDCS scope</span>
+                <input
+                  value={idcsConfig.scope}
+                  onChange={(event) => updateIdcsConfig("scope", event.target.value)}
+                  spellCheck="false"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <button
+            className="secondaryAction"
+            type="button"
+            disabled={!canTestHealth}
+            onClick={testHealthAccess}
+          >
+            {isTestingHealth ? "Testing health..." : "Test health"}
+          </button>
+
+          {healthStatus ? (
+            <p className={`healthStatus ${healthStatus.status}`}>
+              {healthStatus.message}
+            </p>
+          ) : null}
+        </section>
 
         <div className="themeControl" aria-label="Theme selector">
           <button

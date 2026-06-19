@@ -167,6 +167,16 @@ http://localhost:3000
 Set the UI backend URL to either the local `/responses` endpoint or the Hosted
 Application invoke `/responses` endpoint.
 
+JWT authentication is disabled by default in the reference UI. Keep it disabled
+for the local Docker Compose backend. When the backend URL points to a Hosted
+Application protected with `IDCS_AUTH_CONFIG`, enable `JWT authentication` in
+the sidebar, enter the Identity Domain URL, confidential application client ID,
+confidential application secret, and concatenated IDCS token request scope, then
+use `Test health` to validate access to the protected `/health` endpoint. The UI
+requests the IDCS access token through its server-side Next.js route and sends
+`Authorization: Bearer <token>` on protected `/responses` calls only while JWT
+authentication is enabled.
+
 ## Python CLI
 
 From the repository root:
@@ -306,6 +316,8 @@ been tested with:
 - Hosted Deployment streaming `/responses` requests.
 - Python CLI streaming and non-streaming clients.
 - Python CLI authenticated requests using OCI IAM IDCS JWT Bearer tokens.
+- Next.js reference UI authenticated requests using OCI IAM IDCS JWT Bearer
+  tokens, including a protected `/health` test action.
 - Hosted Applications protected with `IDCS_AUTH_CONFIG`.
 - Hosted Application self-test covering token acquisition, JWT diagnostics,
   `/health`, non-streaming `/responses`, and streaming `/responses`.

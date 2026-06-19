@@ -6,6 +6,15 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-19
+
+- Added optional JWT authentication support to the reference Next.js UI,
+  including server-side IDCS token acquisition, Bearer authorization headers for
+  protected `/responses` calls, and a JWT-aware `/health` test action.
+- Updated the reference UI specification to define JWT-disabled local defaults,
+  IDCS token acquisition, protected Hosted Application request behavior, and
+  health-check acceptance criteria.
+
 ## 2026-06-18
 
 - Expanded `test_hosted_application.sh` into a full Hosted Application self-test

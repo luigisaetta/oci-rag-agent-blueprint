@@ -13,6 +13,8 @@ This document covers:
 - Next.js application structure.
 - Chat interaction model.
 - Backend URL configuration.
+- Optional JWT Bearer authentication for OCI Enterprise AI Hosted Application
+  endpoints.
 - Conversation reset behavior.
 - Streaming response rendering.
 - Waiting indicator while the assistant response has not produced tokens yet.
@@ -20,7 +22,8 @@ This document covers:
 - Light and dark visual themes.
 - Local Docker Compose deployment.
 
-This document does not define production authentication, authorization, reference UI hosting in OCI Enterprise AI, or advanced citation rendering.
+This document does not define production reference UI hosting in OCI Enterprise
+AI or advanced citation rendering.
 
 ## Related Specifications
 
@@ -62,6 +65,30 @@ The backend URL field must default to the local Docker Compose backend endpoint:
 ```text
 http://localhost:8080/responses
 ```
+
+JWT authentication must be disabled by default so the local Docker Compose demo
+continues to work without OCI IAM Identity Domain settings.
+
+When JWT authentication is enabled, the sidebar must collect:
+
+- Identity Domain URL.
+- Confidential application client ID.
+- Confidential application secret.
+- IDCS token request scope.
+
+The UI must keep confidential application values and acquired access tokens in
+browser memory only. It must not persist them to local storage.
+
+The UI must expose a `Test health` action that calls the backend `/health`
+endpoint derived from the configured `/responses` URL. When JWT authentication
+is enabled, this health check must acquire an IDCS access token and send it as:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+When JWT authentication is disabled, the health check must call `/health`
+without an authorization header.
 
 The main area must display user and agent messages in a familiar chatbot style.
 
@@ -124,6 +151,25 @@ The UI must send requests with:
 ```
 
 The UI must consume Server-Sent Events returned by the backend.
+
+When JWT authentication is enabled, the UI must acquire an IDCS access token
+before sending the streaming request and include it as a Bearer authorization
+header. When JWT authentication is disabled, no authorization header must be
+sent. This preserves the unauthenticated local Docker Compose workflow.
+
+Token acquisition must be performed by a server-side Next.js route so the
+browser does not call OCI IAM directly. The route must:
+
+- Accept Identity Domain URL, confidential application client ID, confidential
+  application secret, and IDCS token request scope.
+- Call `<identity-domain-url>/oauth2/v1/token` with the OAuth client
+  credentials grant.
+- Return the access token and expiry metadata needed by the UI.
+- Return readable errors when configuration is missing, OCI IAM rejects the
+  request, or the token response is malformed.
+
+The UI may reuse an acquired token while it is still valid, but it must request a
+new token before using an expired or nearly expired token.
 
 Some hosted gateways may preserve SSE `data:` frames while stripping explicit
 `event:` lines. In that case, the UI must infer agent event names from the known
@@ -192,6 +238,14 @@ The `rag-ui` service must:
 - The UI is implemented as a Next.js app under `ui`.
 - The UI has a left sidebar with a new conversation button.
 - The UI has an editable backend URL field defaulting to `http://localhost:8080/responses`.
+- JWT authentication is disabled by default.
+- The UI can enable JWT authentication for OCI Enterprise AI Hosted Application
+  endpoints without changing the local Docker Compose default.
+- The UI can request an IDCS access token through a server-side Next.js route.
+- The UI sends `Authorization: Bearer <access-token>` on `/responses` requests
+  only when JWT authentication is enabled.
+- The UI provides a `/health` test action and sends the Bearer token only when
+  JWT authentication is enabled.
 - The UI supports light and dark themes.
 - The UI displays user and assistant messages in chatbot style.
 - The UI renders assistant Markdown responses correctly.

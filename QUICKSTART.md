@@ -118,6 +118,8 @@ Open the reference UI:
 http://localhost:3000
 ```
 
+Leave `JWT authentication` disabled for this local Docker Compose demo.
+
 Ask a question that can be answered from the synchronized knowledge base.
 
 Stop the demo when finished:
@@ -196,6 +198,14 @@ python -m clients.agent_cli \
 
 The client requests the IDCS access token, prints it for inspection, and sends it
 to the Hosted Application as an `Authorization: Bearer <token>` header.
+
+To test the same protected Hosted Application from the reference UI, set the UI
+backend URL to the Hosted Application `/actions/invoke/responses` URL, enable
+`JWT authentication`, enter the Identity Domain URL, confidential application
+client ID, confidential application secret, and `IDCS_SCOPE` value, then click
+`Test health`. A successful health check confirms that the UI can acquire the
+IDCS token and call the protected `/health` endpoint before chat requests are
+sent.
 
 You can also edit and run the root helper script:
 

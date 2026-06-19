@@ -37,10 +37,10 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `FILE_SEARCH_MAX_NUM_RESULTS` | No | `10` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Maximum number of Vector Store file search results requested by the Responses API `file_search` tool. Accepted range: `1` to `50`. |
 | `RESPONSES_TIMEOUT_SECONDS` | No | `60` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Timeout in seconds for Responses API create and retrieve calls. Accepted range: `1` to `300`. |
 | `STREAM_FINALIZATION_MODE` | No | `never` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Controls whether streaming responses perform a post-stream retrieve call to complete references and token usage. Accepted values: `never`, `auto`, `always`. |
-| `IDENTITY_DOMAIN_URL` | Client only | `https://idcs-example.identity.oraclecloud.com` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Exact Identity Domain URL from OCI Console for protected Hosted Application testing. |
-| `CONFIDENTIAL_APPLICATION_ID` | Client only | `ocid-or-client-id` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Confidential application client identifier. |
-| `CONFIDENTIAL_APPLICATION_SECRET` | Client only | `secret` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | Confidential application client secret. Never log or commit this value. |
-| `IDCS_SCOPE` | Client only | `hello_worldinvoke` | Set in root `.env` when the Python CLI client must request an IDCS token. | Not used by the agent runtime. | OAuth scope requested by the CLI token request. For OCI IAM IDCS Hosted Application auth, this is usually the primary audience concatenated with the scope claim. |
+| `IDENTITY_DOMAIN_URL` | Client only | `https://idcs-example.identity.oraclecloud.com` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Exact Identity Domain URL from OCI Console for protected Hosted Application testing. |
+| `CONFIDENTIAL_APPLICATION_ID` | Client only | `ocid-or-client-id` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Confidential application client identifier. |
+| `CONFIDENTIAL_APPLICATION_SECRET` | Client only | `secret` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Confidential application client secret. Never log or commit this value. |
+| `IDCS_SCOPE` | Client only | `hello_worldinvoke` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | OAuth scope requested by the client token request. For OCI IAM IDCS Hosted Application auth, this is usually the primary audience concatenated with the scope claim. |
 
 ## Streaming Finalization
 
@@ -82,11 +82,17 @@ If optional tuning variables are missing, the agent uses their defaults. If they
 are present but invalid, the agent fails request handling before calling the
 Responses API.
 
-The IDCS client variables are used only by the Python CLI test client. They do
+The IDCS client variables are used by client-side validation tools only. They do
 not configure the local agent runtime. When all four variables are present and
-the CLI runs with `--auth auto`, the CLI requests and prints an IDCS access
-token before sending the test request. When a token is acquired, the CLI sends
-it to the agent endpoint as an `Authorization: Bearer <token>` header.
+the Python CLI runs with `--auth auto`, the CLI requests and prints an IDCS
+access token before sending the test request. When a token is acquired, the CLI
+sends it to the agent endpoint as an `Authorization: Bearer <token>` header.
+
+The Next.js reference UI does not read these values from `.env`. For protected
+Hosted Application testing, enter the same values in the UI after enabling
+`JWT authentication`. The UI keeps the values and acquired access token in
+browser memory and uses its server-side Next.js token route to call OCI IAM
+Identity Domains.
 
 For the difference between Hosted Application `audience` and `scope` values and
 the concatenated client-side `IDCS_SCOPE` value, see

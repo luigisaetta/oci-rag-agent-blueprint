@@ -145,7 +145,8 @@ button {
   gap: 8px;
 }
 
-.field span {
+.field span,
+.authHeader span {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
@@ -167,9 +168,127 @@ button {
   font-size: 0.88rem;
 }
 
+.field.compact {
+  gap: 6px;
+}
+
+.field.compact input {
+  min-height: 38px;
+  font-size: 0.82rem;
+}
+
 .field input:focus,
 .composer textarea:focus {
   border-color: var(--accent);
+}
+
+.authPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.authHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.authHeader div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.authHeader small {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 48px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+}
+
+.switch span {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.switch span::before {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 3px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.switch input:checked + span {
+  border-color: color-mix(in srgb, var(--accent), var(--border) 30%);
+}
+
+.switch input:checked + span::before {
+  background: var(--accent-strong);
+  transform: translateX(20px);
+}
+
+.authFields {
+  display: grid;
+  gap: 10px;
+}
+
+.secondaryAction {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.secondaryAction:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.secondaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.healthStatus {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.healthStatus.succeeded {
+  color: var(--accent-strong);
+}
+
+.healthStatus.failed {
+  color: var(--danger);
 }
 
 .themeControl {
