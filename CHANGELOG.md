@@ -14,6 +14,9 @@ changes, or documentation updates are introduced.
 - Updated the reference UI specification to define JWT-disabled local defaults,
   IDCS token acquisition, protected Hosted Application request behavior, and
   health-check acceptance criteria.
+- Clarified that protected Hosted Application testing requires a configured OCI
+  IAM confidential application with Client ID, Client secret, and the OAuth
+  client credentials grant, and linked to the official OCI setup documentation.
 
 ## 2026-06-18
 

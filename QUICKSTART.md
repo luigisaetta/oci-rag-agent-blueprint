@@ -161,6 +161,11 @@ For Hosted Applications protected with `IDCS_AUTH_CONFIG`, validate that the
 confidential application settings can issue a JWT access token before testing
 the protected endpoint.
 
+Before this step, configure a confidential application in OCI IAM Identity
+Domains with the OAuth `Client credentials` grant and record its Client ID and
+Client secret. Oracle documents the setup in
+[Adding a Confidential Application](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+
 Make sure `.env` contains:
 
 ```text
@@ -202,10 +207,10 @@ to the Hosted Application as an `Authorization: Bearer <token>` header.
 To test the same protected Hosted Application from the reference UI, set the UI
 backend URL to the Hosted Application `/actions/invoke/responses` URL, enable
 `JWT authentication`, enter the Identity Domain URL, confidential application
-client ID, confidential application secret, and `IDCS_SCOPE` value, then click
-`Test health`. A successful health check confirms that the UI can acquire the
-IDCS token and call the protected `/health` endpoint before chat requests are
-sent.
+Client ID, confidential application Client secret, and `IDCS_SCOPE` value, then
+click `Test health`. A successful health check confirms that the UI can acquire
+the IDCS token and call the protected `/health` endpoint before chat requests
+are sent.
 
 You can also edit and run the root helper script:
 

@@ -94,6 +94,11 @@ Hosted Application testing, enter the same values in the UI after enabling
 browser memory and uses its server-side Next.js token route to call OCI IAM
 Identity Domains.
 
+Before using these values, create and activate a confidential application in OCI
+IAM Identity Domains, enable the OAuth `Client credentials` grant, and record
+the Client ID and Client secret. Oracle documents the setup in
+[Adding a Confidential Application](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+
 For the difference between Hosted Application `audience` and `scope` values and
 the concatenated client-side `IDCS_SCOPE` value, see
 [OCI IAM IDCS Audience And Scope](idcs-audience-and-scope.md).

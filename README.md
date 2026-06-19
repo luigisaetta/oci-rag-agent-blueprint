@@ -170,12 +170,12 @@ Application invoke `/responses` endpoint.
 JWT authentication is disabled by default in the reference UI. Keep it disabled
 for the local Docker Compose backend. When the backend URL points to a Hosted
 Application protected with `IDCS_AUTH_CONFIG`, enable `JWT authentication` in
-the sidebar, enter the Identity Domain URL, confidential application client ID,
-confidential application secret, and concatenated IDCS token request scope, then
-use `Test health` to validate access to the protected `/health` endpoint. The UI
-requests the IDCS access token through its server-side Next.js route and sends
-`Authorization: Bearer <token>` on protected `/responses` calls only while JWT
-authentication is enabled.
+the sidebar. Use the values from a configured OCI IAM confidential application:
+Identity Domain URL, Client ID, Client secret, and concatenated IDCS token
+request scope. Then use `Test health` to validate access to the protected
+`/health` endpoint. The UI requests the IDCS access token through its
+server-side Next.js route and sends `Authorization: Bearer <token>` on protected
+`/responses` calls only while JWT authentication is enabled.
 
 ## Python CLI
 
@@ -205,8 +205,13 @@ For Hosted Application validation, replace the endpoint with:
 https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses
 ```
 
-For a Hosted Application protected with `IDCS_AUTH_CONFIG`, set the client-side
-IDCS values in the root `.env` file:
+For a Hosted Application protected with `IDCS_AUTH_CONFIG`, you must first have
+a correctly configured confidential application in OCI IAM Identity Domains. The
+confidential application must allow the OAuth `Client credentials` grant and you
+must have its Client ID and Client secret. Oracle documents this setup in
+[Adding a Confidential Application](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+
+Then set the client-side IDCS values in the root `.env` file:
 
 ```text
 IDENTITY_DOMAIN_URL=https://idcs-example.identity.oraclecloud.com

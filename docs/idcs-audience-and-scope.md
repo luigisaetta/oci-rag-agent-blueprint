@@ -173,6 +173,13 @@ Then request a new token and retry the Hosted Application call.
 
 ## How To Inspect The Token
 
+Protected Hosted Application testing requires an OCI IAM Identity Domains
+confidential application configured before using Agent Factory, the Python CLI,
+or the reference UI. The confidential application must allow the OAuth
+`Client credentials` grant and provide the Client ID and Client secret used by
+the token request. Oracle documents the setup in
+[Adding a Confidential Application](https://docs.oracle.com/en-us/iaas/Content/Identity/applications/add-confidential-application.htm).
+
 In Agent Factory, enable authentication, fill in the Identity Domain URL,
 audience claim, scope claim, confidential application client ID, and
 confidential application secret, then select `Validate token`. The check requests
