@@ -842,7 +842,23 @@ def test_agent_factory_exports_ready_deployment_script() -> None:
     assert "set -euo pipefail" in script_text
     assert "mktemp" in script_text
     assert "python3" in script_text
-    assert "agent_factory_api.ready_script_runner" in script_text
+    assert "agent_factory_api.ready_script_runner prepare" in script_text
+    assert "agent_factory_api.ready_script_runner extract-id" in script_text
+    assert "docker build --platform linux/amd64" in script_text
+    assert "docker login" in script_text
+    assert "docker push" in script_text
+    assert "oci --region" in script_text
+    assert "artifacts container repository create" in script_text
+    assert "hosted-application create" in script_text
+    assert "hosted-deployment create-hosted-deployment-single-docker-artifact" in (
+        script_text
+    )
+    assert "hosted-deployment get" in script_text
+    assert "hosted-application-inbound-auth-config.json" in script_text
+    assert "hosted-application-networking-config.json" in script_text
+    assert "hosted-application-environment-variables.json" in script_text
+    assert "hosted-deployment-active-artifact.json" in script_text
+    assert "NO_AUTH_CONFIG" in script_text
     assert "AGENT_FACTORY_REPO_ROOT" in script_text
     assert '"dry_run": false' in script_text
     assert "agent-factory-deployment" in script_text
@@ -850,6 +866,15 @@ def test_agent_factory_exports_ready_deployment_script() -> None:
     assert "test-ocir-password" not in script_text
     assert OPENAI_API_KEY_MARKER in script_text
     assert OCIR_PASSWORD_MARKER in script_text
+    syntax_check = subprocess.run(
+        ["bash", "-n"],
+        input=script_text,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert syntax_check.returncode == 0, syntax_check.stderr
 
 
 def test_agent_factory_ready_script_endpoint_validates_payload() -> None:

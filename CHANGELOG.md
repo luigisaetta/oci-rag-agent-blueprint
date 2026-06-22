@@ -10,10 +10,12 @@ changes, or documentation updates are introduced.
 
 - Added an Agent Factory ready-to-run deployment script export, keeping dry-run
   behavior read-only while generating a separate Linux-first Bash wrapper that
-  invokes the existing Python live deployment workflow.
+  keeps Docker commands, OCI CLI commands, and OCI CLI JSON artifacts visible
+  for administrator review.
 - Added an exported deployment script runner that restores runtime secrets from
-  environment variables or prompts and reuses existing OCI identifier extraction,
-  placeholder replacement, endpoint derivation, and health validation logic.
+  environment variables or prompts and reuses existing foundation provisioning,
+  OCI identifier extraction, endpoint derivation, and Hosted Application lookup
+  logic.
 - Added an Agent Factory UI action for downloading the ready-to-run deployment
   script after a successful dry run.
 - Specified the ready-to-run deployment script workflow separately from Agent

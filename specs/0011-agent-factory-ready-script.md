@@ -21,9 +21,11 @@ The ready-to-run script export must:
 - Avoid embedding API keys, OCIR passwords, or confidential application secrets.
 - Prompt for required secret values at execution time when environment variables
   are not already set.
-- Execute the live deployment workflow through project Python code.
-- Reuse the existing Python logic for OCI identifier extraction, placeholder
-  replacement, endpoint derivation, and health validation.
+- Make the Docker commands visible in the generated script.
+- Make the OCI CLI commands visible in the generated script.
+- Make the OCI CLI JSON artifact files visible in the generated script.
+- Reuse existing Python logic for SDK-based foundation provisioning, OCI
+  identifier extraction, endpoint derivation, and Hosted Application lookup.
 
 The feature must not:
 
@@ -53,19 +55,32 @@ The generated script must include:
 - Cleanup of temporary files on exit.
 - Runtime secret collection through `OPENAI_API_KEY` and `OCIR_PASSWORD`
   environment variables, with interactive prompts when values are missing.
-- Invocation of an internal Python runner module.
+- Explicit Docker commands for image build, OCIR login, and image push.
+- Explicit OCI CLI commands for OCIR repository creation or reuse, Hosted
+  Application lookup and creation, Hosted Deployment creation, and Hosted
+  Deployment readiness polling.
+- Explicit JSON here-doc blocks for Hosted Application inbound authentication,
+  Hosted Application networking, Hosted Application runtime environment, and
+  Hosted Deployment active Docker artifact.
+- Invocation of internal Python helper commands only for foundation provisioning,
+  metadata extraction, Hosted Application lookup, OCID extraction, lifecycle
+  state extraction, and endpoint URL derivation.
 
-The Python runner must:
+The Python helper runner must:
 
-- Load the generated payload file.
+- Load the generated payload file when preparing resolved metadata.
 - Replace secret markers with runtime environment values.
 - Validate the resolved payload.
 - Provision foundation resources through the existing resource managers.
-- Build the final deployment plan after resource provisioning resolves real
+- Build the final deployment metadata after resource provisioning resolves real
   identifiers.
-- Execute Docker, OCIR, Hosted Application, Hosted Deployment, readiness, and
-  health checks through the existing live executor.
-- Print non-secret final deployment outputs as JSON.
+- Extract Hosted Application and Hosted Deployment OCIDs from OCI CLI output
+  using the already-tested Python extraction logic.
+- Extract Hosted Deployment lifecycle state and endpoint URL from OCI CLI output
+  using the existing Python logic.
+
+The Python helper runner must not hide Docker or OCI CLI deployment operations
+behind a single opaque command.
 
 ## UI Requirements
 
@@ -86,6 +101,9 @@ The button text must not imply that dry run itself performs deployment.
 - The generated script contains real non-secret deployment values.
 - The generated script does not contain plaintext OpenAI API keys or OCIR
   passwords.
+- The generated script displays the Docker commands used for deployment.
+- The generated script displays the OCI CLI commands used for deployment.
+- The generated script displays the JSON artifact files passed to OCI CLI.
 - The generated script invokes Python project code instead of parsing OCI OCIDs
   in Bash.
 - Existing OCI identifier extraction and placeholder replacement tests continue
