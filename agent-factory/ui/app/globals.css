@@ -395,6 +395,13 @@ select:disabled {
   gap: 12px;
 }
 
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .panelHeader h3 {
   color: var(--ink);
   font-size: 1.2rem;
@@ -547,6 +554,10 @@ select:disabled {
   .panelHeader {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .panelActions {
+    justify-content: stretch;
   }
 
   .fieldGrid {

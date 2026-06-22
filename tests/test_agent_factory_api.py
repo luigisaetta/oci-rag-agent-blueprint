@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-18
+Date last modified: 2026-06-22
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -41,6 +41,13 @@ from agent_factory_api.executor import (  # pylint: disable=wrong-import-positio
     _find_existing_hosted_application_id,
     _load_json_output,
     _replace_placeholders,
+)
+from agent_factory_api.ready_script import (  # pylint: disable=wrong-import-position
+    OCIR_PASSWORD_MARKER,
+    OPENAI_API_KEY_MARKER,
+)
+from agent_factory_api.ready_script_runner import (  # pylint: disable=wrong-import-position
+    _resolve_secret_markers,
 )
 from agent_factory_api.resources import (  # pylint: disable=wrong-import-position
     BucketResult,
@@ -149,6 +156,19 @@ def test_agent_factory_ui_exposes_idcs_token_check() -> None:
     assert "canValidateIdcsToken" in page_source
     assert "confidential_application_secret" in page_source
     assert "buildDeploymentPayload" in page_source
+
+
+def test_agent_factory_ui_exposes_ready_deployment_script_export() -> None:
+    """Test UI exposes a separate ready-to-run deployment script export."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Save deploy script" in page_source
+    assert "/factory/deployment-script" in page_source
+    assert "canExportDeploymentScript" in page_source
+    assert "isExportingDeploymentScript" in page_source
 
 
 def test_agent_factory_ui_exposes_local_ocir_credential_storage() -> None:
@@ -806,6 +826,61 @@ def test_agent_factory_returns_saved_run_and_commands(monkeypatch) -> None:
     assert status_response.status_code == 200
     assert commands_response.status_code == 200
     assert commands_response.text.startswith("#!/usr/bin/env bash")
+
+
+def test_agent_factory_exports_ready_deployment_script() -> None:
+    """Test ready-to-run deployment script export keeps secrets out of output."""
+
+    client = TestClient(app)
+
+    response = client.post("/factory/deployment-script", json=_valid_payload())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/x-shellscript")
+    script_text = response.text
+    assert script_text.startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in script_text
+    assert "mktemp" in script_text
+    assert "python3" in script_text
+    assert "agent_factory_api.ready_script_runner" in script_text
+    assert "AGENT_FACTORY_REPO_ROOT" in script_text
+    assert '"dry_run": false' in script_text
+    assert "agent-factory-deployment" in script_text
+    assert "test-api-key" not in script_text
+    assert "test-ocir-password" not in script_text
+    assert OPENAI_API_KEY_MARKER in script_text
+    assert OCIR_PASSWORD_MARKER in script_text
+
+
+def test_agent_factory_ready_script_endpoint_validates_payload() -> None:
+    """Test ready script export returns field errors for invalid input."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["container_image_tag"] = "latest"
+
+    response = client.post("/factory/deployment-script", json=request_payload)
+
+    assert response.status_code == 400
+    assert "container_image_tag" in response.json()["field_errors"]
+
+
+def test_ready_script_runner_resolves_secret_markers(monkeypatch) -> None:
+    """Test exported script payload markers are restored from environment."""
+
+    monkeypatch.setenv("OPENAI_API_KEY", "runtime-openai-key")
+    monkeypatch.setenv("OCIR_PASSWORD", "runtime-ocir-password")
+    payload = {
+        "openai_api_key": OPENAI_API_KEY_MARKER,
+        "ocir_password": OCIR_PASSWORD_MARKER,
+        "region": "eu-frankfurt-1",
+    }
+
+    resolved_payload = _resolve_secret_markers(payload)
+
+    assert resolved_payload["openai_api_key"] == "runtime-openai-key"
+    assert resolved_payload["ocir_password"] == "runtime-ocir-password"
+    assert resolved_payload["region"] == "eu-frankfurt-1"
 
 
 def test_agent_factory_treats_vector_store_service_id_as_resolved() -> None:

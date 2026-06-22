@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-18
+Date last modified: 2026-06-22
 License: MIT
 Description: FastAPI backend skeleton for Agent Factory deployment orchestration.
 """
@@ -39,6 +39,7 @@ from agent_factory_api.models import (
     utc_now,
     validate_deployment_payload,
 )
+from agent_factory_api.ready_script import build_ready_to_run_script
 from agent_factory_api.resources import (
     FoundationResourcesResult,
     ResourceProvisioningError,
@@ -349,6 +350,57 @@ def get_deployment_commands(deployment_run_id: str) -> PlainTextResponse:
         headers={
             "Content-Disposition": (
                 f'attachment; filename="agent-factory-{deployment_run_id}.sh"'
+            )
+        },
+    )
+
+
+@app.post("/factory/deployment-script", response_model=None)
+async def create_ready_deployment_script(
+    request: Request,
+) -> PlainTextResponse | JSONResponse:
+    """Return a ready-to-run live deployment shell script.
+
+    Args:
+        request: FastAPI request containing the deployment payload.
+
+    Returns:
+        PlainTextResponse | JSONResponse: Shell script content or validation
+        errors.
+    """
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse(
+            {"error": "Invalid JSON payload.", "field_errors": {}},
+            status_code=400,
+        )
+
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            {"error": "Payload must be a JSON object.", "field_errors": {}},
+            status_code=400,
+        )
+
+    validation = validate_deployment_payload(payload)
+    if validation.errors:
+        return JSONResponse(
+            {
+                "error": "Deployment script input validation failed.",
+                "field_errors": validation.errors,
+            },
+            status_code=400,
+        )
+
+    assert validation.payload is not None
+    script_text = build_ready_to_run_script(validation.payload)
+    return PlainTextResponse(
+        script_text,
+        media_type="text/x-shellscript",
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="agent-factory-ready-deploy.sh"'
             )
         },
     )

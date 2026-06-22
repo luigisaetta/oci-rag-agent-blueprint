@@ -215,6 +215,7 @@ export default function Home() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [run, setRun] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExportingDeploymentScript, setIsExportingDeploymentScript] = useState(false);
   const [isCheckingOcirLogin, setIsCheckingOcirLogin] = useState(false);
   const [isCheckingIdcsToken, setIsCheckingIdcsToken] = useState(false);
   const [ocirLoginCheck, setOcirLoginCheck] = useState(null);
@@ -241,6 +242,11 @@ export default function Home() {
     missingRequiredFields.length === 0 &&
     !isSubmitting &&
     !isRunActive;
+  const canExportDeploymentScript =
+    Boolean(run?.dry_run) &&
+    run?.status === "succeeded" &&
+    missingRequiredFields.length === 0 &&
+    !isExportingDeploymentScript;
   const canCheckOcirLogin =
     Boolean(form.region?.trim()) &&
     Boolean(form.ocir_username?.trim()) &&
@@ -557,6 +563,48 @@ export default function Home() {
     link.download = `agent-factory-${run.deployment_run_id}.sh`;
     link.click();
     URL.revokeObjectURL(objectUrl);
+  }
+
+  async function saveDeploymentScript() {
+    if (!canExportDeploymentScript) {
+      return;
+    }
+
+    setIsExportingDeploymentScript(true);
+    setErrorMessage("");
+    setFieldErrors({});
+
+    try {
+      const response = await fetch(deploymentScriptUrl(backendUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildDeploymentPayload(form))
+      });
+
+      if (!response.ok) {
+        const payload = await response.json();
+        setFieldErrors(payload.field_errors ?? {});
+        throw new Error(payload.error ?? `Backend returned HTTP ${response.status}`);
+      }
+
+      const scriptText = await response.text();
+      const blob = new Blob([scriptText], { type: "text/x-shellscript" });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "agent-factory-ready-deploy.sh";
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setErrorMessage(
+        withBackendEndpointHint(
+          error.message || "Unable to export deployment script.",
+          backendUrl
+        )
+      );
+    } finally {
+      setIsExportingDeploymentScript(false);
+    }
   }
 
   return (
@@ -995,13 +1043,22 @@ export default function Home() {
                 <span>Execution</span>
                 <h3>{run ? run.status : "Not started"}</h3>
               </div>
-              <button
-                className="secondaryAction"
-                disabled={!run?.commands_text}
-                onClick={saveCommands}
-              >
-                Save commands
-              </button>
+              <div className="panelActions">
+                <button
+                  className="secondaryAction"
+                  disabled={!run?.commands_text}
+                  onClick={saveCommands}
+                >
+                  Save commands
+                </button>
+                <button
+                  className="secondaryAction"
+                  disabled={!canExportDeploymentScript}
+                  onClick={saveDeploymentScript}
+                >
+                  {isExportingDeploymentScript ? "Exporting" : "Save deploy script"}
+                </button>
+              </div>
             </div>
 
             {run?.error ? <div className="errorBanner">{run.error}</div> : null}
@@ -1046,6 +1103,12 @@ export default function Home() {
                 </dl>
                 <h3>Command script</h3>
                 <textarea readOnly value={run.commands_text ?? ""} />
+                {run.dry_run && run.status === "succeeded" ? (
+                  <p className="inlineNotice">
+                    The deploy script is separate from this dry-run plan and
+                    creates OCI resources when executed.
+                  </p>
+                ) : null}
                 {run.outputs?.runtime_environment ? (
                   <>
                     <h3>Runtime environment</h3>
@@ -1124,6 +1187,10 @@ function usesLocalBackendEndpoint(backendUrl) {
 
 function deploymentStatusUrl(baseUrl, deploymentRunId) {
   return `${baseUrl.replace(/\/$/, "")}/${deploymentRunId}`;
+}
+
+function deploymentScriptUrl(baseUrl) {
+  return `${baseUrl.replace(/\/factory\/deployments\/?$/, "")}/factory/deployment-script`;
 }
 
 function ocirLoginCheckUrl(baseUrl) {

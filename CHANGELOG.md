@@ -6,6 +6,19 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-22
+
+- Added an Agent Factory ready-to-run deployment script export, keeping dry-run
+  behavior read-only while generating a separate Linux-first Bash wrapper that
+  invokes the existing Python live deployment workflow.
+- Added an exported deployment script runner that restores runtime secrets from
+  environment variables or prompts and reuses existing OCI identifier extraction,
+  placeholder replacement, endpoint derivation, and health validation logic.
+- Added an Agent Factory UI action for downloading the ready-to-run deployment
+  script after a successful dry run.
+- Specified the ready-to-run deployment script workflow separately from Agent
+  Factory dry-run behavior.
+
 ## 2026-06-19
 
 - Added optional JWT authentication support to the reference Next.js UI,

@@ -16,3 +16,4 @@ Specifications are the source of truth for the implementation. New features must
 | [0008 - Document Loading](0008-document-loading.md) | Object Storage bucket and Vector Store Data Sync Connector approach for loading and updating knowledge base documents. |
 | [0009 - Agent Runtime Tuning](0009-agent-runtime-tuning.md) | Runtime tuning parameters for file search result count, Responses API timeout, and streaming finalization. |
 | [0010 - Agent Factory](0010-agent-factory.md) | Guided backend and Next.js UI application for deploying the RAG agent backend into OCI Enterprise AI Hosted Applications. |
+| [0011 - Agent Factory Ready-To-Run Deployment Script](0011-agent-factory-ready-script.md) | Exportable Linux-first deployment script that reuses Agent Factory live execution logic without changing dry-run behavior. |
