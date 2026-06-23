@@ -12,6 +12,9 @@ changes, or documentation updates are introduced.
   disabled-by-default runtime configuration, Langfuse client selection,
   conversation-based sessions, span behavior, secret redaction, deployment
   requirements, and unit test expectations.
+- Clarified Agent Factory backend and UI requirements for optional Langfuse
+  deployment settings, including validation, runtime environment mapping,
+  ready-to-run script handling, and secret redaction.
 
 ## 2026-06-22
 

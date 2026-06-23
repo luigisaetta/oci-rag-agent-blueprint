@@ -234,11 +234,97 @@ generated Hosted Application deployments. The first implementation may expose
 these values as optional advanced settings, provided that:
 
 - Langfuse remains disabled unless the user explicitly enables it.
-- The public key and secret key are treated as secrets.
-- The secret key is redacted from logs, command previews, deployment status
-  payloads, and UI summaries.
+- The public key and secret key are treated as sensitive values.
+- The secret key is redacted from logs, command previews, generated scripts,
+  deployment status payloads, and UI summaries.
 - Live deployment validation fails before deployment when Langfuse is enabled
   and any required Langfuse value is missing.
+
+## Agent Factory Backend Requirements
+
+Agent Factory backend request models must include optional Langfuse deployment
+configuration fields:
+
+- `langfuse_enabled`.
+- `langfuse_base_url`.
+- `langfuse_public_key`.
+- `langfuse_secret_key`.
+
+The backend must default `langfuse_enabled` to `false` when the field is omitted.
+
+When `langfuse_enabled=false`, the backend must not require the other Langfuse
+fields and must not include enabled Langfuse runtime variables in generated
+Hosted Application runtime configuration.
+
+When `langfuse_enabled=true`, the backend must require non-empty values for
+`langfuse_base_url`, `langfuse_public_key`, and `langfuse_secret_key` before
+starting a live deployment or generating an executable deployment script.
+
+The backend must map accepted Langfuse fields to the agent runtime environment:
+
+| Agent Factory field | Runtime environment variable |
+| --- | --- |
+| `langfuse_enabled` | `LANGFUSE_ENABLED` |
+| `langfuse_base_url` | `LANGFUSE_BASE_URL` |
+| `langfuse_public_key` | `LANGFUSE_PUBLIC_KEY` |
+| `langfuse_secret_key` | `LANGFUSE_SECRET_KEY` |
+
+Generated runtime environment values must use string values compatible with the
+agent runtime configuration parser. For enabled deployments, `LANGFUSE_ENABLED`
+should be rendered as `true`; for disabled deployments, it may be omitted or
+rendered as `false`.
+
+Agent Factory must redact `langfuse_secret_key` everywhere it returns or logs
+deployment data, including:
+
+- Validation errors.
+- Dry-run command previews.
+- Live deployment status responses.
+- Deployment command exports.
+- Ready-to-run deployment scripts.
+- Backend logs.
+
+Agent Factory should also avoid returning the full `langfuse_public_key` in
+high-level summaries. It may show a redacted form when useful for operator
+confirmation.
+
+## Agent Factory UI Requirements
+
+The Agent Factory UI must expose Langfuse as an optional advanced runtime
+configuration section.
+
+The UI must include:
+
+- A toggle or checkbox labeled to enable Langfuse observability.
+- A Langfuse base URL input.
+- A Langfuse public key input.
+- A Langfuse secret key input rendered as a password or secret field.
+
+The Langfuse base URL, public key, and secret key controls should be hidden or
+disabled until Langfuse observability is enabled.
+
+The UI must default Langfuse observability to disabled for new deployment forms.
+
+When the user enables Langfuse observability, the UI must validate that the base
+URL, public key, and secret key fields are populated before submitting a
+deployment request.
+
+The UI must never display the Langfuse secret key in:
+
+- Deployment review summaries.
+- Dry-run results.
+- Live deployment progress.
+- Error panels.
+- Ready-to-run script previews.
+
+If the UI offers browser-local persistence for deployment form values, it must
+not persist `langfuse_secret_key`. Persisting `langfuse_base_url` and a redacted
+or omitted public key is allowed only if consistent with the existing local
+credential handling model.
+
+The UI must pass the Langfuse values to the Agent Factory backend only as part
+of deployment validation, dry-run, live deployment, or script generation
+requests.
 
 ## Test Strategy
 
@@ -265,8 +351,20 @@ Tests must cover:
 - Streaming create calls are traced when Langfuse is enabled.
 - Streaming finalization retrieve calls are traced when a retrieve call is made.
 - Langfuse secrets are not present in logs or error responses.
-- Agent Factory validation and redaction behavior for optional Langfuse
-  deployment inputs.
+- Agent Factory backend defaults Langfuse deployment fields to disabled.
+- Agent Factory backend rejects enabled Langfuse deployment requests when URL,
+  public key, or secret key values are missing.
+- Agent Factory backend maps Langfuse deployment fields to the expected runtime
+  environment variables.
+- Agent Factory backend redacts Langfuse secrets from validation errors, dry-run
+  command previews, live status responses, exported commands, generated scripts,
+  and logs.
+- Agent Factory UI defaults Langfuse to disabled.
+- Agent Factory UI shows or enables Langfuse credential controls only when the
+  feature is enabled.
+- Agent Factory UI validates required Langfuse fields before submit when the
+  feature is enabled.
+- Agent Factory UI does not display or persist the Langfuse secret key.
 
 ## Acceptance Criteria
 
@@ -289,5 +387,12 @@ Tests must cover:
   response contract.
 - Langfuse keys and other secrets are redacted from logs, errors, command
   previews, and API responses.
+- Agent Factory backend and UI expose Langfuse as an optional advanced
+  deployment setting.
+- Agent Factory maps enabled Langfuse settings into Hosted Application runtime
+  environment variables.
+- Agent Factory validates and redacts Langfuse deployment inputs consistently
+  across dry-run, live deployment, and ready-to-run script export flows.
 - Unit tests cover configuration, client selection, session propagation,
-  streaming behavior, and secret redaction.
+  streaming behavior, Agent Factory behavior, UI behavior, and secret
+  redaction.
