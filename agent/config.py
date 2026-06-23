@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-23
 License: MIT
 Description: Runtime configuration loading for the OCI RAG agent.
 """
@@ -22,6 +22,15 @@ RESPONSES_TIMEOUT_SECONDS_MAX = 300
 
 STREAM_FINALIZATION_MODE_DEFAULT = "never"
 STREAM_FINALIZATION_MODES = frozenset({"never", "auto", "always"})
+
+LANGFUSE_ENABLED_DEFAULT = False
+LANGFUSE_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+LANGFUSE_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+LANGFUSE_REQUIRED_ENV_VARS = (
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+)
 
 REQUIRED_ENV_VARS = (
     "OCI_REGION",
@@ -47,6 +56,10 @@ class AgentSettings:
         file_search_max_num_results: Maximum number of file search results.
         responses_timeout_seconds: Timeout for Responses API calls.
         stream_finalization_mode: Post-stream retrieve behavior.
+        langfuse_enabled: Whether Langfuse observability is enabled.
+        langfuse_base_url: Langfuse instance URL.
+        langfuse_public_key: Langfuse public key.
+        langfuse_secret_key: Langfuse secret key.
     """
 
     oci_region: str
@@ -58,6 +71,10 @@ class AgentSettings:
     file_search_max_num_results: int = FILE_SEARCH_MAX_NUM_RESULTS_DEFAULT
     responses_timeout_seconds: int = RESPONSES_TIMEOUT_SECONDS_DEFAULT
     stream_finalization_mode: str = STREAM_FINALIZATION_MODE_DEFAULT
+    langfuse_enabled: bool = LANGFUSE_ENABLED_DEFAULT
+    langfuse_base_url: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
 
     @property
     def base_url(self) -> str:
@@ -88,6 +105,12 @@ def load_settings() -> AgentSettings:
         names = ", ".join(missing_vars)
         raise ValueError(f"Missing required environment variables: {names}")
 
+    langfuse_enabled = _load_optional_bool(
+        "LANGFUSE_ENABLED",
+        LANGFUSE_ENABLED_DEFAULT,
+    )
+    langfuse_values = _load_langfuse_values(langfuse_enabled)
+
     return AgentSettings(
         oci_region=environ["OCI_REGION"],
         oci_compartment_id=environ["OCI_COMPARTMENT_ID"],
@@ -112,7 +135,74 @@ def load_settings() -> AgentSettings:
             STREAM_FINALIZATION_MODE_DEFAULT,
             STREAM_FINALIZATION_MODES,
         ),
+        langfuse_enabled=langfuse_enabled,
+        langfuse_base_url=langfuse_values["LANGFUSE_BASE_URL"],
+        langfuse_public_key=langfuse_values["LANGFUSE_PUBLIC_KEY"],
+        langfuse_secret_key=langfuse_values["LANGFUSE_SECRET_KEY"],
     )
+
+
+def _load_optional_bool(env_name: str, default_value: bool) -> bool:
+    """Load and validate an optional boolean environment variable.
+
+    Args:
+        env_name: Environment variable name.
+        default_value: Value to use when the variable is not configured.
+
+    Returns:
+        bool: The configured or default boolean value.
+
+    Raises:
+        ValueError: If the configured value is not an accepted boolean token.
+    """
+
+    raw_value = environ.get(env_name)
+    if raw_value is None or raw_value.strip() == "":
+        return default_value
+
+    normalized_value = raw_value.strip().lower()
+    if normalized_value in LANGFUSE_TRUE_VALUES:
+        return True
+    if normalized_value in LANGFUSE_FALSE_VALUES:
+        return False
+
+    accepted_values = ", ".join(
+        sorted(LANGFUSE_TRUE_VALUES.union(LANGFUSE_FALSE_VALUES))
+    )
+    raise ValueError(
+        f"{env_name} must be a boolean value ({accepted_values}): {raw_value}"
+    )
+
+
+def _load_langfuse_values(langfuse_enabled: bool) -> dict[str, str]:
+    """Load and validate optional Langfuse configuration values.
+
+    Args:
+        langfuse_enabled: Whether Langfuse observability is enabled.
+
+    Returns:
+        dict[str, str]: Langfuse values keyed by environment variable name.
+
+    Raises:
+        ValueError: If Langfuse is enabled and a required value is missing.
+    """
+
+    values = {
+        env_name: environ.get(env_name, "").strip()
+        for env_name in LANGFUSE_REQUIRED_ENV_VARS
+    }
+    if not langfuse_enabled:
+        return values
+
+    missing_vars = [env_name for env_name, value in values.items() if not value]
+    if missing_vars:
+        names = ", ".join(missing_vars)
+        raise ValueError(
+            "Missing required Langfuse environment variables when "
+            f"LANGFUSE_ENABLED is true: {names}"
+        )
+
+    return values
 
 
 def _load_optional_int(

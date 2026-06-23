@@ -15,6 +15,12 @@ changes, or documentation updates are introduced.
 - Clarified Agent Factory backend and UI requirements for optional Langfuse
   deployment settings, including validation, runtime environment mapping,
   ready-to-run script handling, and secret redaction.
+- Implemented optional Langfuse observability for the RAG agent runtime,
+  including configuration loading, Langfuse OpenAI client selection, Responses
+  API observation spans, conversation-based sessions, dependency updates, and
+  environment variable documentation.
+- Added Agent Factory backend, ready-to-run script, and UI support for optional
+  Langfuse deployment settings with validation and secret redaction.
 
 ## 2026-06-22
 

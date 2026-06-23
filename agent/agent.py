@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-23
 License: MIT
 Description: Core request processing logic for the OCI RAG agent.
 """
@@ -14,6 +14,7 @@ from json import JSONDecodeError
 from typing import Any, Callable, Iterator
 
 from agent.config import AgentSettings
+from agent.langfuse_observability import responses_observation
 from agent.references import (
     deduplicate_references,
     extract_references,
@@ -84,10 +85,16 @@ def process_agent_request(
     LOGGER.info("Processing request for conversation_id=%s", conversation_id)
 
     try:
-        response = client.responses.create(
-            **_build_response_request(payload, settings, conversation_id),
-            timeout=settings.responses_timeout_seconds,
-        )
+        with responses_observation(
+            settings,
+            name="oci-rag-agent-response",
+            conversation_id=conversation_id,
+            stream=False,
+        ):
+            response = client.responses.create(
+                **_build_response_request(payload, settings, conversation_id),
+                timeout=settings.responses_timeout_seconds,
+            )
     except Exception:
         LOGGER.exception(
             "Agent request failed during response creation conversation_id=%s",
@@ -156,7 +163,12 @@ def stream_agent_request(
             token_events_emitted += 1
             yield _format_sse_event("token", {"text": token})
 
-        _complete_stream_state_if_needed(client, stream_state, settings)
+        _complete_stream_state_if_needed(
+            client,
+            stream_state,
+            settings,
+            conversation_id,
+        )
         yield from _iter_stream_final_events(conversation_id, stream_state)
         LOGGER.info(
             "Streaming request completed conversation_id=%s response_id=%s tokens=%s",
@@ -171,7 +183,12 @@ def stream_agent_request(
                 token_events_emitted,
                 exc,
             )
-            _complete_stream_state_if_needed(client, stream_state, settings)
+            _complete_stream_state_if_needed(
+                client,
+                stream_state,
+                settings,
+                conversation_id,
+            )
             yield from _iter_stream_final_events(conversation_id, stream_state)
         else:
             LOGGER.exception("Responses API streaming parser failure")
@@ -202,11 +219,17 @@ def _stream_response_tokens(
     """
 
     try:
-        stream = client.responses.create(
-            **_build_response_request(payload, settings, conversation_id),
-            timeout=settings.responses_timeout_seconds,
+        with responses_observation(
+            settings,
+            name="oci-rag-agent-response",
+            conversation_id=conversation_id,
             stream=True,
-        )
+        ):
+            stream = client.responses.create(
+                **_build_response_request(payload, settings, conversation_id),
+                timeout=settings.responses_timeout_seconds,
+                stream=True,
+            )
     except Exception:
         LOGGER.exception(
             "Streaming request failed during response creation conversation_id=%s",
@@ -257,6 +280,7 @@ def _complete_stream_state_if_needed(
     client: Any,
     stream_state: StreamState,
     settings: AgentSettings,
+    conversation_id: str,
 ) -> None:
     """Complete stream state according to the streaming finalization policy.
 
@@ -264,17 +288,25 @@ def _complete_stream_state_if_needed(
         client: OpenAI-compatible client.
         stream_state: Stream metadata containing the response ID.
         settings: Runtime settings for Responses API timeout and finalization.
+        conversation_id: Active conversation identifier for Langfuse sessions.
     """
 
     if not _should_retrieve_stream_response(client, stream_state, settings):
         return
 
     try:
-        response = client.responses.retrieve(
-            stream_state.response_id,
-            include=["file_search_call.results"],
-            timeout=settings.responses_timeout_seconds,
-        )
+        with responses_observation(
+            settings,
+            name="oci-rag-agent-response-finalization",
+            conversation_id=conversation_id,
+            stream=True,
+            response_id=stream_state.response_id,
+        ):
+            response = client.responses.retrieve(
+                stream_state.response_id,
+                include=["file_search_call.results"],
+                timeout=settings.responses_timeout_seconds,
+            )
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.warning("Unable to retrieve streamed response data: %s", exc)
         return

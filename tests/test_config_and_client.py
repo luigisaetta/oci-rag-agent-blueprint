@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-06
+Date last modified: 2026-06-23
 License: MIT
 Description: Unit tests for agent configuration and OpenAI client creation.
 """
@@ -9,11 +9,14 @@ Description: Unit tests for agent configuration and OpenAI client creation.
 
 from __future__ import annotations
 
+import sys
+import types
 from typing import Any
 
 import pytest
 
 from agent.config import AgentSettings, load_settings
+from agent.langfuse_observability import responses_observation
 from agent.openai_client import create_openai_client
 
 REQUIRED_ENV = {
@@ -58,6 +61,76 @@ class FakeOpenAI:
         self.default_headers = default_headers
 
 
+class FakeObservation:
+    """Fake Langfuse observation context manager."""
+
+    def __enter__(self) -> "FakeObservation":
+        """Enter the fake observation context.
+
+        Returns:
+            FakeObservation: Current fake observation.
+        """
+
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        """Exit the fake observation context."""
+
+
+class FakeLangfuseClient:
+    """Fake Langfuse client used to capture observation arguments."""
+
+    def __init__(self, calls: list[dict[str, Any]]) -> None:
+        """Initialize the fake client.
+
+        Args:
+            calls: Mutable call list used by assertions.
+        """
+
+        self.calls = calls
+
+    def start_as_current_observation(self, **kwargs: Any) -> FakeObservation:
+        """Record observation arguments and return a fake context manager.
+
+        Args:
+            **kwargs: Langfuse observation keyword arguments.
+
+        Returns:
+            FakeObservation: Fake observation context manager.
+        """
+
+        self.calls.append(kwargs)
+        return FakeObservation()
+
+
+class FakePropagateAttributes:
+    """Fake Langfuse attribute propagation context manager."""
+
+    def __init__(self, calls: list[dict[str, Any]], kwargs: dict[str, Any]) -> None:
+        """Initialize the fake context.
+
+        Args:
+            calls: Mutable call list used by assertions.
+            kwargs: Propagated attributes.
+        """
+
+        self.calls = calls
+        self.kwargs = kwargs
+
+    def __enter__(self) -> "FakePropagateAttributes":
+        """Record propagated attributes.
+
+        Returns:
+            FakePropagateAttributes: Current fake context.
+        """
+
+        self.calls.append(self.kwargs)
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        """Exit the fake propagation context."""
+
+
 def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
     """Test environment loading and OCI Enterprise AI base URL construction."""
 
@@ -77,6 +150,7 @@ def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
     assert settings.file_search_max_num_results == 10
     assert settings.responses_timeout_seconds == 60
     assert settings.stream_finalization_mode == "never"
+    assert settings.langfuse_enabled is False
 
 
 def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
@@ -93,6 +167,24 @@ def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
     assert settings.file_search_max_num_results == 7
     assert settings.responses_timeout_seconds == 120
     assert settings.stream_finalization_mode == "auto"
+
+
+def test_load_settings_reads_langfuse_configuration(monkeypatch: Any) -> None:
+    """Test optional Langfuse configuration values."""
+
+    for env_name, env_value in REQUIRED_ENV.items():
+        monkeypatch.setenv(env_name, env_value)
+    monkeypatch.setenv("LANGFUSE_ENABLED", "yes")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "public-key")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "secret-key")
+
+    settings = load_settings()
+
+    assert settings.langfuse_enabled is True
+    assert settings.langfuse_base_url == "https://langfuse.example.com"
+    assert settings.langfuse_public_key == "public-key"
+    assert settings.langfuse_secret_key == "secret-key"
 
 
 @pytest.mark.parametrize(
@@ -123,6 +215,39 @@ def test_load_settings_rejects_invalid_runtime_tuning(
         load_settings()
 
 
+def test_load_settings_rejects_invalid_langfuse_enabled(monkeypatch: Any) -> None:
+    """Test invalid Langfuse boolean configuration fails loading."""
+
+    for required_name, required_value in REQUIRED_ENV.items():
+        monkeypatch.setenv(required_name, required_value)
+    monkeypatch.setenv("LANGFUSE_ENABLED", "maybe")
+
+    with pytest.raises(ValueError, match="LANGFUSE_ENABLED must be a boolean value"):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    "missing_env_name",
+    ["LANGFUSE_BASE_URL", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"],
+)
+def test_load_settings_requires_langfuse_values_when_enabled(
+    monkeypatch: Any,
+    missing_env_name: str,
+) -> None:
+    """Test Langfuse required values are enforced only when enabled."""
+
+    for required_name, required_value in REQUIRED_ENV.items():
+        monkeypatch.setenv(required_name, required_value)
+    monkeypatch.setenv("LANGFUSE_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "public-key")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "secret-key")
+    monkeypatch.delenv(missing_env_name)
+
+    with pytest.raises(ValueError, match=missing_env_name):
+        load_settings()
+
+
 def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> None:
     """Test OpenAI-compatible client creation without external API calls."""
 
@@ -149,3 +274,80 @@ def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> Non
         client.default_headers["extra_body"]
         == '{"compartmentId": "ocid1.compartment.oc1..example"}'
     )
+
+
+def test_create_openai_client_uses_langfuse_client_when_enabled(
+    monkeypatch: Any,
+) -> None:
+    """Test Langfuse-enabled client creation uses Langfuse OpenAI wrapper."""
+
+    fake_langfuse_openai = type("FakeLangfuseOpenAI", (FakeOpenAI,), {})
+    fake_openai_module = types.ModuleType("langfuse.openai")
+    fake_openai_module.OpenAI = fake_langfuse_openai
+    fake_langfuse_module = types.ModuleType("langfuse")
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_module)
+    monkeypatch.setitem(sys.modules, "langfuse.openai", fake_openai_module)
+    settings = AgentSettings(
+        oci_region="eu-frankfurt-1",
+        oci_compartment_id="ocid1.compartment.oc1..example",
+        oci_project_id="ocid1.generativeaiproject.oc1..example",
+        oci_model_id="test-model",
+        oci_vector_store_id="test-vector-store",
+        openai_api_key="test-api-key",
+        langfuse_enabled=True,
+        langfuse_base_url="https://langfuse.example.com",
+        langfuse_public_key="public-key",
+        langfuse_secret_key="secret-key",
+    )
+
+    client = create_openai_client(settings)
+
+    assert isinstance(client, fake_langfuse_openai)
+    assert client.base_url == settings.base_url
+    assert client.project == settings.oci_project_id
+    assert client.default_headers["extra_body"] == (
+        '{"compartmentId": "ocid1.compartment.oc1..example"}'
+    )
+    assert client.api_key == "test-api-key"
+
+
+def test_langfuse_observation_uses_conversation_as_session(
+    monkeypatch: Any,
+) -> None:
+    """Test Langfuse observation propagates conversation session metadata."""
+
+    observation_calls: list[dict[str, Any]] = []
+    propagation_calls: list[dict[str, Any]] = []
+    fake_langfuse_module = types.ModuleType("langfuse")
+    fake_langfuse_module.get_client = lambda: FakeLangfuseClient(observation_calls)
+    fake_langfuse_module.propagate_attributes = (
+        lambda **kwargs: FakePropagateAttributes(propagation_calls, kwargs)
+    )
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_module)
+    settings = AgentSettings(
+        oci_region="eu-frankfurt-1",
+        oci_compartment_id="ocid1.compartment.oc1..example",
+        oci_project_id="ocid1.generativeaiproject.oc1..example",
+        oci_model_id="test-model",
+        oci_vector_store_id="test-vector-store",
+        openai_api_key="test-api-key",
+        langfuse_enabled=True,
+        langfuse_base_url="https://langfuse.example.com",
+        langfuse_public_key="public-key",
+        langfuse_secret_key="secret-key",
+    )
+
+    with responses_observation(
+        settings,
+        name="oci-rag-agent-response",
+        conversation_id="conv-123",
+        stream=True,
+        response_id="resp-123",
+    ):
+        pass
+
+    assert propagation_calls[0]["session_id"] == "conv-123"
+    assert propagation_calls[0]["trace_name"] == "oci-rag-agent-response"
+    assert propagation_calls[0]["metadata"]["response_id"] == "resp-123"
+    assert observation_calls[0]["name"] == "oci-rag-agent-response"
+    assert observation_calls[0]["as_type"] == "span"

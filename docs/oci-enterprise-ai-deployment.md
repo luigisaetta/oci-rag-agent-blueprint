@@ -287,6 +287,11 @@ retrieve call and treats streaming references and token usage as best-effort
 metadata. Use `auto` or `always` when the deployment should trade additional
 end-of-stream latency for more complete final metadata.
 
+Optional Langfuse observability variables include `LANGFUSE_ENABLED`,
+`LANGFUSE_BASE_URL`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`.
+Langfuse remains disabled unless `LANGFUSE_ENABLED=true`; when enabled, all
+three Langfuse connection values are required.
+
 ### 7. Store The Image In OCI Container Registry
 
 Tag the image for OCIR.

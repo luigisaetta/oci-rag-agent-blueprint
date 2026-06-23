@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-22
+Date last modified: 2026-06-23
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -43,6 +43,7 @@ from agent_factory_api.executor import (  # pylint: disable=wrong-import-positio
     _replace_placeholders,
 )
 from agent_factory_api.ready_script import (  # pylint: disable=wrong-import-position
+    LANGFUSE_SECRET_KEY_MARKER,
     OCIR_PASSWORD_MARKER,
     OPENAI_API_KEY_MARKER,
 )
@@ -171,6 +172,21 @@ def test_agent_factory_ui_exposes_ready_deployment_script_export() -> None:
     assert "isExportingDeploymentScript" in page_source
 
 
+def test_agent_factory_ui_exposes_langfuse_advanced_settings() -> None:
+    """Test UI exposes optional Langfuse runtime settings."""
+
+    page_source = (PROJECT_ROOT / "agent-factory" / "ui" / "app" / "page.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Enable Langfuse observability" in page_source
+    assert "langfuse_enabled" in page_source
+    assert "langfuse_base_url" in page_source
+    assert "langfuse_public_key" in page_source
+    assert "langfuse_secret_key" in page_source
+    assert "LANGFUSE_REQUIRED_FIELDS" in page_source
+
+
 def test_agent_factory_ui_exposes_local_ocir_credential_storage() -> None:
     """Test UI can save and reload OCIR credentials locally."""
 
@@ -189,6 +205,7 @@ def test_agent_factory_ui_exposes_local_ocir_credential_storage() -> None:
     assert "ocir_username" in saved_payload
     assert "ocir_password" in saved_payload
     assert "region" not in saved_payload
+    assert "langfuse_secret_key" not in saved_payload
 
 
 def test_agent_factory_checks_ocir_login_credentials(monkeypatch) -> None:
@@ -507,6 +524,76 @@ def test_agent_factory_dry_run_generates_redacted_command_plan(monkeypatch) -> N
         "ocir_registry": "fra.ocir.io",
         "ocir_username": "test-ocir-user",
     }
+
+
+def test_agent_factory_langfuse_disabled_by_default(monkeypatch) -> None:
+    """Test Agent Factory omits Langfuse runtime variables by default."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
+
+    response = client.post("/factory/deployments", json=_valid_payload())
+
+    assert response.status_code == 201
+    runtime_environment = response.json()["outputs"]["runtime_environment"]
+    assert "LANGFUSE_ENABLED" not in runtime_environment
+    assert "LANGFUSE_BASE_URL" not in runtime_environment
+    assert "LANGFUSE_PUBLIC_KEY" not in runtime_environment
+    assert "LANGFUSE_SECRET_KEY" not in runtime_environment
+
+
+def test_agent_factory_validates_enabled_langfuse_fields() -> None:
+    """Test Langfuse deployment fields are required only when enabled."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload["langfuse_enabled"] = True
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 400
+    field_errors = response.json()["field_errors"]
+    assert field_errors["langfuse_base_url"] == (
+        "This field is required when Langfuse is enabled."
+    )
+    assert field_errors["langfuse_public_key"] == (
+        "This field is required when Langfuse is enabled."
+    )
+    assert field_errors["langfuse_secret_key"] == (
+        "This field is required when Langfuse is enabled."
+    )
+
+
+def test_agent_factory_maps_and_redacts_langfuse_runtime_environment(
+    monkeypatch,
+) -> None:
+    """Test enabled Langfuse fields are mapped and redacted in dry-run output."""
+
+    RUNS.clear()
+    client = TestClient(app)
+    _install_fake_preflight(monkeypatch)
+    request_payload = _valid_payload()
+    request_payload.update(
+        {
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://langfuse.example.com",
+            "langfuse_public_key": "pk-test-public-key",
+            "langfuse_secret_key": "sk-test-secret-key",
+        }
+    )
+
+    response = client.post("/factory/deployments", json=request_payload)
+
+    assert response.status_code == 201
+    response_text = response.text
+    assert "sk-test-secret-key" not in response_text
+    assert response.json()["request"]["langfuse_secret_key"] == "********"
+    runtime_environment = response.json()["outputs"]["runtime_environment"]
+    assert runtime_environment["LANGFUSE_ENABLED"] == "true"
+    assert runtime_environment["LANGFUSE_BASE_URL"] == "https://langfuse.example.com"
+    assert runtime_environment["LANGFUSE_PUBLIC_KEY"] == "pk-t...-key"
+    assert runtime_environment["LANGFUSE_SECRET_KEY"] == "********"
 
 
 def test_agent_factory_dry_run_generates_idcs_auth_config(monkeypatch) -> None:
@@ -890,14 +977,48 @@ def test_agent_factory_ready_script_endpoint_validates_payload() -> None:
     assert "container_image_tag" in response.json()["field_errors"]
 
 
+def test_ready_script_export_redacts_langfuse_secret() -> None:
+    """Test ready script export uses a runtime marker for Langfuse secrets."""
+
+    client = TestClient(app)
+    request_payload = _valid_payload()
+    request_payload.update(
+        {
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://langfuse.example.com",
+            "langfuse_public_key": "pk-test-public-key",
+            "langfuse_secret_key": "sk-test-secret-key",
+        }
+    )
+
+    response = client.post("/factory/deployment-script", json=request_payload)
+
+    assert response.status_code == 200
+    script_text = response.text
+    assert "sk-test-secret-key" not in script_text
+    assert LANGFUSE_SECRET_KEY_MARKER in script_text
+    assert 'LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"' in script_text
+    syntax_check = subprocess.run(
+        ["bash", "-n"],
+        input=script_text,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
 def test_ready_script_runner_resolves_secret_markers(monkeypatch) -> None:
     """Test exported script payload markers are restored from environment."""
 
     monkeypatch.setenv("OPENAI_API_KEY", "runtime-openai-key")
     monkeypatch.setenv("OCIR_PASSWORD", "runtime-ocir-password")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "runtime-langfuse-secret")
     payload = {
         "openai_api_key": OPENAI_API_KEY_MARKER,
         "ocir_password": OCIR_PASSWORD_MARKER,
+        "langfuse_secret_key": LANGFUSE_SECRET_KEY_MARKER,
         "region": "eu-frankfurt-1",
     }
 
@@ -905,6 +1026,7 @@ def test_ready_script_runner_resolves_secret_markers(monkeypatch) -> None:
 
     assert resolved_payload["openai_api_key"] == "runtime-openai-key"
     assert resolved_payload["ocir_password"] == "runtime-ocir-password"
+    assert resolved_payload["langfuse_secret_key"] == "runtime-langfuse-secret"
     assert resolved_payload["region"] == "eu-frankfurt-1"
 
 

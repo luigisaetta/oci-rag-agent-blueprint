@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-17
+Date last modified: 2026-06-23
 License: MIT
 Description: Live command execution helpers for Agent Factory deployments.
 """
@@ -116,7 +116,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 progress_callback,
                 cwd=repo_root,
                 env=environment,
-                secrets=[str(payload["ocir_password"])],
+                secrets=_deployment_secrets(payload),
             )
             _run_step(
                 "registry",
@@ -125,7 +125,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 payload=payload,
                 cwd=repo_root,
                 env=environment,
-                secrets=[str(payload["ocir_password"])],
+                secrets=_deployment_secrets(payload),
             )
             _run_docker_login(payload, progress_callback, environment, repo_root)
             _run_step(
@@ -134,7 +134,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 progress_callback,
                 cwd=repo_root,
                 env=environment,
-                secrets=[str(payload["ocir_password"])],
+                secrets=_deployment_secrets(payload),
             )
 
         progress_callback(
@@ -152,7 +152,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             compartment_id=resolved_identifiers["compartment_id"],
             progress_callback=progress_callback,
             cwd=repo_root,
-            secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+            secrets=_deployment_secrets(payload),
         )
         if not hosted_application_id:
             hosted_application_output = _run_json_step(
@@ -162,7 +162,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 ),
                 progress_callback,
                 cwd=repo_root,
-                secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+                secrets=_deployment_secrets(payload),
             )
             hosted_application_id = _extract_identifier(
                 hosted_application_output,
@@ -187,7 +187,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             ),
             progress_callback,
             cwd=repo_root,
-            secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+            secrets=_deployment_secrets(payload),
         )
         hosted_deployment_id = _extract_identifier(
             hosted_deployment_output,
@@ -208,7 +208,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             command=readiness_command,
             progress_callback=progress_callback,
             cwd=repo_root,
-            secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+            secrets=_deployment_secrets(payload),
         )
         endpoint_url = _find_endpoint_url(readiness_output) or _build_invoke_url(
             region=str(payload["region"]),
@@ -224,7 +224,7 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
                 ),
                 progress_callback,
                 cwd=repo_root,
-                secrets=[str(payload["ocir_password"]), str(payload["openai_api_key"])],
+                secrets=_deployment_secrets(payload),
             )
         except CommandExecutionError as exc:
             raise CommandExecutionError(
@@ -234,6 +234,24 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
             ) from exc
 
     return outputs
+
+
+def _deployment_secrets(payload: dict[str, Any]) -> list[str]:
+    """Return deployment secret values that must be redacted from diagnostics.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        list[str]: Secret values present in the deployment payload.
+    """
+
+    secret_fields = ("ocir_password", "openai_api_key", "langfuse_secret_key")
+    return [
+        str(payload[field_name])
+        for field_name in secret_fields
+        if payload.get(field_name)
+    ]
 
 
 def _run_step(  # pylint: disable=too-many-arguments

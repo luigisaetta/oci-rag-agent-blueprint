@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-22
+Date last modified: 2026-06-23
 License: MIT
 Description: Reviewable ready-to-run deployment script generation for Agent Factory.
 """
@@ -16,6 +16,7 @@ from agent_factory_api.commands import build_ocir_registry
 
 OPENAI_API_KEY_MARKER = "__AGENT_FACTORY_OPENAI_API_KEY__"
 OCIR_PASSWORD_MARKER = "__AGENT_FACTORY_OCIR_PASSWORD__"
+LANGFUSE_SECRET_KEY_MARKER = "__AGENT_FACTORY_LANGFUSE_SECRET_KEY__"
 
 
 def build_ready_to_run_script(payload: dict[str, Any]) -> str:
@@ -134,6 +135,7 @@ def build_ready_to_run_script(payload: dict[str, Any]) -> str:
             "# Docker and OCI CLI commands remain explicit below.",
             'OPENAI_API_KEY="${OPENAI_API_KEY}" \\',
             'OCIR_PASSWORD="${OCIR_PASSWORD}" \\',
+            'LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}" \\',
             '"${PYTHON_EXECUTABLE}" -m agent_factory_api.ready_script_runner prepare \\',
             '  --payload "${PAYLOAD_FILE}" \\',
             '  --metadata "${METADATA_FILE}"',
@@ -153,6 +155,10 @@ def build_ready_to_run_script(payload: dict[str, Any]) -> str:
             'FILE_SEARCH_MAX_NUM_RESULTS="$(json_value file_search_max_num_results)"',
             'RESPONSES_TIMEOUT_SECONDS="$(json_value responses_timeout_seconds)"',
             'STREAM_FINALIZATION_MODE="$(json_value stream_finalization_mode)"',
+            'LANGFUSE_ENABLED="$(json_value langfuse_enabled)"',
+            'LANGFUSE_BASE_URL="$(json_value langfuse_base_url)"',
+            'LANGFUSE_PUBLIC_KEY="$(json_value langfuse_public_key)"',
+            'LANGFUSE_SECRET_KEY_VALUE="${LANGFUSE_SECRET_KEY:-}"',
             'MODEL_ID="$(json_value model_id)"',
             "",
             'INBOUND_AUTH_CONFIG="${ARTIFACT_DIR}/hosted-application-inbound-auth-config.json"',
@@ -171,7 +177,7 @@ def build_ready_to_run_script(payload: dict[str, Any]) -> str:
             "JSON",
             "",
             "# JSON artifact: Hosted Application runtime environment variables.",
-            "# OPENAI_API_KEY is inserted from the runtime environment, not stored in this script.",
+            "# OPENAI_API_KEY and optional LANGFUSE_SECRET_KEY are inserted from the runtime environment.",
             'cat > "${ENVIRONMENT_VARIABLES}" <<JSON',
             "[",
             '  {"name": "OCI_REGION", "type": "PLAINTEXT", "value": $(json_string "${REGION}")},',
@@ -185,6 +191,26 @@ def build_ready_to_run_script(payload: dict[str, Any]) -> str:
             '  {"name": "STREAM_FINALIZATION_MODE", "type": "PLAINTEXT", "value": $(json_string "${STREAM_FINALIZATION_MODE}")}',
             "]",
             "JSON",
+            'if [ "${LANGFUSE_ENABLED}" = "True" ] || [ "${LANGFUSE_ENABLED}" = "true" ]; then',
+            '  "${PYTHON_EXECUTABLE}" - "${ENVIRONMENT_VARIABLES}" "${LANGFUSE_BASE_URL}" "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY_VALUE}" <<\'PY\'',
+            "import json",
+            "import sys",
+            "",
+            "path = sys.argv[1]",
+            "with open(path, encoding='utf-8') as handle:",
+            "    data = json.load(handle)",
+            "data.extend(",
+            "    [",
+            "        {'name': 'LANGFUSE_ENABLED', 'type': 'PLAINTEXT', 'value': 'true'},",
+            "        {'name': 'LANGFUSE_BASE_URL', 'type': 'PLAINTEXT', 'value': sys.argv[2]},",
+            "        {'name': 'LANGFUSE_PUBLIC_KEY', 'type': 'PLAINTEXT', 'value': sys.argv[3]},",
+            "        {'name': 'LANGFUSE_SECRET_KEY', 'type': 'PLAINTEXT', 'value': sys.argv[4]},",
+            "    ]",
+            ")",
+            "with open(path, 'w', encoding='utf-8') as handle:",
+            "    json.dump(data, handle, indent=2)",
+            "PY",
+            "fi",
             "",
             "# JSON artifact: Hosted Deployment active Docker artifact.",
             'cat > "${ACTIVE_ARTIFACT}" <<JSON',
@@ -331,6 +357,8 @@ def _script_payload(payload: dict[str, Any]) -> dict[str, Any]:
     script_payload["dry_run"] = False
     script_payload["openai_api_key"] = OPENAI_API_KEY_MARKER
     script_payload["ocir_password"] = OCIR_PASSWORD_MARKER
+    if script_payload.get("langfuse_enabled"):
+        script_payload["langfuse_secret_key"] = LANGFUSE_SECRET_KEY_MARKER
     script_payload["confidential_application_secret"] = ""
     return script_payload
 

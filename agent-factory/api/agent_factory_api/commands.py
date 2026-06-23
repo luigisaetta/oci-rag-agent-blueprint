@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-18
+Date last modified: 2026-06-23
 License: MIT
 Description: Command planning helpers for Agent Factory deployment runs.
 """
@@ -599,7 +599,7 @@ def build_agent_runtime_environment(
     """
 
     identifiers = resolved_identifiers or build_resolved_identifiers(payload)
-    return {
+    environment = {
         "OCI_REGION": str(payload["region"]),
         "OCI_COMPARTMENT_ID": identifiers["compartment_id"],
         "OCI_PROJECT_ID": identifiers["genai_project_id"],
@@ -610,6 +610,16 @@ def build_agent_runtime_environment(
         "RESPONSES_TIMEOUT_SECONDS": str(payload["responses_timeout_seconds"]),
         "STREAM_FINALIZATION_MODE": str(payload["stream_finalization_mode"]),
     }
+    if payload.get("langfuse_enabled"):
+        environment.update(
+            {
+                "LANGFUSE_ENABLED": "true",
+                "LANGFUSE_BASE_URL": str(payload["langfuse_base_url"]),
+                "LANGFUSE_PUBLIC_KEY": str(payload["langfuse_public_key"]),
+                "LANGFUSE_SECRET_KEY": str(payload["langfuse_secret_key"]),
+            }
+        )
+    return environment
 
 
 def redact_runtime_environment(environment: dict[str, str]) -> dict[str, str]:
@@ -625,7 +635,26 @@ def redact_runtime_environment(environment: dict[str, str]) -> dict[str, str]:
     redacted = dict(environment)
     if redacted.get("OPENAI_API_KEY"):
         redacted["OPENAI_API_KEY"] = "********"
+    if redacted.get("LANGFUSE_SECRET_KEY"):
+        redacted["LANGFUSE_SECRET_KEY"] = "********"
+    if redacted.get("LANGFUSE_PUBLIC_KEY"):
+        redacted["LANGFUSE_PUBLIC_KEY"] = _redact_key(redacted["LANGFUSE_PUBLIC_KEY"])
     return redacted
+
+
+def _redact_key(value: str) -> str:
+    """Return a shortened representation of a sensitive key.
+
+    Args:
+        value: Sensitive key value.
+
+    Returns:
+        str: Redacted key safe for status responses.
+    """
+
+    if len(value) <= 8:
+        return "********"
+    return f"{value[:4]}...{value[-4:]}"
 
 
 def build_resolved_identifiers(payload: dict[str, Any]) -> dict[str, str]:

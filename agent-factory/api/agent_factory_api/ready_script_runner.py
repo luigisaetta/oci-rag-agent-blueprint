@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-22
+Date last modified: 2026-06-23
 License: MIT
 Description: Helper commands for exported Agent Factory deployment scripts.
 """
@@ -37,6 +37,7 @@ from agent_factory_api.executor import (
 )
 from agent_factory_api.models import validate_deployment_payload
 from agent_factory_api.ready_script import (
+    LANGFUSE_SECRET_KEY_MARKER,
     OCIR_PASSWORD_MARKER,
     OPENAI_API_KEY_MARKER,
 )
@@ -48,6 +49,7 @@ from agent_factory_api.resources import (
 SECRET_MARKERS = {
     "openai_api_key": (OPENAI_API_KEY_MARKER, "OPENAI_API_KEY"),
     "ocir_password": (OCIR_PASSWORD_MARKER, "OCIR_PASSWORD"),
+    "langfuse_secret_key": (LANGFUSE_SECRET_KEY_MARKER, "LANGFUSE_SECRET_KEY"),
 }
 
 
@@ -276,6 +278,9 @@ def _prepare_metadata(payload_path: str, metadata_path: str) -> None:
         "file_search_max_num_results": str(plan_payload["file_search_max_num_results"]),
         "responses_timeout_seconds": str(plan_payload["responses_timeout_seconds"]),
         "stream_finalization_mode": plan_payload["stream_finalization_mode"],
+        "langfuse_enabled": bool(plan_payload["langfuse_enabled"]),
+        "langfuse_base_url": plan_payload["langfuse_base_url"],
+        "langfuse_public_key": plan_payload["langfuse_public_key"],
         "image_reference": plan["image_reference"],
         "ocir_registry": build_ocir_registry(plan_payload),
         "ocir_username": plan_payload["ocir_username"],

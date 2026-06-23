@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-18
+Date last modified: 2026-06-23
 License: MIT
 Description: Data models and validation helpers for Agent Factory deployment runs.
 """
@@ -151,7 +151,9 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def validate_deployment_payload(payload: dict[str, Any]) -> ValidationResult:
+def validate_deployment_payload(  # pylint: disable=too-many-branches
+    payload: dict[str, Any],
+) -> ValidationResult:
     """Validate and normalize an Agent Factory deployment payload.
 
     Args:
@@ -199,6 +201,17 @@ def validate_deployment_payload(payload: dict[str, Any]) -> ValidationResult:
                 "Identity Domain URL must be the exact https:// URL from OCI Console."
             )
 
+    if not isinstance(normalized["langfuse_enabled"], bool):
+        errors["langfuse_enabled"] = "Expected a boolean value."
+    elif normalized["langfuse_enabled"] is True:
+        for field_name in (
+            "langfuse_base_url",
+            "langfuse_public_key",
+            "langfuse_secret_key",
+        ):
+            if not _has_text(normalized.get(field_name)):
+                errors[field_name] = "This field is required when Langfuse is enabled."
+
     if normalized["endpoint_visibility"] != "public":
         errors["endpoint_visibility"] = "Only public endpoints are supported yet."
 
@@ -234,6 +247,12 @@ def redact_payload(payload: dict[str, Any]) -> dict[str, Any]:
         redacted["ocir_password"] = "********"
     if redacted.get("confidential_application_secret"):
         redacted["confidential_application_secret"] = "********"
+    if redacted.get("langfuse_secret_key"):
+        redacted["langfuse_secret_key"] = "********"
+    if redacted.get("langfuse_public_key"):
+        redacted["langfuse_public_key"] = _redact_key(
+            str(redacted["langfuse_public_key"])
+        )
     return redacted
 
 
@@ -285,6 +304,10 @@ def _apply_defaults(payload: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("file_search_max_num_results", 10)
     normalized.setdefault("responses_timeout_seconds", 60)
     normalized.setdefault("stream_finalization_mode", "never")
+    normalized.setdefault("langfuse_enabled", False)
+    normalized.setdefault("langfuse_base_url", "")
+    normalized.setdefault("langfuse_public_key", "")
+    normalized.setdefault("langfuse_secret_key", "")
     normalized.setdefault("dry_run", True)
     if "genai_project" not in normalized and "genai_project_ocid" in normalized:
         normalized["genai_project"] = normalized["genai_project_ocid"]
@@ -378,6 +401,21 @@ def _validate_positive_int(
         errors[field_name] = (
             f"Expected a value from {minimum_value} to {maximum_value}."
         )
+
+
+def _redact_key(value: str) -> str:
+    """Return a shortened representation of a sensitive key.
+
+    Args:
+        value: Sensitive key value.
+
+    Returns:
+        str: Redacted key safe for summaries.
+    """
+
+    if len(value) <= 8:
+        return "********"
+    return f"{value[:4]}...{value[-4:]}"
 
 
 def _has_text(value: Any) -> bool:

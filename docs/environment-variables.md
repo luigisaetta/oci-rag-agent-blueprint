@@ -37,6 +37,10 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `FILE_SEARCH_MAX_NUM_RESULTS` | No | `10` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Maximum number of Vector Store file search results requested by the Responses API `file_search` tool. Accepted range: `1` to `50`. |
 | `RESPONSES_TIMEOUT_SECONDS` | No | `60` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Timeout in seconds for Responses API create and retrieve calls. Accepted range: `1` to `300`. |
 | `STREAM_FINALIZATION_MODE` | No | `never` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Controls whether streaming responses perform a post-stream retrieve call to complete references and token usage. Accepted values: `never`, `auto`, `always`. |
+| `LANGFUSE_ENABLED` | No | `false` | Set in root `.env` only when Langfuse observability is needed. | Set as a runtime environment variable only when Langfuse observability is needed. | Enables optional Langfuse tracing for Responses API calls. Accepted true values: `true`, `1`, `yes`, `on`. Accepted false values: `false`, `0`, `no`, `off`. |
+| `LANGFUSE_BASE_URL` | Only when `LANGFUSE_ENABLED=true` | `https://cloud.langfuse.com` | Set in root `.env` when Langfuse is enabled. | Set as a runtime environment variable when Langfuse is enabled. | Base URL of the Langfuse instance. |
+| `LANGFUSE_PUBLIC_KEY` | Only when `LANGFUSE_ENABLED=true` | `pk-lf-...` | Set in root `.env` when Langfuse is enabled. | Set as a runtime environment variable when Langfuse is enabled. | Langfuse public key. Avoid logging full values. |
+| `LANGFUSE_SECRET_KEY` | Only when `LANGFUSE_ENABLED=true` | `sk-lf-...` | Set in root `.env` when Langfuse is enabled. | Set as a runtime environment variable when Langfuse is enabled, preferably through the most protected configuration mechanism available. | Langfuse secret key. Never log or commit this value. |
 | `IDENTITY_DOMAIN_URL` | Client only | `https://idcs-example.identity.oraclecloud.com` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Exact Identity Domain URL from OCI Console for protected Hosted Application testing. |
 | `CONFIDENTIAL_APPLICATION_ID` | Client only | `ocid-or-client-id` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Confidential application client identifier. |
 | `CONFIDENTIAL_APPLICATION_SECRET` | Client only | `secret` | Set in root `.env` when the Python CLI client must request an IDCS token. Enter manually in the reference UI when JWT authentication is enabled. | Not used by the agent runtime. | Confidential application client secret. Never log or commit this value. |
@@ -57,6 +61,18 @@ references or token usage with a final retrieve call when needed.
 Use `always` when the deployment should preserve complete finalization behavior
 and always retrieve the completed response after streaming when a `response_id`
 is available.
+
+## Langfuse Observability
+
+Langfuse observability is disabled by default.
+
+When `LANGFUSE_ENABLED=true`, the agent requires `LANGFUSE_BASE_URL`,
+`LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY`. The agent uses the
+Langfuse-instrumented OpenAI-compatible client for Responses API calls and
+groups observations by the active Responses API `conversation_id`.
+
+When `LANGFUSE_ENABLED` is omitted or false, the agent uses the standard
+OpenAI-compatible client and does not require Langfuse configuration.
 
 ## Region Consistency
 
@@ -108,7 +124,9 @@ the concatenated client-side `IDCS_SCOPE` value, see
 - Never commit `.env`.
 - Never commit real API key values.
 - Never commit real confidential application secrets.
+- Never commit real Langfuse secret keys.
 - Never print environment variables in logs.
 - Never include full runtime configuration in error responses.
 - Use `.env.sample` only for placeholder values.
-- Rotate `OPENAI_API_KEY` according to customer security requirements.
+- Rotate `OPENAI_API_KEY` and `LANGFUSE_SECRET_KEY` according to customer
+  security requirements.

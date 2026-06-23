@@ -33,6 +33,10 @@ const INITIAL_FORM = {
   file_search_max_num_results: 10,
   responses_timeout_seconds: 60,
   stream_finalization_mode: "never",
+  langfuse_enabled: false,
+  langfuse_base_url: "",
+  langfuse_public_key: "",
+  langfuse_secret_key: "",
   container_repository_name: "oci-rag-agent-blueprint-agent",
   container_image_tag: "",
   ocir_username: "",
@@ -72,6 +76,12 @@ const AUTH_REQUIRED_FIELDS = [
   "identity_domain_url",
   "auth_scope",
   "auth_audience"
+];
+
+const LANGFUSE_REQUIRED_FIELDS = [
+  "langfuse_base_url",
+  "langfuse_public_key",
+  "langfuse_secret_key"
 ];
 
 const ACTIVE_RUN_STATUSES = new Set(["running"]);
@@ -226,9 +236,12 @@ export default function Home() {
 
   const missingRequiredFields = useMemo(
     () => {
-      const requiredFields = form.jwt_protection_enabled
+      let requiredFields = form.jwt_protection_enabled
         ? [...REQUIRED_FIELDS, ...AUTH_REQUIRED_FIELDS]
         : REQUIRED_FIELDS;
+      if (form.langfuse_enabled) {
+        requiredFields = [...requiredFields, ...LANGFUSE_REQUIRED_FIELDS];
+      }
 
       return requiredFields.filter((fieldName) => {
         const value = form[fieldName];
@@ -1034,6 +1047,43 @@ export default function Home() {
                   error={fieldErrors.responses_timeout_seconds}
                 />
               </div>
+              <label className="toggleRow">
+                <input
+                  name="langfuse_enabled"
+                  type="checkbox"
+                  checked={form.langfuse_enabled}
+                  onChange={updateField}
+                />
+                <span>Enable Langfuse observability</span>
+              </label>
+              {form.langfuse_enabled ? (
+                <div className="fieldGrid">
+                  <Field
+                    label="Langfuse base URL"
+                    name="langfuse_base_url"
+                    value={form.langfuse_base_url}
+                    onChange={updateField}
+                    error={fieldErrors.langfuse_base_url}
+                  />
+                  <Field
+                    label="Langfuse public key"
+                    name="langfuse_public_key"
+                    value={form.langfuse_public_key}
+                    onChange={updateField}
+                    error={fieldErrors.langfuse_public_key}
+                    autoComplete="off"
+                  />
+                  <Field
+                    label="Langfuse secret key"
+                    name="langfuse_secret_key"
+                    type="password"
+                    value={form.langfuse_secret_key}
+                    onChange={updateField}
+                    error={fieldErrors.langfuse_secret_key}
+                    autoComplete="new-password"
+                  />
+                </div>
+              ) : null}
             </section>
           </form>
 

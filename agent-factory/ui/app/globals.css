@@ -380,6 +380,15 @@ select:disabled {
   gap: 14px;
 }
 
+.toggleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
 .runPanel {
   position: sticky;
   top: 20px;
