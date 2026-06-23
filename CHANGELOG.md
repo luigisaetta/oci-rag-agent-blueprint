@@ -21,6 +21,7 @@ changes, or documentation updates are introduced.
   environment variable documentation.
 - Added Agent Factory backend, ready-to-run script, and UI support for optional
   Langfuse deployment settings with validation and secret redaction.
+- Added GPT-5.5 to the Agent Factory supported model list and UI selector.
 
 ## 2026-06-22
 

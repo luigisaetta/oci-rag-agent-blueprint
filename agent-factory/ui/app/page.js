@@ -51,6 +51,7 @@ const REGION_OPTIONS = [
 
 const MODEL_OPTIONS = [
   { value: "openai.gpt-5.4", label: "GPT-5.4" },
+  { value: "openai.gpt-5.5", label: "GPT-5.5" },
   { value: "google.gemini-2.5-pro", label: "Gemini 2.5 Pro" },
   { value: "openai.gpt-oss-120b", label: "OpenAI gpt-oss-120b" }
 ];

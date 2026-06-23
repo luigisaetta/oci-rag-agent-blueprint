@@ -854,7 +854,7 @@ def test_agent_factory_rejects_unknown_region_and_model() -> None:
     assert field_errors["region"] == ("Expected one of: eu-frankfurt-1, us-chicago-1.")
     assert field_errors["model_id"] == (
         "Expected one of: google.gemini-2.5-pro, openai.gpt-5.4, "
-        "openai.gpt-oss-120b."
+        "openai.gpt-5.5, openai.gpt-oss-120b."
     )
 
 

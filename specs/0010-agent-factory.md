@@ -156,6 +156,7 @@ Supported model IDs are:
 | Display label | Model ID |
 | --- | --- |
 | GPT-5.4 | `openai.gpt-5.4` |
+| GPT-5.5 | `openai.gpt-5.5` |
 | Gemini 2.5 Pro | `google.gemini-2.5-pro` |
 | OpenAI gpt-oss-120b | `openai.gpt-oss-120b` |
 

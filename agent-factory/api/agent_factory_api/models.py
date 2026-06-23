@@ -24,6 +24,7 @@ STREAM_FINALIZATION_MODES = {"never", "auto", "always"}
 SUPPORTED_REGIONS = {"eu-frankfurt-1", "us-chicago-1"}
 SUPPORTED_MODEL_IDS = {
     "openai.gpt-5.4",
+    "openai.gpt-5.5",
     "google.gemini-2.5-pro",
     "openai.gpt-oss-120b",
 }
