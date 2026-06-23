@@ -6,6 +6,13 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-23
+
+- Specified optional Langfuse observability for Responses API calls, including
+  disabled-by-default runtime configuration, Langfuse client selection,
+  conversation-based sessions, span behavior, secret redaction, deployment
+  requirements, and unit test expectations.
+
 ## 2026-06-22
 
 - Added an Agent Factory ready-to-run deployment script export, keeping dry-run
