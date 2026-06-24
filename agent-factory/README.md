@@ -62,13 +62,16 @@ Agent Factory UI:  http://localhost:3100
 ```
 
 When the UI is opened from a browser on a different machine, the Factory API
-endpoint field must use the hostname or IP address of the machine that runs the
-Agent Factory API backend. For example, when the backend runs on a host named
-`proxima`, set the field to:
+endpoint field defaults to the same hostname or IP address used to open the UI,
+on port `8081`. For example, when the UI is opened from `http://proxima:3100`,
+the backend endpoint defaults to:
 
 ```text
 http://proxima:8081/factory/deployments
 ```
+
+Set `NEXT_PUBLIC_FACTORY_API_URL` before building the UI only when the Factory
+API is intentionally exposed through a different reachable URL.
 
 Dry runs validate inputs and generate command plans without creating OCI
 resources. Non-dry-run deployments create or reuse the configured OCI resources,

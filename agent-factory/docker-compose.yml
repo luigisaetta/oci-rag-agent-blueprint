@@ -35,9 +35,9 @@ services:
       context: ./ui
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_FACTORY_API_URL: http://localhost:8081/factory/deployments
+        NEXT_PUBLIC_FACTORY_API_URL: ${NEXT_PUBLIC_FACTORY_API_URL:-}
     environment:
-      NEXT_PUBLIC_FACTORY_API_URL: http://localhost:8081/factory/deployments
+      NEXT_PUBLIC_FACTORY_API_URL: ${NEXT_PUBLIC_FACTORY_API_URL:-}
     ports:
       - "3100:3100"
     depends_on:

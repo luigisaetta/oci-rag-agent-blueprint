@@ -8,6 +8,10 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-24
 
+- Fixed the Agent Factory container UI default so remote browsers derive the
+  Factory API endpoint from the current UI hostname instead of using
+  `localhost`, while preserving explicit `NEXT_PUBLIC_FACTORY_API_URL`
+  overrides.
 - Specified a protected runtime environment diagnostic endpoint for the RAG
   agent, including non-secret environment reporting, secret-name redaction, JWT
   protection expectations, logging constraints, and unit test coverage.

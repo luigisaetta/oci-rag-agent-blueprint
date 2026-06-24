@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const DEFAULT_BACKEND_URL =
-  process.env.NEXT_PUBLIC_FACTORY_API_URL ?? "http://localhost:8081/factory/deployments";
+const CONFIGURED_BACKEND_URL = process.env.NEXT_PUBLIC_FACTORY_API_URL?.trim();
+const DEFAULT_BACKEND_URL = CONFIGURED_BACKEND_URL || "http://localhost:8081/factory/deployments";
 const LOCAL_BACKEND_URL = "http://localhost:8081/factory/deployments";
 const OCIR_CREDENTIALS_STORAGE_KEY = "agentFactory.ocirCredentials.v1";
 
@@ -207,7 +207,7 @@ function StepList({ steps }) {
 function initialBackendUrl() {
   if (
     typeof window === "undefined" ||
-    process.env.NEXT_PUBLIC_FACTORY_API_URL ||
+    CONFIGURED_BACKEND_URL ||
     DEFAULT_BACKEND_URL !== LOCAL_BACKEND_URL
   ) {
     return DEFAULT_BACKEND_URL;
