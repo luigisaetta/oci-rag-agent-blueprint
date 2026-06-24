@@ -11,6 +11,9 @@ changes, or documentation updates are introduced.
 - Specified a protected runtime environment diagnostic endpoint for the RAG
   agent, including non-secret environment reporting, secret-name redaction, JWT
   protection expectations, logging constraints, and unit test coverage.
+- Implemented the RAG agent runtime environment diagnostic endpoint with
+  reusable secret-name classification, deterministic non-secret reporting, and
+  FastAPI unit tests.
 
 ## 2026-06-23
 

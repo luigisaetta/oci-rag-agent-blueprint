@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-24
 License: MIT
 Description: FastAPI entrypoint for the OCI RAG agent.
 """
@@ -8,6 +8,7 @@ Description: FastAPI entrypoint for the OCI RAG agent.
 from __future__ import annotations
 
 import logging
+from os import environ
 from typing import Any
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from agent.agent import process_agent_request, stream_agent_request
 from agent.config import load_settings
+from agent.environment_diagnostics import build_environment_diagnostics
 from agent.openai_client import create_openai_client
 from agent.schema_validator import (
     SchemaValidationError,
@@ -95,6 +97,17 @@ def health() -> dict[str, str]:
 
     LOGGER.debug("Health check requested")
     return {"status": "ok"}
+
+
+@app.get("/config/environment")
+def runtime_environment() -> dict[str, dict[str, str] | list[str]]:
+    """Return non-secret runtime environment variables for diagnostics.
+
+    Returns:
+        dict[str, dict[str, str] | list[str]]: Environment diagnostics payload.
+    """
+
+    return build_environment_diagnostics(environ)
 
 
 @app.post("/responses", response_model=None)

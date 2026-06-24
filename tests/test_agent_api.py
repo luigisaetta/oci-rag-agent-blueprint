@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-09
+Date last modified: 2026-06-24
 License: MIT
 Description: Unit tests for the OCI RAG agent FastAPI API.
 """
@@ -273,6 +273,52 @@ def test_health_endpoint() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_runtime_environment_endpoint_redacts_secret_values(monkeypatch: Any) -> None:
+    """Test runtime environment diagnostics omit secret values."""
+
+    monkeypatch.setenv("OCI_REGION", "eu-frankfurt-1")
+    monkeypatch.setenv("RAG_VISIBLE_SETTING", "visible-value")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret-value")
+    monkeypatch.setenv("IDCS_TOKEN_ENDPOINT", "https://token.example.com")
+    monkeypatch.setenv("CONFIDENTIAL_APPLICATION_SECRET", "client-secret-value")
+    client = TestClient(app)
+
+    response = client.get("/config/environment")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["environment"]["OCI_REGION"] == "eu-frankfurt-1"
+    assert payload["environment"]["RAG_VISIBLE_SETTING"] == "visible-value"
+    assert "OPENAI_API_KEY" not in payload["environment"]
+    assert "IDCS_TOKEN_ENDPOINT" not in payload["environment"]
+    assert "CONFIDENTIAL_APPLICATION_SECRET" not in payload["environment"]
+    assert "OPENAI_API_KEY" in payload["redacted"]
+    assert "IDCS_TOKEN_ENDPOINT" in payload["redacted"]
+    assert "CONFIDENTIAL_APPLICATION_SECRET" in payload["redacted"]
+    assert "openai-secret-value" not in response.text
+    assert "https://token.example.com" not in response.text
+    assert "client-secret-value" not in response.text
+
+
+def test_runtime_environment_endpoint_returns_sorted_names(monkeypatch: Any) -> None:
+    """Test runtime environment diagnostics use deterministic key ordering."""
+
+    monkeypatch.setenv("RAG_Z_SETTING", "last")
+    monkeypatch.setenv("RAG_A_SETTING", "first")
+    monkeypatch.setenv("RAG_M_SECRET", "secret-value")
+    monkeypatch.setenv("RAG_B_TOKEN", "token-value")
+    client = TestClient(app)
+
+    response = client.get("/config/environment")
+
+    assert response.status_code == 200
+    payload = response.json()
+    visible_names = list(payload["environment"])
+    redacted_names = payload["redacted"]
+    assert visible_names == sorted(visible_names)
+    assert redacted_names == sorted(redacted_names)
 
 
 def test_local_cors_preflight() -> None:
