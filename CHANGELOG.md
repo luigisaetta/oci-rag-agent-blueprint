@@ -6,6 +6,12 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-24
+
+- Specified a protected runtime environment diagnostic endpoint for the RAG
+  agent, including non-secret environment reporting, secret-name redaction, JWT
+  protection expectations, logging constraints, and unit test coverage.
+
 ## 2026-06-23
 
 - Specified optional Langfuse observability for Responses API calls, including

@@ -11,7 +11,7 @@ The agent must expose a JSON-based API, validate incoming requests, manage conve
 This document covers:
 
 - FastAPI packaging.
-- HTTP endpoints.
+- HTTP endpoints, including runtime configuration inspection.
 - JSON input and output behavior.
 - Request validation through JSON Schema.
 - Conversation handling integration.
@@ -45,7 +45,7 @@ The exact Python package layout may be refined by implementation-specific specif
 
 ## HTTP Endpoints
 
-The agent must expose two endpoints.
+The agent must expose three endpoints.
 
 ### Health Endpoint
 
@@ -74,6 +74,54 @@ POST /responses
 The request endpoint must accept a JSON payload, validate it, manage conversation state, call the Responses API, and return a JSON response.
 
 The endpoint name may be revisited before implementation if a later API contract specification standardizes a different route.
+
+### Runtime Environment Endpoint
+
+```http
+GET /config/environment
+```
+
+The runtime environment endpoint must return the environment variables visible
+to the agent process, excluding secret values.
+
+The endpoint is intended for deployment diagnostics. It must help operators
+verify which runtime variables were injected into a local container or OCI
+Enterprise AI Hosted Application without exposing credentials.
+
+The endpoint must return a JSON response with deterministic key ordering.
+
+Example response:
+
+```json
+{
+  "environment": {
+    "OCI_COMPARTMENT_ID": "ocid1.compartment.oc1..example",
+    "OCI_MODEL_ID": "cohere.command-a-03-2025",
+    "OCI_PROJECT_ID": "ocid1.genaiagentproject.oc1..example",
+    "OCI_REGION": "eu-frankfurt-1",
+    "OCI_VECTOR_STORE_ID": "ocid1.genaiagentvectorstore.oc1..example"
+  },
+  "redacted": [
+    "OPENAI_API_KEY"
+  ]
+}
+```
+
+Secret environment variables must be omitted from `environment` and listed by
+name only in `redacted`.
+
+Secret classification must follow the handling rules in
+[Security](0007-security.md). At minimum, variables whose names contain
+`SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `API_KEY`, `PRIVATE_KEY`, `CLIENT_SECRET`,
+or `AUTH` must be treated as secrets.
+
+The endpoint must not return placeholders, masked values, value lengths, hashes,
+or any other derived representation of secret values.
+
+When the deployed agent is protected by platform-level JWT authentication, this
+endpoint must be protected in the same way as the other agent endpoints. A caller
+must not be able to read runtime configuration without satisfying the same
+authentication requirements that apply to `POST /responses`.
 
 ## JSON Input And Output
 
@@ -347,6 +395,11 @@ Environment variable names must be treated as part of the public deployment cont
 
 Configuration values must not be hardcoded in the application code.
 
+The `GET /config/environment` endpoint must inspect the actual process
+environment at request time. It must not be limited to the variables documented
+in this specification because OCI Hosted Applications and local execution may
+inject additional non-secret diagnostic settings.
+
 For Docker Compose based local deployment, environment variables must be loaded from a `.env` file located in the repository root.
 
 The `.env` file must not be committed to version control. The repository must provide a tracked `.env.sample` file documenting the required variables.
@@ -388,6 +441,9 @@ logs during normal operation.
 
 Logs must never include `OPENAI_API_KEY` or other secrets.
 
+Logs for `GET /config/environment` must include request metadata only. They must
+not log returned environment values or redacted secret names.
+
 Logs must avoid recording complete user requests or full model responses because they may contain sensitive information.
 
 ## Timeout And Retry
@@ -411,6 +467,11 @@ Tests that exercise Responses API behavior must mock the `openai` client. Unit t
 The MVP test suite must cover:
 
 - `GET /health`.
+- `GET /config/environment` returning non-secret environment variables.
+- `GET /config/environment` omitting secret values and listing only redacted
+  secret names.
+- `GET /config/environment` treating common secret-like environment variable
+  names as secrets.
 - JSON Schema validation for valid and invalid requests.
 - Missing required environment variables.
 - New conversation creation with `client.conversations.create`.
@@ -432,6 +493,12 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The default runtime port is `8080`.
 - The agent can be started with `uvicorn`.
 - `GET /health` returns a JSON health response.
+- `GET /config/environment` returns a JSON environment response for deployment
+  diagnostics.
+- `GET /config/environment` omits all secret values and returns only secret
+  variable names in `redacted`.
+- `GET /config/environment` is protected by the same platform-level JWT
+  authentication as other agent endpoints when the deployed agent is protected.
 - `POST /responses` accepts JSON input and returns JSON output.
 - `POST /responses` supports `stream=true` and returns `text/event-stream`.
 - The request payload is validated against [Agent Request Schema](../schemas/agent-request.schema.json) before processing.

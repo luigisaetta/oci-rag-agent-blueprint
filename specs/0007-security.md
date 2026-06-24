@@ -13,6 +13,7 @@ This document covers:
 - Agent access to OCI Enterprise AI resources.
 - OpenAI-compatible API key authentication.
 - Required security-related environment variables.
+- Secret redaction rules for runtime diagnostics.
 - Advantages and disadvantages of the MVP approach.
 - Future support for OCI-native Resource Principal authentication.
 
@@ -70,6 +71,39 @@ The following environment variables are relevant to the current security model:
 
 The project, API key, model, and vector store must belong to the same OCI region.
 
+## Runtime Diagnostic Redaction
+
+The agent may expose a diagnostic endpoint that returns runtime environment
+variables for deployment troubleshooting, as defined in
+[Agent Implementation](0003-agent-implementation.md).
+
+That endpoint must never expose secret values.
+
+The implementation must classify an environment variable as secret when its name
+contains one of the following case-insensitive fragments:
+
+- `SECRET`
+- `TOKEN`
+- `PASSWORD`
+- `PASS`
+- `API_KEY`
+- `PRIVATE_KEY`
+- `CLIENT_SECRET`
+- `AUTH`
+
+The implementation may classify additional variable names as secrets when there
+is any reasonable chance that they contain credentials or sensitive access data.
+
+For classified secrets, diagnostic responses may include only the environment
+variable name in a `redacted` list. Diagnostic responses must not include masked
+values, partial values, hashes, lengths, prefixes, suffixes, or derived
+representations of secret values.
+
+When the agent deployment is protected by platform-level JWT authentication, the
+runtime diagnostic endpoint must be protected by the same authentication policy.
+The endpoint must not introduce an unauthenticated path for reading runtime
+configuration.
+
 ## Advantages
 
 The OpenAI-compatible API key approach has the following advantages:
@@ -101,6 +135,9 @@ The implementation and deployment must follow these rules:
 - Hosted deployment must inject `OPENAI_API_KEY` through managed runtime configuration.
 - The agent must never log the API key.
 - Error responses must not include secrets, full environment dumps, or complete runtime configuration.
+- Runtime diagnostic responses may include non-secret environment values, but
+  must omit all secret values according to the runtime diagnostic redaction
+  rules.
 - Documentation must refer to the variable name and must not include real API key values.
 
 ## Future OCI-Native Security Model
