@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-24
 
+- Added a numbered roadmap document with a first future improvement proposal for
+  replacing OpenAI-compatible API key authentication with OCI Resource Principal
+  and Dynamic Group based IAM authorization.
 - Fixed the Agent Factory container UI default so remote browsers derive the
   Factory API endpoint from the current UI hostname instead of using
   `localhost`, while preserving explicit `NEXT_PUBLIC_FACTORY_API_URL`

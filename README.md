@@ -65,6 +65,8 @@ Use these guides depending on what you want to do:
   detailed hosted deployment procedure.
 - [Troubleshooting FAQ](TROUBLESHOOTING.md): recurring operational issues and
   fixes.
+- [Possible Future Improvements](ROADMAP.md): numbered roadmap proposals for
+  future blueprint enhancements.
 
 ## What You Get
 
