@@ -377,8 +377,8 @@ Agent Factory must collect the following inputs.
 | Identity Domain URL | Conditional | Required when JWT protection is enabled. Must be the exact `https://` Identity Domain URL from OCI Console. The backend must not derive this URL from a display name. |
 | Scope | Conditional | Required when JWT protection is enabled. Identifies the JWT `scope` claim expected by the protected Hosted Application. The backend must keep this value separate from the audience when rendering `idcsConfig.scope`. |
 | Audience | Conditional | Required when JWT protection is enabled. Identifies the JWT `aud` claim expected by the protected Hosted Application. |
-| Confidential application client ID | Token validation only | Required only when the user validates an IDCS token from the UI. Must not be written to Hosted Application runtime config. |
-| Confidential application secret | Token validation only | Required only when the user validates an IDCS token from the UI. Must never be returned in API responses. |
+| Confidential application client ID | Token validation and live health validation | Required when the user validates an IDCS token from the UI or runs a live deployment with JWT protection enabled. Must not be written to Hosted Application runtime config. |
+| Confidential application secret | Token validation and live health validation | Required when the user validates an IDCS token from the UI or runs a live deployment with JWT protection enabled. Must never be returned in API responses. |
 | Confidential application | No | The confidential application must already exist. Creating or managing its client credentials remains out of scope. |
 | Endpoint visibility | Yes | Must be `public` in the first implementation. |
 | Network mode | Yes | Must be `oracle_managed` in the first implementation. |
@@ -487,7 +487,10 @@ Agent Factory must run the deployment workflow in the following order.
     working `oci-enterprise-ai-deployer` flow. The create command must return
     parseable JSON so the backend can capture the Hosted Deployment identifier.
 16. Wait for deployment activation or readiness with OCI CLI.
-17. Validate the deployed `GET /health` endpoint when reachable.
+17. Validate the deployed `GET /health` endpoint when reachable. If Hosted
+    Application JWT protection is enabled, the backend must acquire a temporary
+    IDCS client-credentials access token from the configured confidential
+    application settings and send it as `Authorization: Bearer <token>`.
 18. Return final deployment outputs.
 
 Hosted Deployment readiness must not be treated as successful while the
@@ -624,6 +627,13 @@ The first implementation must use Oracle-managed networking.
 When requested, the backend must enable Hosted Application inbound authentication
 by generating an IDCS auth config. The backend must not create or modify the
 confidential application, store client secrets, or acquire end-user tokens.
+
+For live deployments with JWT protection enabled, the backend may acquire a
+temporary client-credentials token only to validate the deployed `/health`
+endpoint. The token must not be logged, persisted, returned in API responses, or
+included in generated command previews. If the confidential application client
+ID or secret is missing, the live health validation step must fail with a clear
+configuration error instead of calling the protected endpoint anonymously.
 
 The first implementation must not configure private endpoint networking or
 custom VCN/subnet resources.

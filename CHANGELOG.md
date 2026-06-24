@@ -17,6 +17,9 @@ changes, or documentation updates are introduced.
 - Updated the reference UI sidebar to load protected agent runtime metadata and
   show the active model, document search result limit, region, and streaming
   finalization mode without exposing secrets.
+- Fixed Agent Factory live health validation for JWT-protected Hosted
+  Applications by acquiring a temporary IDCS client-credentials token and
+  sending it as a Bearer token on `/health`.
 
 ## 2026-06-23
 

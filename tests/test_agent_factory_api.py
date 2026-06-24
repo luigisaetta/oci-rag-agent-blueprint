@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-24
 License: MIT
 Description: Unit tests for the Agent Factory FastAPI skeleton.
 """
@@ -41,6 +41,7 @@ from agent_factory_api.executor import (  # pylint: disable=wrong-import-positio
     _find_existing_hosted_application_id,
     _load_json_output,
     _replace_placeholders,
+    _run_health_check,
 )
 from agent_factory_api.ready_script import (  # pylint: disable=wrong-import-position
     LANGFUSE_SECRET_KEY_MARKER,
@@ -2181,6 +2182,114 @@ def test_executor_replaces_embedded_placeholders() -> None:
         "print('ok')",
         "https://agent.example.test/actions/invoke/health",
     ]
+
+
+def test_executor_uses_idcs_bearer_token_for_protected_health_check(
+    monkeypatch,
+) -> None:
+    """Test protected health checks send an IDCS Bearer token."""
+
+    completed_progress = []
+    captured_request = {}
+    payload = _valid_payload()
+    payload.update(
+        {
+            "jwt_protection_enabled": True,
+            "identity_domain_url": "https://idcs-example.identity.oraclecloud.com",
+            "auth_audience": "rag-agent",
+            "auth_scope": "invoke",
+            "confidential_application_id": "client-id",
+            "confidential_application_secret": "client-secret",
+        }
+    )
+
+    class FakeHealthResponse:
+        """Context manager response for a fake protected health endpoint."""
+
+        def __enter__(self) -> "FakeHealthResponse":
+            """Return the fake response."""
+
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            """Exit the fake response context."""
+
+        def read(self) -> bytes:
+            """Return a fake health response body."""
+
+            return b'{"status":"ok"}'
+
+    def fake_fetch_access_token(token_input: Any, token_request_scope: str) -> str:
+        assert token_input.identity_domain_url == (
+            "https://idcs-example.identity.oraclecloud.com"
+        )
+        assert token_input.confidential_application_id == "client-id"
+        assert token_input.confidential_application_secret == "client-secret"
+        assert token_request_scope == "rag-agentinvoke"
+        return "jwt-token"
+
+    def fake_urlopen(http_request: Any, timeout: int) -> FakeHealthResponse:
+        captured_request["url"] = http_request.full_url
+        captured_request["authorization"] = http_request.headers["Authorization"]
+        captured_request["timeout"] = timeout
+        return FakeHealthResponse()
+
+    monkeypatch.setattr(
+        factory_executor,
+        "fetch_idcs_access_token",
+        fake_fetch_access_token,
+    )
+    monkeypatch.setattr(factory_executor.request, "urlopen", fake_urlopen)
+
+    _run_health_check(
+        payload=payload,
+        endpoint_url="https://agent.example.test/actions/invoke",
+        command=["python", "-c", "unused"],
+        progress_callback=lambda step_id, status, outputs: completed_progress.append(
+            (step_id, status, outputs)
+        ),
+        cwd=PROJECT_ROOT,
+        secrets=["client-secret"],
+    )
+
+    assert captured_request == {
+        "url": "https://agent.example.test/actions/invoke/health",
+        "authorization": "Bearer jwt-token",
+        "timeout": 30,
+    }
+    assert completed_progress == [
+        ("health", "running", {"auth": "idcs"}),
+        ("health", "succeeded", {"authenticated": True, "auth": "idcs"}),
+    ]
+
+
+def test_executor_protected_health_check_requires_confidential_app_secret() -> None:
+    """Test protected health checks fail clearly when token settings are missing."""
+
+    payload = _valid_payload()
+    payload.update(
+        {
+            "jwt_protection_enabled": True,
+            "identity_domain_url": "https://idcs-example.identity.oraclecloud.com",
+            "auth_audience": "rag-agent",
+            "auth_scope": "invoke",
+            "confidential_application_id": "client-id",
+            "confidential_application_secret": "",
+        }
+    )
+
+    with pytest.raises(CommandExecutionError) as exc_info:
+        _run_health_check(
+            payload=payload,
+            endpoint_url="https://agent.example.test/actions/invoke",
+            command=["python", "-c", "unused"],
+            progress_callback=lambda *_args: None,
+            cwd=PROJECT_ROOT,
+            secrets=[],
+        )
+
+    assert exc_info.value.step_id == "health"
+    assert "confidential_application_secret" in str(exc_info.value)
 
 
 def test_control_plane_auth_mode_defaults_to_user_principal() -> None:

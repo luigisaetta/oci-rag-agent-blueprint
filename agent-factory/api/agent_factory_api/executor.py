@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-24
 License: MIT
 Description: Live command execution helpers for Agent Factory deployments.
 """
@@ -17,12 +17,19 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
+from urllib import request
 
 from agent_factory_api.commands import (
     build_agent_runtime_environment,
     build_hosted_application_artifacts,
     build_ocir_registry,
     build_resolved_identifiers,
+)
+from agent_factory_api.idcs import (
+    IdcsTokenValidationError,
+    IdcsTokenValidationInput,
+    build_token_request_scope,
+    fetch_idcs_access_token,
 )
 
 ProgressCallback = Callable[[str, str, dict[str, Any] | None], None]
@@ -216,13 +223,14 @@ def execute_live_deployment_commands(  # pylint: disable=too-many-locals
         )
         outputs["endpoint_url"] = endpoint_url
         try:
-            _run_step(
-                "health",
-                _replace_placeholders(
+            _run_health_check(
+                payload=payload,
+                endpoint_url=endpoint_url,
+                command=_replace_placeholders(
                     _command(commands_by_step_id, "health"),
                     {"<deployed-health-endpoint>": endpoint_url.rstrip("/")},
                 ),
-                progress_callback,
+                progress_callback=progress_callback,
                 cwd=repo_root,
                 secrets=_deployment_secrets(payload),
             )
@@ -246,12 +254,144 @@ def _deployment_secrets(payload: dict[str, Any]) -> list[str]:
         list[str]: Secret values present in the deployment payload.
     """
 
-    secret_fields = ("ocir_password", "openai_api_key", "langfuse_secret_key")
+    secret_fields = (
+        "ocir_password",
+        "openai_api_key",
+        "confidential_application_secret",
+        "langfuse_secret_key",
+    )
     return [
         str(payload[field_name])
         for field_name in secret_fields
         if payload.get(field_name)
     ]
+
+
+def _run_health_check(  # pylint: disable=too-many-arguments
+    *,
+    payload: dict[str, Any],
+    endpoint_url: str,
+    command: list[str],
+    progress_callback: ProgressCallback,
+    cwd: Path,
+    secrets: list[str],
+) -> None:
+    """Validate the deployed health endpoint with optional JWT authentication.
+
+    Args:
+        payload: Normalized deployment payload.
+        endpoint_url: Hosted Application invoke base URL.
+        command: Planned unauthenticated health command.
+        progress_callback: Callback used to update step state.
+        cwd: Working directory for unauthenticated command execution.
+        secrets: Secret values to redact from diagnostics.
+
+    Raises:
+        CommandExecutionError: If health validation fails.
+    """
+
+    if not payload.get("jwt_protection_enabled"):
+        _run_step(
+            "health",
+            command,
+            progress_callback,
+            cwd=cwd,
+            secrets=secrets,
+        )
+        return
+
+    progress_callback("health", "running", {"auth": "idcs"})
+    access_token = ""
+    try:
+        access_token = _fetch_health_check_access_token(payload)
+        _open_health_endpoint(
+            health_url=f"{endpoint_url.rstrip('/')}/health",
+            access_token=access_token,
+        )
+    except (IdcsTokenValidationError, ValueError) as exc:
+        raise CommandExecutionError("health", str(exc)) from exc
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        sanitized_error = _sanitize_text(str(exc), [*secrets, access_token])
+        raise CommandExecutionError(
+            "health",
+            f"Authenticated health check failed: {sanitized_error}",
+        ) from exc
+
+    progress_callback(
+        "health",
+        "succeeded",
+        {"authenticated": True, "auth": "idcs"},
+    )
+
+
+def _fetch_health_check_access_token(payload: dict[str, Any]) -> str:
+    """Fetch an IDCS access token for protected Hosted Application health checks.
+
+    Args:
+        payload: Normalized deployment payload.
+
+    Returns:
+        str: Access token to send to the Hosted Application endpoint.
+
+    Raises:
+        ValueError: If the confidential application settings are incomplete.
+        IdcsTokenValidationError: If token acquisition fails.
+    """
+
+    token_input = IdcsTokenValidationInput(
+        identity_domain_url=str(payload.get("identity_domain_url", "")),
+        confidential_application_id=str(payload.get("confidential_application_id", "")),
+        confidential_application_secret=str(
+            payload.get("confidential_application_secret", "")
+        ),
+        audience_claim=str(payload.get("auth_audience", "")),
+        scope_claim=str(payload.get("auth_scope", "")),
+    )
+    missing_fields = [
+        field_name
+        for field_name, value in (
+            ("identity_domain_url", token_input.identity_domain_url),
+            (
+                "confidential_application_id",
+                token_input.confidential_application_id,
+            ),
+            (
+                "confidential_application_secret",
+                token_input.confidential_application_secret,
+            ),
+            ("auth_audience", token_input.audience_claim),
+            ("auth_scope", token_input.scope_claim),
+        )
+        if not value
+    ]
+    if missing_fields:
+        names = ", ".join(missing_fields)
+        raise ValueError(
+            "Missing IDCS health check configuration for protected Hosted "
+            f"Application: {names}"
+        )
+
+    return fetch_idcs_access_token(
+        token_input,
+        build_token_request_scope(token_input),
+    )
+
+
+def _open_health_endpoint(health_url: str, access_token: str) -> None:
+    """Open a protected Hosted Application health endpoint.
+
+    Args:
+        health_url: Full Hosted Application health URL.
+        access_token: IDCS access token.
+    """
+
+    health_request = request.Request(
+        health_url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        method="GET",
+    )
+    with request.urlopen(health_request, timeout=30) as response:
+        response.read()
 
 
 def _run_step(  # pylint: disable=too-many-arguments
