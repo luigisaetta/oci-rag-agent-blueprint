@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-24
 
+- Specified a local document loader script that uploads PDF, text, and Markdown
+  files to the configured Object Storage bucket and triggers a Vector Store Data
+  Sync Connector file sync job.
 - Added a numbered roadmap document with a first future improvement proposal for
   replacing OpenAI-compatible API key authentication with OCI Resource Principal
   and Dynamic Group based IAM authorization.
