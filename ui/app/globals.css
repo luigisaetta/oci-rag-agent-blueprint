@@ -291,6 +291,103 @@ button {
   color: var(--danger);
 }
 
+.runtimePanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.runtimeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtimeHeader div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.runtimeHeader span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.runtimeHeader small {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtimeHeader small.loading {
+  color: var(--muted);
+}
+
+.runtimeHeader small.succeeded {
+  color: var(--accent-strong);
+}
+
+.runtimeHeader small.unavailable {
+  color: var(--danger);
+}
+
+.miniAction {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.miniAction:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.miniAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.runtimeGrid {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.runtimeGrid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.runtimeGrid dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.runtimeGrid dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .themeControl {
   display: grid;
   grid-template-columns: 1fr 1fr;

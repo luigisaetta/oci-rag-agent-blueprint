@@ -1,17 +1,25 @@
 const TOKEN_REFRESH_SKEW_MILLISECONDS = 60_000;
 
 export function buildHealthUrl(backendUrl) {
+  return buildSiblingBackendUrl(backendUrl, "health");
+}
+
+export function buildEnvironmentUrl(backendUrl) {
+  return buildSiblingBackendUrl(backendUrl, "config/environment");
+}
+
+function buildSiblingBackendUrl(backendUrl, siblingPath) {
   const trimmedUrl = backendUrl.trim();
 
   if (!trimmedUrl) {
-    return "/health";
+    return `/${siblingPath}`;
   }
 
   if (/\/responses\/?$/u.test(trimmedUrl)) {
-    return trimmedUrl.replace(/\/responses\/?$/u, "/health");
+    return trimmedUrl.replace(/\/responses\/?$/u, `/${siblingPath}`);
   }
 
-  return `${trimmedUrl.replace(/\/$/u, "")}/health`;
+  return `${trimmedUrl.replace(/\/$/u, "")}/${siblingPath}`;
 }
 
 export function isAccessTokenUsable(tokenState, nowMilliseconds = Date.now()) {

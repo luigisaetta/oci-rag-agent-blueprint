@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { buildHealthUrl, buildTokenState, isAccessTokenUsable } from "./auth.mjs";
+import {
+  buildEnvironmentUrl,
+  buildHealthUrl,
+  buildTokenState,
+  isAccessTokenUsable
+} from "./auth.mjs";
 import { parseSseFrame } from "./sse.mjs";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
@@ -17,6 +22,11 @@ const EMPTY_IDCS_CONFIG = {
   clientId: "",
   clientSecret: "",
   scope: ""
+};
+const EMPTY_AGENT_RUNTIME = {
+  status: "idle",
+  message: "Not loaded",
+  values: {}
 };
 
 function createMessage(role, content, status = "complete") {
@@ -57,6 +67,17 @@ function AssistantMessageContent({ message }) {
   );
 }
 
+function extractAgentRuntime(environmentPayload) {
+  const environment = environmentPayload?.environment ?? {};
+
+  return {
+    modelId: environment.OCI_MODEL_ID || "Unavailable",
+    fileSearchMaxResults: environment.FILE_SEARCH_MAX_NUM_RESULTS || "10",
+    region: environment.OCI_REGION || "",
+    streamFinalizationMode: environment.STREAM_FINALIZATION_MODE || ""
+  };
+}
+
 export default function Home() {
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL);
   const [conversationId, setConversationId] = useState("");
@@ -69,6 +90,8 @@ export default function Home() {
   const [tokenState, setTokenState] = useState(null);
   const [isTestingHealth, setIsTestingHealth] = useState(false);
   const [healthStatus, setHealthStatus] = useState(null);
+  const [agentRuntime, setAgentRuntime] = useState(EMPTY_AGENT_RUNTIME);
+  const [isLoadingAgentRuntime, setIsLoadingAgentRuntime] = useState(false);
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -91,6 +114,8 @@ export default function Home() {
     !isSending &&
     (!jwtEnabled || hasIdcsConfig(idcsConfig));
   const canTestHealth = !isTestingHealth && (!jwtEnabled || hasIdcsConfig(idcsConfig));
+  const canLoadAgentRuntime =
+    !isLoadingAgentRuntime && (!jwtEnabled || hasIdcsConfig(idcsConfig));
 
   const conversationLabel = useMemo(() => {
     if (!conversationId) {
@@ -127,7 +152,7 @@ export default function Home() {
     setHealthStatus(null);
   }
 
-  async function getBearerToken() {
+  const getBearerToken = useCallback(async () => {
     if (!jwtEnabled) {
       return null;
     }
@@ -157,7 +182,58 @@ export default function Home() {
     const nextTokenState = buildTokenState(payload);
     setTokenState(nextTokenState);
     return nextTokenState.accessToken;
-  }
+  }, [idcsConfig, jwtEnabled, tokenState]);
+
+  const loadAgentRuntime = useCallback(async () => {
+    if (jwtEnabled && !hasIdcsConfig(idcsConfig)) {
+      setAgentRuntime({
+        status: "unavailable",
+        message: "JWT settings required",
+        values: {}
+      });
+      return;
+    }
+
+    setIsLoadingAgentRuntime(true);
+    setAgentRuntime((currentRuntime) => ({
+      ...currentRuntime,
+      status: "loading",
+      message: "Loading"
+    }));
+
+    try {
+      const bearerToken = await getBearerToken();
+      const headers = bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {};
+      const response = await fetch(buildEnvironmentUrl(backendUrl), { headers });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Runtime metadata returned HTTP ${response.status}`);
+      }
+
+      setAgentRuntime({
+        status: "succeeded",
+        message: "Loaded",
+        values: extractAgentRuntime(payload)
+      });
+    } catch (error) {
+      setAgentRuntime({
+        status: "unavailable",
+        message: error.message || "Unavailable",
+        values: {}
+      });
+    } finally {
+      setIsLoadingAgentRuntime(false);
+    }
+  }, [backendUrl, getBearerToken, idcsConfig, jwtEnabled]);
+
+  useEffect(() => {
+    const refreshTimeout = window.setTimeout(() => {
+      loadAgentRuntime();
+    }, 0);
+
+    return () => window.clearTimeout(refreshTimeout);
+  }, [loadAgentRuntime]);
 
   async function testHealthAccess() {
     if (!canTestHealth) {
@@ -182,6 +258,7 @@ export default function Home() {
         status: "succeeded",
         message: responseText || "Health check succeeded."
       });
+      await loadAgentRuntime();
     } catch (error) {
       setHealthStatus({
         status: "failed",
@@ -451,6 +528,47 @@ export default function Home() {
               {healthStatus.message}
             </p>
           ) : null}
+        </section>
+
+        <section className="runtimePanel" aria-label="Agent runtime">
+          <div className="runtimeHeader">
+            <div>
+              <span>Agent runtime</span>
+              <small className={agentRuntime.status}>{agentRuntime.message}</small>
+            </div>
+            <button
+              className="miniAction"
+              type="button"
+              disabled={!canLoadAgentRuntime}
+              onClick={loadAgentRuntime}
+            >
+              {isLoadingAgentRuntime ? "Loading" : "Refresh"}
+            </button>
+          </div>
+          <dl className="runtimeGrid">
+            <div>
+              <dt>Model</dt>
+              <dd title={agentRuntime.values.modelId ?? "Unavailable"}>
+                {agentRuntime.values.modelId ?? "Unavailable"}
+              </dd>
+            </div>
+            <div>
+              <dt>Documents</dt>
+              <dd>{agentRuntime.values.fileSearchMaxResults ?? "Unavailable"}</dd>
+            </div>
+            {agentRuntime.values.region ? (
+              <div>
+                <dt>Region</dt>
+                <dd>{agentRuntime.values.region}</dd>
+              </div>
+            ) : null}
+            {agentRuntime.values.streamFinalizationMode ? (
+              <div>
+                <dt>Stream mode</dt>
+                <dd>{agentRuntime.values.streamFinalizationMode}</dd>
+              </div>
+            ) : null}
+          </dl>
         </section>
 
         <div className="themeControl" aria-label="Theme selector">

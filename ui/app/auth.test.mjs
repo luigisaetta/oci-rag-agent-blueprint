@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildHealthUrl, buildTokenState, isAccessTokenUsable } from "./auth.mjs";
+import {
+  buildEnvironmentUrl,
+  buildHealthUrl,
+  buildTokenState,
+  isAccessTokenUsable
+} from "./auth.mjs";
 
 test("buildHealthUrl derives health endpoint from responses endpoint", () => {
   assert.equal(
@@ -16,6 +21,24 @@ test("buildHealthUrl derives health endpoint from responses endpoint", () => {
 
 test("buildHealthUrl appends health when backend URL is a base URL", () => {
   assert.equal(buildHealthUrl("https://example.com/invoke"), "https://example.com/invoke/health");
+});
+
+test("buildEnvironmentUrl derives environment endpoint from responses endpoint", () => {
+  assert.equal(
+    buildEnvironmentUrl("https://example.com/invoke/responses"),
+    "https://example.com/invoke/config/environment"
+  );
+  assert.equal(
+    buildEnvironmentUrl("https://example.com/invoke/responses/"),
+    "https://example.com/invoke/config/environment"
+  );
+});
+
+test("buildEnvironmentUrl appends config path when backend URL is a base URL", () => {
+  assert.equal(
+    buildEnvironmentUrl("https://example.com/invoke"),
+    "https://example.com/invoke/config/environment"
+  );
 });
 
 test("isAccessTokenUsable rejects missing and nearly expired tokens", () => {

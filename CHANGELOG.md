@@ -14,6 +14,9 @@ changes, or documentation updates are introduced.
 - Implemented the RAG agent runtime environment diagnostic endpoint with
   reusable secret-name classification, deterministic non-secret reporting, and
   FastAPI unit tests.
+- Updated the reference UI sidebar to load protected agent runtime metadata and
+  show the active model, document search result limit, region, and streaming
+  finalization mode without exposing secrets.
 
 ## 2026-06-23
 

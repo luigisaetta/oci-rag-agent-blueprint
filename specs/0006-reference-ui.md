@@ -15,6 +15,7 @@ This document covers:
 - Backend URL configuration.
 - Optional JWT Bearer authentication for OCI Enterprise AI Hosted Application
   endpoints.
+- Agent runtime summary display from the backend diagnostic endpoint.
 - Conversation reset behavior.
 - Streaming response rendering.
 - Waiting indicator while the assistant response has not produced tokens yet.
@@ -58,6 +59,7 @@ The sidebar must include:
 
 - A button that clears the visible chat and starts a new conversation on the next user request.
 - An editable text field for the backend URL.
+- A compact agent runtime summary loaded from the backend diagnostic endpoint.
 - A light/dark theme control.
 
 The backend URL field must default to the local Docker Compose backend endpoint:
@@ -89,6 +91,31 @@ Authorization: Bearer <access-token>
 
 When JWT authentication is disabled, the health check must call `/health`
 without an authorization header.
+
+The UI must load a compact agent runtime summary from the backend
+`/config/environment` endpoint derived from the configured `/responses` URL.
+When JWT authentication is enabled, the UI must acquire an IDCS access token and
+send it as a Bearer authorization header for this request. When JWT
+authentication is disabled, no authorization header must be sent.
+
+The sidebar runtime summary must display:
+
+- `OCI_MODEL_ID`, labeled as the agent model.
+- `FILE_SEARCH_MAX_NUM_RESULTS`, labeled as the document search result limit.
+- `OCI_REGION`, when available.
+- `STREAM_FINALIZATION_MODE`, when available.
+
+If `FILE_SEARCH_MAX_NUM_RESULTS` is omitted by the backend environment response,
+the UI may display the documented agent default value `10`.
+
+The runtime summary must not display secret values, raw redacted values, or full
+environment dumps. It must ignore the backend `redacted` list except for knowing
+that redaction occurred.
+
+The runtime summary must be refreshed when the backend URL changes, when JWT
+authentication settings change, after a successful health check, and through a
+manual refresh action in the sidebar. Failure to load runtime metadata must show
+a compact unavailable status without blocking chat requests.
 
 The main area must display user and agent messages in a familiar chatbot style.
 
@@ -246,6 +273,14 @@ The `rag-ui` service must:
   only when JWT authentication is enabled.
 - The UI provides a `/health` test action and sends the Bearer token only when
   JWT authentication is enabled.
+- The UI loads `/config/environment` from the configured backend and sends the
+  Bearer token only when JWT authentication is enabled.
+- The sidebar displays the agent model and document search result limit from
+  backend runtime metadata.
+- The sidebar may also display non-secret region and streaming finalization mode
+  values when available.
+- The UI does not display secret values, raw redacted values, or full
+  environment dumps from runtime metadata.
 - The UI supports light and dark themes.
 - The UI displays user and assistant messages in chatbot style.
 - The UI renders assistant Markdown responses correctly.
