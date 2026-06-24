@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-24
 License: MIT
 Description: Optional Langfuse tracing helpers for Responses API calls.
 """
@@ -10,20 +10,50 @@ from __future__ import annotations
 # pylint: disable=duplicate-code
 
 from contextlib import contextmanager, nullcontext
-from typing import Any, Iterator
+from dataclasses import dataclass
+from typing import Any, Callable, Iterator, cast
 
 from agent.config import AgentSettings
 
 
+@dataclass
+class ObservationRecorder:
+    """Small wrapper used to update optional Langfuse observation content.
+
+    Attributes:
+        observation: Active Langfuse observation object, or `None` when
+            Langfuse is disabled.
+    """
+
+    observation: Any | None = None
+
+    def set_output(self, output: Any) -> None:
+        """Set the active Langfuse observation output when available.
+
+        Args:
+            output: Output payload to attach to the current observation.
+        """
+
+        if self.observation is None:
+            return
+
+        update = cast(
+            Callable[..., None] | None, getattr(self.observation, "update", None)
+        )
+        if update is not None:
+            update(output=output)
+
+
 @contextmanager
-def responses_observation(
+def responses_observation(  # pylint: disable=too-many-arguments
     settings: AgentSettings,
     *,
     name: str,
     conversation_id: str,
     stream: bool,
     response_id: str | None = None,
-) -> Iterator[None]:
+    input_data: Any | None = None,
+) -> Iterator[ObservationRecorder]:
     """Create an optional Langfuse observation for a Responses API operation.
 
     Args:
@@ -32,15 +62,16 @@ def responses_observation(
         conversation_id: Active Responses API conversation identifier.
         stream: Whether the operation is a streaming Responses API call.
         response_id: Responses API response identifier, when already known.
+        input_data: Request input to attach to the Langfuse observation.
 
     Yields:
-        None: The wrapped operation executes inside the active observation when
-        Langfuse is enabled; otherwise it executes without instrumentation.
+        ObservationRecorder: Recorder that updates the active observation when
+        Langfuse is enabled; otherwise it safely ignores updates.
     """
 
     if not settings.langfuse_enabled:
         with nullcontext():
-            yield
+            yield ObservationRecorder()
         return
 
     with _langfuse_context(
@@ -49,19 +80,21 @@ def responses_observation(
         conversation_id=conversation_id,
         stream=stream,
         response_id=response_id,
-    ):
-        yield
+        input_data=input_data,
+    ) as recorder:
+        yield recorder
 
 
 @contextmanager
-def _langfuse_context(
+def _langfuse_context(  # pylint: disable=too-many-arguments
     settings: AgentSettings,
     *,
     name: str,
     conversation_id: str,
     stream: bool,
     response_id: str | None,
-) -> Iterator[None]:
+    input_data: Any | None,
+) -> Iterator[ObservationRecorder]:
     """Create the Langfuse context with propagated session attributes.
 
     Args:
@@ -70,9 +103,10 @@ def _langfuse_context(
         conversation_id: Active Responses API conversation identifier.
         stream: Whether the operation is a streaming Responses API call.
         response_id: Responses API response identifier, when already known.
+        input_data: Request input to attach to the Langfuse observation.
 
     Yields:
-        None: Control while the Langfuse context is active.
+        ObservationRecorder: Recorder for updating observation output.
 
     Raises:
         ValueError: If Langfuse is enabled but the package is unavailable.
@@ -106,8 +140,9 @@ def _langfuse_context(
             name=name,
             as_type="span",
             metadata=metadata,
-        ):
-            yield
+            input=input_data,
+        ) as observation:
+            yield ObservationRecorder(observation)
 
 
 def _observation_metadata(

@@ -64,6 +64,15 @@ class FakeOpenAI:
 class FakeObservation:
     """Fake Langfuse observation context manager."""
 
+    def __init__(self, updates: list[dict[str, Any]]) -> None:
+        """Initialize the fake observation.
+
+        Args:
+            updates: Mutable list used to capture observation updates.
+        """
+
+        self.updates = updates
+
     def __enter__(self) -> "FakeObservation":
         """Enter the fake observation context.
 
@@ -76,18 +85,33 @@ class FakeObservation:
     def __exit__(self, *_args: Any) -> None:
         """Exit the fake observation context."""
 
+    def update(self, **kwargs: Any) -> None:
+        """Record a fake observation update.
+
+        Args:
+            **kwargs: Observation update keyword arguments.
+        """
+
+        self.updates.append(kwargs)
+
 
 class FakeLangfuseClient:
     """Fake Langfuse client used to capture observation arguments."""
 
-    def __init__(self, calls: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        calls: list[dict[str, Any]],
+        updates: list[dict[str, Any]],
+    ) -> None:
         """Initialize the fake client.
 
         Args:
             calls: Mutable call list used by assertions.
+            updates: Mutable update list used by assertions.
         """
 
         self.calls = calls
+        self.updates = updates
 
     def start_as_current_observation(self, **kwargs: Any) -> FakeObservation:
         """Record observation arguments and return a fake context manager.
@@ -100,7 +124,7 @@ class FakeLangfuseClient:
         """
 
         self.calls.append(kwargs)
-        return FakeObservation()
+        return FakeObservation(self.updates)
 
 
 class FakePropagateAttributes:
@@ -317,9 +341,13 @@ def test_langfuse_observation_uses_conversation_as_session(
     """Test Langfuse observation propagates conversation session metadata."""
 
     observation_calls: list[dict[str, Any]] = []
+    observation_updates: list[dict[str, Any]] = []
     propagation_calls: list[dict[str, Any]] = []
     fake_langfuse_module = types.ModuleType("langfuse")
-    fake_langfuse_module.get_client = lambda: FakeLangfuseClient(observation_calls)
+    fake_langfuse_module.get_client = lambda: FakeLangfuseClient(
+        observation_calls,
+        observation_updates,
+    )
     fake_langfuse_module.propagate_attributes = (
         lambda **kwargs: FakePropagateAttributes(propagation_calls, kwargs)
     )
@@ -343,11 +371,14 @@ def test_langfuse_observation_uses_conversation_as_session(
         conversation_id="conv-123",
         stream=True,
         response_id="resp-123",
-    ):
-        pass
+        input_data="What is OCI RAG?",
+    ) as observation:
+        observation.set_output("OCI RAG answer")
 
     assert propagation_calls[0]["session_id"] == "conv-123"
     assert propagation_calls[0]["trace_name"] == "oci-rag-agent-response"
     assert propagation_calls[0]["metadata"]["response_id"] == "resp-123"
     assert observation_calls[0]["name"] == "oci-rag-agent-response"
     assert observation_calls[0]["as_type"] == "span"
+    assert observation_calls[0]["input"] == "What is OCI RAG?"
+    assert observation_updates == [{"output": "OCI RAG answer"}]

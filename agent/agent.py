@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-24
 License: MIT
 Description: Core request processing logic for the OCI RAG agent.
 """
@@ -90,11 +90,13 @@ def process_agent_request(
             name="oci-rag-agent-response",
             conversation_id=conversation_id,
             stream=False,
-        ):
+            input_data=payload["user_request"],
+        ) as observation:
             response = client.responses.create(
                 **_build_response_request(payload, settings, conversation_id),
                 timeout=settings.responses_timeout_seconds,
             )
+            observation.set_output(extract_response_text(response))
     except Exception:
         LOGGER.exception(
             "Agent request failed during response creation conversation_id=%s",
@@ -198,7 +200,7 @@ def stream_agent_request(
         yield _format_sse_event("error", {"error": f"Responses API failure: {exc}"})
 
 
-def _stream_response_tokens(
+def _stream_response_tokens(  # pylint: disable=contextmanager-generator-missing-cleanup
     payload: dict[str, Any],
     settings: AgentSettings,
     client: Any,
@@ -224,36 +226,39 @@ def _stream_response_tokens(
             name="oci-rag-agent-response",
             conversation_id=conversation_id,
             stream=True,
-        ):
+            input_data=payload["user_request"],
+        ) as observation:
             stream = client.responses.create(
                 **_build_response_request(payload, settings, conversation_id),
                 timeout=settings.responses_timeout_seconds,
                 stream=True,
             )
+            LOGGER.info(
+                "Responses API streaming response opened conversation_id=%s",
+                conversation_id,
+            )
+            output_tokens = []
+            for event in stream:
+                _capture_stream_response_id(event, stream_state)
+                if stream_state.response_id:
+                    LOGGER.debug(
+                        "Streaming response_id=%s conversation_id=%s",
+                        stream_state.response_id,
+                        conversation_id,
+                    )
+                stream_state.references.extend(extract_references(event))
+                stream_state.usage = extract_usage(event) or stream_state.usage
+                token = _extract_stream_token(event)
+                if token:
+                    output_tokens.append(token)
+                    yield token
+            observation.set_output("".join(output_tokens))
     except Exception:
         LOGGER.exception(
             "Streaming request failed during response creation conversation_id=%s",
             conversation_id,
         )
         raise
-
-    LOGGER.info(
-        "Responses API streaming response opened conversation_id=%s",
-        conversation_id,
-    )
-    for event in stream:
-        _capture_stream_response_id(event, stream_state)
-        if stream_state.response_id:
-            LOGGER.debug(
-                "Streaming response_id=%s conversation_id=%s",
-                stream_state.response_id,
-                conversation_id,
-            )
-        stream_state.references.extend(extract_references(event))
-        stream_state.usage = extract_usage(event) or stream_state.usage
-        token = _extract_stream_token(event)
-        if token:
-            yield token
 
 
 def _capture_stream_response_id(
@@ -301,12 +306,14 @@ def _complete_stream_state_if_needed(
             conversation_id=conversation_id,
             stream=True,
             response_id=stream_state.response_id,
-        ):
+            input_data=stream_state.response_id,
+        ) as observation:
             response = client.responses.retrieve(
                 stream_state.response_id,
                 include=["file_search_call.results"],
                 timeout=settings.responses_timeout_seconds,
             )
+            observation.set_output(extract_response_text(response))
     except Exception as exc:  # pylint: disable=broad-exception-caught
         LOGGER.warning("Unable to retrieve streamed response data: %s", exc)
         return

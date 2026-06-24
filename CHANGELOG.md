@@ -20,6 +20,8 @@ changes, or documentation updates are introduced.
 - Fixed Agent Factory live health validation for JWT-protected Hosted
   Applications by acquiring a temporary IDCS client-credentials token and
   sending it as a Bearer token on `/health`.
+- Fixed Langfuse parent spans so Responses API traces include observation input
+  and output for non-streaming, streaming, and stream-finalization calls.
 
 ## 2026-06-23
 

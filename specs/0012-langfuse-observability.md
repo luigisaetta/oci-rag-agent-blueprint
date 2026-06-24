@@ -146,19 +146,31 @@ Span metadata should include safe operational values when available:
 - `file_search_max_num_results`.
 - `stream_finalization_mode`.
 
+The parent span must set Langfuse observation `input` to the user request text
+for Responses API create calls.
+
+For non-streaming Responses API create calls, the parent span must set
+Langfuse observation `output` to the final assistant response text when the call
+succeeds.
+
+For streaming Responses API create calls, the parent span must remain active
+while response stream events are consumed and must set Langfuse observation
+`output` to the concatenated final-answer token text when the stream completes.
+
+For streaming finalization retrieve calls, the parent span should set
+observation `input` to the retrieved `response_id` and may set observation
+`output` to the retrieved response text when available.
+
 Span metadata must not include:
 
-- Full user prompts.
-- Full model responses.
 - API keys.
 - Langfuse secret keys.
 - Complete environment dumps.
 - Authorization headers.
 
-If input or output capture is enabled through Langfuse's native integration,
-the implementation must rely on Langfuse configuration for that capture and must
-not add a separate project-specific copy of full request or response content to
-logs or metadata.
+Full user prompts and model responses may be sent only through Langfuse
+observation `input` and `output` fields. They must not be duplicated in
+metadata, logs, error responses, or deployment status payloads.
 
 ## Conversation Sessions
 
