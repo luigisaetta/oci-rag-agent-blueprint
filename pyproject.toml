@@ -5,10 +5,10 @@ target-version = ["py311"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=agent --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=agent --cov=clients --cov=management --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]
-source = ["agent", "clients"]
+source = ["agent", "clients", "management"]
 
 [tool.coverage.report]
 show_missing = true

@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-24
 
+- Implemented a management document loader script with local file discovery,
+  Object Storage uploads, Vector Store connector file sync triggering, dry-run
+  support, overwrite handling, documentation, and unit tests.
 - Specified a local document loader script that uploads PDF, text, and Markdown
   files to the configured Object Storage bucket and triggers a Vector Store Data
   Sync Connector file sync job.

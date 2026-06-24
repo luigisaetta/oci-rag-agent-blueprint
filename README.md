@@ -63,6 +63,8 @@ Use these guides depending on what you want to do:
   configuration reference.
 - [OCI Enterprise AI Deployment Guide](docs/oci-enterprise-ai-deployment.md):
   detailed hosted deployment procedure.
+- [Document Loading](docs/document-loading.md): upload local documents to Object
+  Storage and trigger Vector Store connector synchronization.
 - [Troubleshooting FAQ](TROUBLESHOOTING.md): recurring operational issues and
   fixes.
 - [Possible Future Improvements](ROADMAP.md): numbered roadmap proposals for

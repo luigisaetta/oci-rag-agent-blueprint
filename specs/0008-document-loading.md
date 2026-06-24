@@ -145,7 +145,7 @@ Optional arguments:
 Example:
 
 ```bash
-python clients/load_documents.py \
+python -m management.load_documents \
   --directory ./knowledge-base \
   --namespace frpj5kvxryk1 \
   --bucket rag-documents \
