@@ -3,4 +3,5 @@ jsonschema==4.26.0
 langfuse>=3,<4
 oci==2.177.0
 openai==2.41.0
+python-multipart==0.0.20
 uvicorn==0.49.0

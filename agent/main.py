@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-24
+Date last modified: 2026-06-25
 License: MIT
 Description: FastAPI entrypoint for the OCI RAG agent.
 """
@@ -12,12 +12,22 @@ from os import environ
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from agent.agent import process_agent_request, stream_agent_request
 from agent.config import load_settings
+from agent.document_ingestion import (
+    ConnectorIngestionRequest,
+    DocumentIngestionDisabledError,
+    DocumentIngestionError,
+    IncomingDocument,
+    build_oci_document_ingestion_clients,
+    get_connector_ingestion_status,
+    load_document_ingestion_settings,
+    submit_connector_ingestion,
+)
 from agent.environment_diagnostics import build_environment_diagnostics
 from agent.openai_client import create_openai_client
 from agent.schema_validator import (
@@ -25,6 +35,7 @@ from agent.schema_validator import (
     validate_agent_request,
     validate_agent_response,
 )
+from management.document_ingestion import load_file_sync_details_class
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -38,6 +49,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.state.openai_client_factory = create_openai_client
+app.state.document_ingestion_client_factory = build_oci_document_ingestion_clients
+app.state.file_sync_details_factory = load_file_sync_details_class
 
 LOGGER.info("OCI RAG agent application initialized")
 
@@ -156,6 +169,130 @@ async def create_response(request: Request) -> Response:
         return _error_response(f"Responses API failure: {exc}", status_code=502)
 
 
+@app.post("/documents/ingestions")
+async def submit_document_ingestion(
+    request: Request,
+    files: list[UploadFile] | None = File(None),
+    prefix: str = Form(""),
+    sync_display_name: str | None = Form(None),
+    overwrite: bool = Form(False),
+) -> JSONResponse:
+    """Upload documents and submit a connector ingestion job.
+
+    Args:
+        request: FastAPI request object.
+        files: Uploaded document files.
+        prefix: Optional Object Storage object prefix.
+        sync_display_name: Optional connector file sync display name.
+        overwrite: Whether existing Object Storage objects may be replaced.
+
+    Returns:
+        JSONResponse: Ingestion submission result or structured error.
+    """
+
+    try:
+        settings = load_document_ingestion_settings()
+        if not settings.enabled:
+            raise DocumentIngestionDisabledError("Document ingestion is not enabled.")
+        object_storage_client, generative_ai_client = (
+            request.app.state.document_ingestion_client_factory()
+        )
+        incoming_documents = [
+            IncomingDocument(
+                filename=file.filename or "",
+                body=file.file,
+                size_bytes=_uploaded_file_size(file),
+            )
+            for file in files or []
+        ]
+        result = submit_connector_ingestion(
+            ConnectorIngestionRequest(
+                documents=incoming_documents,
+                prefix=prefix,
+                sync_display_name=sync_display_name,
+                overwrite=overwrite,
+                details_factory=request.app.state.file_sync_details_factory(),
+            ),
+            settings,
+            object_storage_client,
+            generative_ai_client,
+        )
+    except ValueError as exc:
+        LOGGER.info(
+            "Document ingestion configuration error request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    except DocumentIngestionError as exc:
+        LOGGER.info(
+            "Document ingestion submission failed request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return JSONResponse({"error": str(exc)}, status_code=exc.status_code)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        LOGGER.exception(
+            "Document ingestion submission failure request_id=%s",
+            _request_id(request),
+        )
+        return JSONResponse(
+            {"error": f"Document ingestion submission failed: {exc}"},
+            status_code=502,
+        )
+
+    return JSONResponse(_document_ingestion_result_payload(result))
+
+
+@app.get("/documents/ingestions/{job_id}")
+async def get_document_ingestion_status(request: Request, job_id: str) -> JSONResponse:
+    """Return the current state of a connector ingestion job.
+
+    Args:
+        request: FastAPI request object.
+        job_id: Connector file sync job identifier.
+
+    Returns:
+        JSONResponse: Connector job status or structured error.
+    """
+
+    try:
+        settings = load_document_ingestion_settings()
+        if not settings.enabled:
+            raise DocumentIngestionDisabledError("Document ingestion is not enabled.")
+        _, generative_ai_client = request.app.state.document_ingestion_client_factory()
+        status = get_connector_ingestion_status(
+            job_id,
+            settings,
+            generative_ai_client,
+        )
+    except ValueError as exc:
+        LOGGER.info(
+            "Document ingestion status configuration error request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    except DocumentIngestionError as exc:
+        LOGGER.info(
+            "Document ingestion status lookup failed request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return JSONResponse({"error": str(exc)}, status_code=exc.status_code)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        LOGGER.exception(
+            "Document ingestion status failure request_id=%s",
+            _request_id(request),
+        )
+        return JSONResponse(
+            {"error": f"Document ingestion status lookup failed: {exc}"},
+            status_code=502,
+        )
+
+    return JSONResponse(_document_ingestion_status_payload(status))
+
+
 def _handle_validated_response_request(
     request: Request,
     validated_payload: dict[str, Any],
@@ -194,6 +331,73 @@ def _handle_validated_response_request(
     )
 
     return JSONResponse(validate_agent_response(response_payload))
+
+
+def _uploaded_file_size(file: UploadFile) -> int:
+    """Return the uploaded file size without consuming its content.
+
+    Args:
+        file: FastAPI uploaded file.
+
+    Returns:
+        int: File size in bytes.
+    """
+
+    if file.size is not None:
+        return int(file.size)
+
+    current_position = file.file.tell()
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(current_position)
+    return size
+
+
+def _document_ingestion_result_payload(result: Any) -> dict[str, Any]:
+    """Convert an ingestion submission result to a JSON-safe payload.
+
+    Args:
+        result: Document ingestion result object.
+
+    Returns:
+        dict[str, Any]: JSON response payload.
+    """
+
+    payload = {
+        "status": "submitted",
+        "job_id": result.job_id,
+        "connector_id": result.connector_id,
+        "namespace": result.namespace,
+        "bucket": result.bucket,
+        "uploaded_objects": result.uploaded_objects,
+        "job_lifecycle_state": result.job_lifecycle_state,
+        "job_trigger_type": result.job_trigger_type,
+        "job_display_name": result.job_display_name,
+    }
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _document_ingestion_status_payload(status: Any) -> dict[str, Any]:
+    """Convert an ingestion job status to a JSON-safe payload.
+
+    Args:
+        status: Document ingestion status object.
+
+    Returns:
+        dict[str, Any]: JSON response payload.
+    """
+
+    payload = {
+        "job_id": status.job_id,
+        "connector_id": status.connector_id,
+        "lifecycle_state": status.lifecycle_state,
+        "display_name": status.display_name,
+        "time_created": status.time_created,
+        "time_updated": status.time_updated,
+        "lifecycle_details": status.lifecycle_details,
+        "trigger_type": status.trigger_type,
+    }
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 def _error_response(error: str, status_code: int) -> JSONResponse:

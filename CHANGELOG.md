@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-25
 
+- Implemented agent-managed connector ingestion endpoints for submitting
+  document uploads through Object Storage and reading Vector Store Data Sync
+  Connector job status, with shared ingestion helpers and mocked unit tests.
 - Specified agent-managed connector ingestion endpoints for uploading documents
   to Object Storage, triggering asynchronous Vector Store Data Sync Connector
   jobs, and reading connector job status without duplicating ingestion logic in

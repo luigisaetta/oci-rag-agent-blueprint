@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-24
+Date last modified: 2026-06-25
 License: MIT
 Description: Upload local knowledge base documents and trigger Vector Store sync.
 """
@@ -13,11 +13,19 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
-SUPPORTED_EXTENSIONS = frozenset({".pdf", ".txt", ".md"})
+from management.document_ingestion import (
+    SUPPORTED_EXTENSIONS,
+    build_default_sync_display_name,
+    format_error,
+    load_file_sync_details_class,
+    normalize_prefix,
+    object_exists,
+    trigger_file_sync as trigger_shared_file_sync,
+)
+
 DEFAULT_OCI_PROFILE = "DEFAULT"
 
 
@@ -182,27 +190,6 @@ def parse_args(argv: list[str] | None = None) -> LoaderConfig:
     )
 
 
-def normalize_prefix(prefix: str) -> str:
-    """Normalize an Object Storage prefix.
-
-    Args:
-        prefix: User-provided prefix.
-
-    Returns:
-        str: Empty prefix or prefix ending with `/`.
-
-    Raises:
-        ValueError: If the prefix starts with `/`.
-    """
-
-    clean_prefix = prefix.strip()
-    if not clean_prefix:
-        return ""
-    if clean_prefix.startswith("/"):
-        raise ValueError("prefix must not start with '/'.")
-    return clean_prefix if clean_prefix.endswith("/") else f"{clean_prefix}/"
-
-
 def validate_config(config: LoaderConfig) -> None:
     """Validate loader configuration before OCI operations.
 
@@ -260,36 +247,6 @@ def discover_documents(
         )
 
     return documents, ignored
-
-
-def object_exists(
-    object_storage_client: ObjectStorageClientProtocol,
-    namespace: str,
-    bucket: str,
-    object_name: str,
-) -> bool:
-    """Return whether an Object Storage object already exists.
-
-    Args:
-        object_storage_client: OCI Object Storage client.
-        namespace: Object Storage namespace.
-        bucket: Object Storage bucket name.
-        object_name: Object name to check.
-
-    Returns:
-        bool: True when the object exists.
-
-    Raises:
-        Exception: Any non-404 client error.
-    """
-
-    try:
-        object_storage_client.head_object(namespace, bucket, object_name)
-        return True
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        if getattr(exc, "status", None) == 404:
-            return False
-        raise
 
 
 def upload_documents(
@@ -357,13 +314,12 @@ def trigger_file_sync(
         Any: OCI file sync response data.
     """
 
-    details_class = details_factory or load_file_sync_details_class()
-    details = details_class(
-        vector_store_connector_id=connector_id,
-        display_name=display_name or build_default_sync_display_name(),
+    return trigger_shared_file_sync(
+        generative_ai_client,
+        connector_id,
+        display_name or build_default_sync_display_name(),
+        details_factory or load_file_sync_details_class(),
     )
-    response = generative_ai_client.create_vector_store_connector_file_sync(details)
-    return response.data
 
 
 def load_documents(
@@ -421,17 +377,6 @@ def load_documents(
     return upload_summary
 
 
-def build_default_sync_display_name() -> str:
-    """Build a readable default sync display name.
-
-    Returns:
-        str: Generated display name.
-    """
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"document-loader-sync-{timestamp}"
-
-
 def load_oci_config(config_file: str | None, profile: str) -> dict[str, Any]:
     """Load an OCI SDK configuration dictionary.
 
@@ -487,42 +432,6 @@ def build_oci_clients(config: LoaderConfig) -> tuple[Any, Any]:
     object_storage_client = oci.object_storage.ObjectStorageClient(oci_config)
     generative_ai_client = oci.generative_ai.GenerativeAiClient(oci_config)
     return object_storage_client, generative_ai_client
-
-
-def load_file_sync_details_class() -> Any:
-    """Load the OCI file sync details model class.
-
-    Returns:
-        Any: CreateVectorStoreConnectorFileSyncDetails class.
-
-    Raises:
-        RuntimeError: If the OCI SDK is unavailable.
-    """
-
-    try:
-        from oci.generative_ai.models import (  # pylint: disable=import-outside-toplevel
-            CreateVectorStoreConnectorFileSyncDetails,
-        )
-    except ImportError as exc:
-        raise RuntimeError("The oci package is required for document loading.") from exc
-
-    return CreateVectorStoreConnectorFileSyncDetails
-
-
-def format_error(exc: Exception) -> str:
-    """Format an exception for command output.
-
-    Args:
-        exc: Exception to format.
-
-    Returns:
-        str: Human-readable error.
-    """
-
-    message = getattr(exc, "message", None)
-    if message:
-        return str(message)
-    return str(exc)
 
 
 def print_plan(
