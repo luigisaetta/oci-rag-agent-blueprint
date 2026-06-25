@@ -6,6 +6,13 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-25
+
+- Specified agent-managed connector ingestion endpoints for uploading documents
+  to Object Storage, triggering asynchronous Vector Store Data Sync Connector
+  jobs, and reading connector job status without duplicating ingestion logic in
+  the agent.
+
 ## 2026-06-24
 
 - Implemented a management document loader script with local file discovery,

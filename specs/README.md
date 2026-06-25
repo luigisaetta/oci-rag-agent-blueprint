@@ -18,3 +18,4 @@ Specifications are the source of truth for the implementation. New features must
 | [0010 - Agent Factory](0010-agent-factory.md) | Guided backend and Next.js UI application for deploying the RAG agent backend into OCI Enterprise AI Hosted Applications. |
 | [0011 - Agent Factory Ready-To-Run Deployment Script](0011-agent-factory-ready-script.md) | Exportable Linux-first deployment script that reuses Agent Factory live execution logic without changing dry-run behavior. |
 | [0012 - Langfuse Observability](0012-langfuse-observability.md) | Optional Langfuse observability for Responses API calls, including runtime configuration, client selection, spans, sessions, deployment behavior, and tests. |
+| [0013 - Agent-Managed Connector Ingestion](0013-agent-managed-connector-ingestion.md) | Server-side agent endpoints for uploading documents to Object Storage, triggering asynchronous Vector Store Data Sync Connector jobs, and reading job status. |
