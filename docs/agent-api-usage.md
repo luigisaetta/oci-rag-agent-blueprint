@@ -5,6 +5,9 @@ the RAG agent directly.
 
 The same `/responses` API supports both non-streaming and streaming requests.
 
+Agent-managed document ingestion also exposes `/documents/ingestions` endpoints
+when `DOCUMENT_INGESTION_ENABLED=true`.
+
 ## Endpoints
 
 For a local backend, use:
@@ -33,6 +36,18 @@ http://localhost:8080/health
 
 ```text
 https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/health
+```
+
+The document ingestion endpoints use the same base path:
+
+```text
+http://localhost:8080/documents/ingestions
+http://localhost:8080/documents/ingestions/<job-id>
+```
+
+```text
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/documents/ingestions
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/documents/ingestions/<job-id>
 ```
 
 ## New Conversation
@@ -178,3 +193,45 @@ python -m clients.agent_cli \
   --stream true \
   "Answer with only: ok"
 ```
+
+## Document Ingestion CLI
+
+The repository also includes a client for the agent-managed connector ingestion
+endpoints. It uploads one or more local files to the agent, starts one connector
+file sync job, and can poll the job status.
+
+Submit three files to a local agent:
+
+```bash
+python -m clients.document_ingestion_cli \
+  --base-url "http://localhost:8080" \
+  submit \
+  --file ./docs/guide.pdf \
+  --file ./docs/faq.md \
+  --file ./docs/notes.txt \
+  --prefix product-docs \
+  --sync-display-name "manual-doc-ingestion" \
+  --wait
+```
+
+Read job status:
+
+```bash
+python -m clients.document_ingestion_cli \
+  --base-url "http://localhost:8080" \
+  status "ocid1.generativeaivectorconnectorfilesync.oc1..example"
+```
+
+For Hosted Applications, pass the invoke base URL up to `actions/invoke`:
+
+```bash
+python -m clients.document_ingestion_cli \
+  --base-url "https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke" \
+  submit \
+  --file ./docs/guide.pdf \
+  --wait
+```
+
+When the Hosted Application is protected by IDCS authentication, the CLI reuses
+the same `--auth`, `--env-file`, and IDCS environment variables as
+`clients.agent_cli`.

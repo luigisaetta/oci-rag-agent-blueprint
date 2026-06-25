@@ -118,6 +118,8 @@ not configure the local agent runtime. When all four variables are present and
 the Python CLI runs with `--auth auto`, the CLI requests and prints an IDCS
 access token before sending the test request. When a token is acquired, the CLI
 sends it to the agent endpoint as an `Authorization: Bearer <token>` header.
+The same client-side IDCS configuration is used by
+`clients.document_ingestion_cli` for protected document ingestion endpoints.
 
 The Next.js reference UI does not read these values from `.env`. For protected
 Hosted Application testing, enter the same values in the UI after enabling

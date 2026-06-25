@@ -8,6 +8,9 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-25
 
+- Added a document ingestion CLI for submitting remote agent-managed connector
+  ingestion jobs, reading job status, optional polling, multipart uploads, IDCS
+  token reuse, documentation, and unit tests.
 - Replaced document-specific auth mode with the general `OCI_AUTH_MODE`
   setting, added Resource Principal and config-file authentication for Responses
   API clients through `oci-genai-auth`, and made `OPENAI_API_KEY` required only
