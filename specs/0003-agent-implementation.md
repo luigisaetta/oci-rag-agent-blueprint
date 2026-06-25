@@ -254,7 +254,17 @@ BASE_URL = (
 )
 ```
 
-The `openai` client must authenticate with an OpenAI-compatible API key provided through an environment variable.
+The `openai` client must support the authentication mode selected by
+`OCI_AUTH_MODE`.
+
+When `OCI_AUTH_MODE=openai_api_key`, the client must authenticate with the
+OpenAI-compatible API key provided through `OPENAI_API_KEY`.
+
+When `OCI_AUTH_MODE=resource_principal` or `OCI_AUTH_MODE=config_file`, the
+client must use the `oci-genai-auth` package to build an OCI-signed `httpx`
+client and pass that HTTP client to the OpenAI SDK constructor. In those modes,
+the `api_key` argument must use a non-secret placeholder value required by the
+OpenAI SDK and must not require `OPENAI_API_KEY`.
 
 The `openai` client must also pass the configured compartment identifier through
 the OCI Enterprise AI OpenAI-compatible extension:
@@ -264,6 +274,23 @@ client = OpenAI(
     api_key=OPENAI_API_KEY,
     base_url=BASE_URL,
     project=OCI_PROJECT_ID,
+    default_headers={
+        "extra_body": json.dumps({"compartmentId": OCI_COMPARTMENT_ID})
+    },
+)
+```
+
+Example Resource Principal construction:
+
+```python
+import httpx
+from oci_genai_auth import OciResourcePrincipalAuth
+
+client = OpenAI(
+    api_key="not-used",
+    base_url=BASE_URL,
+    project=OCI_PROJECT_ID,
+    http_client=httpx.Client(auth=OciResourcePrincipalAuth()),
     default_headers={
         "extra_body": json.dumps({"compartmentId": OCI_COMPARTMENT_ID})
     },
@@ -320,8 +347,9 @@ stream = client.responses.create(
 ```
 
 The agent must use only the Responses API surface exposed by the `openai` Python
-library. The implementation must not bypass the SDK with a custom raw HTTP client
-for Responses API calls.
+library. The implementation must not bypass the SDK with custom raw Responses
+API calls. Passing an OCI-signed `httpx` client to the OpenAI SDK constructor is
+allowed for OCI IAM authentication.
 
 When `new_conversation=true`, the agent must first create a conversation:
 
@@ -389,7 +417,10 @@ The initial required variables are:
 | `OCI_PROJECT_ID` | OCI Enterprise AI project identifier passed to the OpenAI-compatible client. |
 | `OCI_MODEL_ID` | Model identifier selected from the supported OCI Enterprise AI model catalog. |
 | `OCI_VECTOR_STORE_ID` | Vector store identifier used by the Responses API file search tool. |
-| `OPENAI_API_KEY` | OpenAI-compatible API key used by the `openai` client to authenticate to OCI Enterprise AI. |
+| `OCI_AUTH_MODE` | Optional. Authentication mode for OCI Enterprise AI. Accepted values are `openai_api_key`, `resource_principal`, and `config_file`. Default: `openai_api_key`. |
+| `OPENAI_API_KEY` | Required only when `OCI_AUTH_MODE=openai_api_key`. OpenAI-compatible API key used by the `openai` client to authenticate to OCI Enterprise AI. |
+| `OCI_CONFIG_FILE` | Optional. OCI config file path used only when `OCI_AUTH_MODE=config_file`. |
+| `OCI_PROFILE` | Optional. OCI config profile used only when `OCI_AUTH_MODE=config_file`. |
 
 Environment variable names must be treated as part of the public deployment contract.
 
@@ -516,7 +547,9 @@ Test coverage must follow the project rule defined in [AGENTS.md](../AGENTS.md),
 - The agent emits a `usage` stream event when token usage is available.
 - The agent passes `OCI_VECTOR_STORE_ID` to the file search configuration.
 - The agent passes `OCI_PROJECT_ID` to the OpenAI-compatible client as the project identifier.
-- The agent authenticates the `openai` client with `OPENAI_API_KEY`.
+- The agent authenticates the `openai` client according to `OCI_AUTH_MODE`.
+- The agent supports `openai_api_key`, `resource_principal`, and `config_file`
+  authentication modes for Responses API client construction.
 - Required runtime configuration is read from environment variables.
 - Docker Compose local deployment reads configuration from a root `.env` file.
 - A tracked `.env.sample` file documents the required environment variables.

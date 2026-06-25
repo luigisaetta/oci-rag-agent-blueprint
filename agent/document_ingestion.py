@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from os import environ
 from typing import Any, BinaryIO, Iterable
 
+from agent.config import load_optional_choice_env, load_optional_int_env
 from management.document_ingestion import (
     GenerativeAiClientProtocol,
     ObjectStorageClientProtocol,
@@ -29,6 +30,8 @@ DOCUMENT_INGESTION_MAX_FILES_MAX = 100
 DOCUMENT_INGESTION_MAX_FILE_SIZE_MB_DEFAULT = 25
 DOCUMENT_INGESTION_MAX_FILE_SIZE_MB_MIN = 1
 DOCUMENT_INGESTION_MAX_FILE_SIZE_MB_MAX = 1024
+OCI_AUTH_MODE_DEFAULT = "openai_api_key"
+OCI_AUTH_MODES = frozenset({"openai_api_key", "resource_principal", "config_file"})
 BOOLEAN_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
 BOOLEAN_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
 
@@ -213,13 +216,13 @@ def load_document_ingestion_settings() -> DocumentIngestionSettings:
         "DOCUMENT_INGESTION_ENABLED",
         DOCUMENT_INGESTION_ENABLED_DEFAULT,
     )
-    max_files = _load_optional_int(
+    max_files = load_optional_int_env(
         "DOCUMENT_INGESTION_MAX_FILES",
         DOCUMENT_INGESTION_MAX_FILES_DEFAULT,
         DOCUMENT_INGESTION_MAX_FILES_MIN,
         DOCUMENT_INGESTION_MAX_FILES_MAX,
     )
-    max_file_size_mb = _load_optional_int(
+    max_file_size_mb = load_optional_int_env(
         "DOCUMENT_INGESTION_MAX_FILE_SIZE_MB",
         DOCUMENT_INGESTION_MAX_FILE_SIZE_MB_DEFAULT,
         DOCUMENT_INGESTION_MAX_FILE_SIZE_MB_MIN,
@@ -389,22 +392,81 @@ def build_oci_document_ingestion_clients() -> tuple[Any, Any]:
             "The oci package is required for document ingestion."
         ) from exc
 
+    auth_mode = load_optional_choice_env(
+        "OCI_AUTH_MODE",
+        OCI_AUTH_MODE_DEFAULT,
+        OCI_AUTH_MODES,
+    )
+    if auth_mode == "resource_principal":
+        return _build_resource_principal_clients(oci)
+    if auth_mode == "config_file":
+        return _build_config_file_clients(oci)
+
+    raise RuntimeError(
+        "DOCUMENT_INGESTION_ENABLED requires OCI_AUTH_MODE to be "
+        "resource_principal or config_file. openai_api_key cannot authenticate "
+        "Object Storage or connector file sync operations."
+    )
+
+
+def _build_resource_principal_clients(oci_module: Any) -> tuple[Any, Any]:
+    """Build OCI SDK clients with a Resource Principal signer.
+
+    Args:
+        oci_module: Imported OCI SDK module.
+
+    Returns:
+        tuple[Any, Any]: Object Storage client and Generative AI client.
+
+    Raises:
+        RuntimeError: If Resource Principal signer creation fails.
+    """
+
+    try:
+        signer = oci_module.auth.signers.get_resource_principals_signer()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise RuntimeError(
+            "Unable to initialize OCI Resource Principal authentication for "
+            f"document ingestion: {exc}"
+        ) from exc
+
+    region = environ.get("OCI_REGION", "").strip()
+    client_config = {"region": region} if region else {}
+    return (
+        oci_module.object_storage.ObjectStorageClient(client_config, signer=signer),
+        oci_module.generative_ai.GenerativeAiClient(client_config, signer=signer),
+    )
+
+
+def _build_config_file_clients(oci_module: Any) -> tuple[Any, Any]:
+    """Build OCI SDK clients from an OCI config file.
+
+    Args:
+        oci_module: Imported OCI SDK module.
+
+    Returns:
+        tuple[Any, Any]: Object Storage client and Generative AI client.
+
+    Raises:
+        RuntimeError: If OCI config loading fails.
+    """
+
     profile = environ.get("OCI_PROFILE", "DEFAULT")
     config_file = environ.get("OCI_CONFIG_FILE")
     try:
         if config_file:
-            oci_config = oci.config.from_file(
+            oci_config = oci_module.config.from_file(
                 file_location=config_file,
                 profile_name=profile,
             )
         else:
-            oci_config = oci.config.from_file(profile_name=profile)
+            oci_config = oci_module.config.from_file(profile_name=profile)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         raise RuntimeError(f"Unable to load OCI SDK configuration: {exc}") from exc
 
     return (
-        oci.object_storage.ObjectStorageClient(oci_config),
-        oci.generative_ai.GenerativeAiClient(oci_config),
+        oci_module.object_storage.ObjectStorageClient(oci_config),
+        oci_module.generative_ai.GenerativeAiClient(oci_config),
     )
 
 
@@ -526,35 +588,6 @@ def _load_optional_bool(env_name: str, default_value: bool) -> bool:
     accepted_values = ", ".join(sorted(BOOLEAN_TRUE_VALUES.union(BOOLEAN_FALSE_VALUES)))
     raise ValueError(
         f"{env_name} must be a boolean value ({accepted_values}): {raw_value}"
-    )
-
-
-def _load_optional_int(
-    env_name: str,
-    default_value: int,
-    minimum_value: int,
-    maximum_value: int,
-) -> int:
-    """Load and validate an optional integer environment variable."""
-
-    raw_value = environ.get(env_name)
-    if raw_value is None or raw_value.strip() == "":
-        return default_value
-
-    try:
-        value = int(raw_value)
-    except ValueError as exc:
-        raise ValueError(
-            f"{env_name} must be an integer from {minimum_value} to "
-            f"{maximum_value}: {raw_value}"
-        ) from exc
-
-    if minimum_value <= value <= maximum_value:
-        return value
-
-    raise ValueError(
-        f"{env_name} must be an integer from {minimum_value} to "
-        f"{maximum_value}: {raw_value}"
     )
 
 

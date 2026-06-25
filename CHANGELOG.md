@@ -8,6 +8,20 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-25
 
+- Replaced document-specific auth mode with the general `OCI_AUTH_MODE`
+  setting, added Resource Principal and config-file authentication for Responses
+  API clients through `oci-genai-auth`, and made `OPENAI_API_KEY` required only
+  for `openai_api_key` mode.
+- Updated environment variable documentation for `OCI_AUTH_MODE`, conditional
+  `OPENAI_API_KEY` usage, config-file auth, and Resource Principal IAM
+  expectations.
+- Updated quickstart, deployment, security, implementation, and roadmap
+  documentation to mark Resource Principal Responses API authentication as
+  partially implemented at runtime while keeping IAM, Dynamic Group, Agent
+  Factory, and hosted validation work explicit.
+- Added explicit OCI authentication mode requirements for agent-managed
+  connector ingestion, including Resource Principal support for hosted
+  server-side Object Storage uploads and connector file sync operations.
 - Implemented agent-managed connector ingestion endpoints for submitting
   document uploads through Object Storage and reading Vector Store Data Sync
   Connector job status, with shared ingestion helpers and mocked unit tests.

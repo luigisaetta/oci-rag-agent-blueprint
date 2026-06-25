@@ -9,7 +9,8 @@ The quickstart is intentionally compact. Use it as the main path, then follow th
 At the end of this guide you will have:
 
 - An OCI Enterprise AI project.
-- An OpenAI-compatible API key.
+- An OpenAI-compatible API key for the default local path, or the information
+  needed to use OCI Resource Principal for hosted runtime authentication.
 - An OCI Vector Store connected to an Object Storage bucket.
 - A synchronized knowledge base.
 - A local Docker Compose demo with the RAG agent and reference UI.
@@ -43,13 +44,25 @@ Record the project identifier. It will be used as:
 OCI_PROJECT_ID
 ```
 
-Create an OpenAI-compatible API key inside the project.
+For the default local path, create an OpenAI-compatible API key inside the
+project.
 
 Store the generated key secret securely. It will be used as:
 
 ```text
 OPENAI_API_KEY
 ```
+
+For OCI-native Hosted Application deployments, the agent runtime can instead use
+Resource Principal authentication by setting:
+
+```text
+OCI_AUTH_MODE=resource_principal
+```
+
+In that mode, `OPENAI_API_KEY` is not required by the agent runtime, but the
+Hosted Application runtime identity must be matched by an OCI Dynamic Group and
+granted the required IAM permissions.
 
 Create a Vector Store.
 
@@ -88,6 +101,16 @@ cp .env.sample .env
 ```
 
 Edit `.env` and set all required values.
+
+The sample local configuration uses the default authentication mode:
+
+```text
+OCI_AUTH_MODE=openai_api_key
+```
+
+You may omit `OCI_AUTH_MODE` locally because `openai_api_key` is the default.
+Use `OCI_AUTH_MODE=config_file` only when intentionally testing OCI IAM
+config-file authentication from your workstation.
 
 By default, streaming uses `STREAM_FINALIZATION_MODE=never`. This avoids a
 post-stream retrieve call for lower end-of-stream latency. Streaming references

@@ -5,7 +5,8 @@ License: MIT
 Description: Unit tests for agent configuration and OpenAI client creation.
 """
 
-# pylint: disable=too-few-public-methods,duplicate-code
+# pylint: disable=duplicate-code,too-few-public-methods,too-many-arguments
+# pylint: disable=too-many-positional-arguments
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import sys
 import types
 from typing import Any
 
+import httpx
 import pytest
 
 from agent.config import AgentSettings, load_settings
@@ -45,6 +47,7 @@ class FakeOpenAI:
         base_url: str,
         project: str,
         default_headers: dict[str, str],
+        http_client: Any | None = None,
     ) -> None:
         """Store constructor arguments for assertions.
 
@@ -53,12 +56,14 @@ class FakeOpenAI:
             base_url: Base URL passed by the application.
             project: Project identifier passed by the application.
             default_headers: Default headers passed by the application.
+            http_client: Optional HTTP client passed by the application.
         """
 
         self.api_key = api_key
         self.base_url = base_url
         self.project = project
         self.default_headers = default_headers
+        self.http_client = http_client
 
 
 class FakeObservation:
@@ -175,6 +180,24 @@ def test_load_settings_builds_base_url(monkeypatch: Any) -> None:
     assert settings.responses_timeout_seconds == 60
     assert settings.stream_finalization_mode == "never"
     assert settings.langfuse_enabled is False
+    assert settings.oci_auth_mode == "openai_api_key"
+
+
+def test_load_settings_allows_resource_principal_without_openai_api_key(
+    monkeypatch: Any,
+) -> None:
+    """Test Resource Principal mode does not require OPENAI_API_KEY."""
+
+    for env_name, env_value in REQUIRED_ENV.items():
+        if env_name != "OPENAI_API_KEY":
+            monkeypatch.setenv(env_name, env_value)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OCI_AUTH_MODE", "resource_principal")
+
+    settings = load_settings()
+
+    assert settings.oci_auth_mode == "resource_principal"
+    assert settings.openai_api_key == ""
 
 
 def test_load_settings_reads_runtime_tuning(monkeypatch: Any) -> None:
@@ -221,6 +244,7 @@ def test_load_settings_reads_langfuse_configuration(monkeypatch: Any) -> None:
         ("RESPONSES_TIMEOUT_SECONDS", "301", "integer from 1 to 300"),
         ("RESPONSES_TIMEOUT_SECONDS", "slow", "integer from 1 to 300"),
         ("STREAM_FINALIZATION_MODE", "sometimes", "must be one of"),
+        ("OCI_AUTH_MODE", "oci_api_key", "must be one of"),
     ],
 )
 def test_load_settings_rejects_invalid_runtime_tuning(
@@ -288,6 +312,7 @@ def test_create_openai_client_uses_api_key_and_base_url(monkeypatch: Any) -> Non
     client = create_openai_client(settings)
 
     assert client.api_key == "test-api-key"
+    assert client.http_client is None
     assert client.project == "ocid1.generativeaiproject.oc1..example"
     assert (
         client.base_url
@@ -333,6 +358,80 @@ def test_create_openai_client_uses_langfuse_client_when_enabled(
         '{"compartmentId": "ocid1.compartment.oc1..example"}'
     )
     assert client.api_key == "test-api-key"
+
+
+def test_create_openai_client_uses_resource_principal_http_client(
+    monkeypatch: Any,
+) -> None:
+    """Test Resource Principal mode passes an OCI-signed HTTP client."""
+
+    class FakeResourcePrincipalAuth(httpx.Auth):
+        """Fake OCI GenAI Resource Principal auth class."""
+
+        def auth_flow(self, request: httpx.Request) -> Any:
+            """Return the request unchanged."""
+
+            yield request
+
+    fake_auth_module = types.ModuleType("oci_genai_auth")
+    fake_auth_module.OciResourcePrincipalAuth = FakeResourcePrincipalAuth
+    fake_auth_module.OciUserPrincipalAuth = object
+    monkeypatch.setitem(sys.modules, "oci_genai_auth", fake_auth_module)
+    monkeypatch.setattr("agent.openai_client.OpenAI", FakeOpenAI)
+    settings = AgentSettings(
+        oci_region="eu-frankfurt-1",
+        oci_compartment_id="ocid1.compartment.oc1..example",
+        oci_project_id="ocid1.generativeaiproject.oc1..example",
+        oci_model_id="test-model",
+        oci_vector_store_id="test-vector-store",
+        oci_auth_mode="resource_principal",
+    )
+
+    client = create_openai_client(settings)
+
+    assert client.api_key == "not-used"
+    assert client.http_client is not None
+    assert isinstance(client.http_client.auth, FakeResourcePrincipalAuth)
+
+
+def test_create_openai_client_uses_config_file_http_client(monkeypatch: Any) -> None:
+    """Test config-file mode passes an OCI-signed HTTP client."""
+
+    class FakeUserPrincipalAuth(httpx.Auth):
+        """Fake OCI GenAI user principal auth class."""
+
+        def __init__(self, config_file: str, profile_name: str) -> None:
+            """Store constructor arguments."""
+
+            self.config_file = config_file
+            self.profile_name = profile_name
+
+        def auth_flow(self, request: httpx.Request) -> Any:
+            """Return the request unchanged."""
+
+            yield request
+
+    fake_auth_module = types.ModuleType("oci_genai_auth")
+    fake_auth_module.OciResourcePrincipalAuth = object
+    fake_auth_module.OciUserPrincipalAuth = FakeUserPrincipalAuth
+    monkeypatch.setitem(sys.modules, "oci_genai_auth", fake_auth_module)
+    monkeypatch.setattr("agent.openai_client.OpenAI", FakeOpenAI)
+    monkeypatch.setenv("OCI_CONFIG_FILE", "/tmp/oci-config")
+    monkeypatch.setenv("OCI_PROFILE", "LOCAL")
+    settings = AgentSettings(
+        oci_region="eu-frankfurt-1",
+        oci_compartment_id="ocid1.compartment.oc1..example",
+        oci_project_id="ocid1.generativeaiproject.oc1..example",
+        oci_model_id="test-model",
+        oci_vector_store_id="test-vector-store",
+        oci_auth_mode="config_file",
+    )
+
+    client = create_openai_client(settings)
+
+    assert client.api_key == "not-used"
+    assert client.http_client.auth.config_file == "/tmp/oci-config"
+    assert client.http_client.auth.profile_name == "LOCAL"
 
 
 def test_langfuse_observation_uses_conversation_as_session(

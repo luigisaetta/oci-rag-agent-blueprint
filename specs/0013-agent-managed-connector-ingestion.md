@@ -255,6 +255,9 @@ Optional variables:
 | `DOCUMENT_INGESTION_DEFAULT_PREFIX` | Empty | Default object name prefix applied when the request does not provide `prefix`. |
 | `DOCUMENT_INGESTION_MAX_FILES` | `10` | Maximum files accepted in one submission request. |
 | `DOCUMENT_INGESTION_MAX_FILE_SIZE_MB` | `25` | Maximum accepted size for each uploaded file. |
+| `OCI_AUTH_MODE` | `openai_api_key` | General OCI authentication mode used by the agent. Document ingestion requires `resource_principal` or `config_file`. |
+| `OCI_CONFIG_FILE` | SDK default | OCI config file path used only when `OCI_AUTH_MODE=config_file`. |
+| `OCI_PROFILE` | `DEFAULT` | OCI config profile used only when `OCI_AUTH_MODE=config_file`. |
 
 The endpoints must be disabled by default. When
 `DOCUMENT_INGESTION_ENABLED=false`, the agent must return `404` for these
@@ -273,9 +276,51 @@ The endpoints must not accept OCI credentials in request payloads, query
 parameters, or headers. OCI authentication must come from the configured agent
 runtime environment and deployment identity.
 
-The first implementation may use the same OCI SDK configuration approach as the
-existing management loader for local development. Hosted deployments should move
-toward Resource Principal authentication as described in the security roadmap.
+The implementation must use the general `OCI_AUTH_MODE` runtime setting rather
+than a document-specific authentication switch.
+
+The accepted values are:
+
+- `openai_api_key`: authenticates Responses API calls with the
+  OpenAI-compatible API key. This mode cannot authenticate Object Storage uploads
+  or connector control-plane calls.
+- `resource_principal`: authenticates Responses API calls, Object Storage
+  uploads, and connector control-plane calls with OCI Resource Principal
+  identity.
+- `config_file`: authenticates Responses API calls, Object Storage uploads, and
+  connector control-plane calls from local OCI configuration.
+
+Document ingestion must fail fast when `DOCUMENT_INGESTION_ENABLED=true` and
+`OCI_AUTH_MODE=openai_api_key`, because the OpenAI-compatible API key does not
+authorize Object Storage or connector file sync operations.
+
+The first implementation must support two OCI authentication modes for Object
+Storage uploads and Vector Store Data Sync Connector control-plane calls:
+
+- `resource_principal`: the default mode for OCI Enterprise AI Hosted
+  Applications and other OCI runtimes that expose a Resource Principal signer.
+- `config_file`: a local development mode that loads OCI SDK configuration from
+  `OCI_CONFIG_FILE` and `OCI_PROFILE`, or from the SDK defaults when
+  `OCI_CONFIG_FILE` is omitted.
+
+When `OCI_AUTH_MODE=resource_principal`, the implementation must build
+OCI SDK clients with `oci.auth.signers.get_resource_principals_signer()` and
+must not read user OCI private keys from `~/.oci/config`.
+
+When `OCI_AUTH_MODE=config_file`, the implementation may use the same
+OCI SDK configuration approach as the existing management loader for local
+development.
+
+Hosted deployments must use `resource_principal` unless there is an explicit,
+reviewed reason to use another supported authentication mode.
+
+The runtime identity used by Resource Principal authentication must have IAM
+permissions to:
+
+- Put and inspect objects in the configured Object Storage bucket.
+- Create Vector Store Data Sync Connector file sync jobs for the configured
+  connector.
+- Read Vector Store Data Sync Connector file sync job status.
 
 ## Logging And Secret Handling
 

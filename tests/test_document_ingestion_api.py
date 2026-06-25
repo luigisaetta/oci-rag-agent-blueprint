@@ -11,10 +11,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import sys
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from agent.document_ingestion import build_oci_document_ingestion_clients
 from agent.main import app
 
 
@@ -126,6 +129,16 @@ class FakeGenerativeAiClient:
                 time_updated=datetime(2026, 6, 25, 12, 35, tzinfo=timezone.utc),
             )
         )
+
+
+class FakeOciServiceClient:
+    """Fake OCI service client that records config and keyword arguments."""
+
+    def __init__(self, config: dict[str, Any], **kwargs: Any) -> None:
+        """Initialize fake service client."""
+
+        self.config = config
+        self.kwargs = kwargs
 
 
 @dataclass
@@ -392,10 +405,93 @@ def test_get_document_ingestion_status_returns_404_for_missing_job(
     assert "was not found" in response.json()["error"]
 
 
+def test_document_ingestion_oci_clients_use_resource_principal(
+    monkeypatch: Any,
+) -> None:
+    """Test OCI client factory supports Resource Principal authentication."""
+
+    signer = object()
+    fake_oci = SimpleNamespace(
+        auth=SimpleNamespace(
+            signers=SimpleNamespace(get_resource_principals_signer=lambda: signer)
+        ),
+        object_storage=SimpleNamespace(ObjectStorageClient=FakeOciServiceClient),
+        generative_ai=SimpleNamespace(GenerativeAiClient=FakeOciServiceClient),
+    )
+    monkeypatch.setitem(sys.modules, "oci", fake_oci)
+    monkeypatch.setenv("OCI_AUTH_MODE", "resource_principal")
+    monkeypatch.setenv("OCI_REGION", "eu-frankfurt-1")
+
+    object_storage_client, generative_ai_client = build_oci_document_ingestion_clients()
+
+    assert object_storage_client.config == {"region": "eu-frankfurt-1"}
+    assert object_storage_client.kwargs == {"signer": signer}
+    assert generative_ai_client.config == {"region": "eu-frankfurt-1"}
+    assert generative_ai_client.kwargs == {"signer": signer}
+
+
+def test_document_ingestion_oci_clients_can_use_config_file(
+    monkeypatch: Any,
+) -> None:
+    """Test OCI client factory supports local config-file authentication."""
+
+    config_calls: list[dict[str, str]] = []
+
+    def fake_from_file(file_location: str, profile_name: str) -> dict[str, str]:
+        config_calls.append(
+            {"file_location": file_location, "profile_name": profile_name}
+        )
+        return {"region": "eu-frankfurt-1", "profile": profile_name}
+
+    fake_oci = SimpleNamespace(
+        config=SimpleNamespace(from_file=fake_from_file),
+        object_storage=SimpleNamespace(ObjectStorageClient=FakeOciServiceClient),
+        generative_ai=SimpleNamespace(GenerativeAiClient=FakeOciServiceClient),
+    )
+    monkeypatch.setitem(sys.modules, "oci", fake_oci)
+    monkeypatch.setenv("OCI_AUTH_MODE", "config_file")
+    monkeypatch.setenv("OCI_CONFIG_FILE", "/tmp/oci-config")
+    monkeypatch.setenv("OCI_PROFILE", "LOCAL")
+
+    object_storage_client, generative_ai_client = build_oci_document_ingestion_clients()
+
+    assert config_calls == [
+        {"file_location": "/tmp/oci-config", "profile_name": "LOCAL"}
+    ]
+    assert object_storage_client.config == {
+        "region": "eu-frankfurt-1",
+        "profile": "LOCAL",
+    }
+    assert object_storage_client.kwargs == {}
+    assert generative_ai_client.config == {
+        "region": "eu-frankfurt-1",
+        "profile": "LOCAL",
+    }
+    assert generative_ai_client.kwargs == {}
+
+
+def test_document_ingestion_oci_clients_reject_openai_api_key_mode(
+    monkeypatch: Any,
+) -> None:
+    """Test OpenAI-compatible API key mode cannot authenticate OCI uploads."""
+
+    fake_oci = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "oci", fake_oci)
+    monkeypatch.setenv("OCI_AUTH_MODE", "openai_api_key")
+
+    try:
+        build_oci_document_ingestion_clients()
+    except RuntimeError as exc:
+        assert "openai_api_key cannot authenticate Object Storage" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError for openai_api_key mode.")
+
+
 def _set_ingestion_env(monkeypatch: Any) -> None:
     """Set required document ingestion environment variables."""
 
     monkeypatch.setenv("DOCUMENT_INGESTION_ENABLED", "true")
+    monkeypatch.setenv("OCI_AUTH_MODE", "resource_principal")
     monkeypatch.setenv("OCI_DOCUMENT_NAMESPACE", "namespace")
     monkeypatch.setenv("OCI_DOCUMENT_BUCKET", "bucket")
     monkeypatch.setenv("OCI_VECTOR_STORE_CONNECTOR_ID", "connector-id")

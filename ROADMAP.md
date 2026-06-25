@@ -6,6 +6,8 @@ approved implementation specification.
 
 ## 1. Replace API Key Authentication With OCI Resource Principal
 
+Status: partially implemented.
+
 The current implementation uses an OpenAI-compatible API key to call the OCI
 Enterprise AI Responses API. This is aligned with the authentication model used
 by OpenAI API clients for the Responses API and keeps the first version simple
@@ -22,17 +24,26 @@ the hosted runtime can authenticate through its OCI workload identity instead of
 through a long-lived API key. With this model, the deployment would not need an
 OpenAI-compatible API key value at all.
 
-A future implementation should evaluate this approach:
+The agent runtime now supports this approach through `OCI_AUTH_MODE`.
+
+Completed runtime work:
+
+- `OCI_AUTH_MODE=openai_api_key` preserves the original API-key behavior.
+- `OCI_AUTH_MODE=resource_principal` builds the Responses API client with an
+  OCI-signed HTTP client from `oci-genai-auth`.
+- `OCI_AUTH_MODE=config_file` supports local OCI config-file authentication.
+- `OPENAI_API_KEY` is required only for `openai_api_key` mode.
+
+Remaining deployment work:
 
 1. Create an OCI Dynamic Group that matches the Hosted Applications and Hosted
    Deployments allowed to run this agent.
 2. Create an IAM policy that allows that Dynamic Group to use OCI Generative AI
    resources in the target compartment.
-3. Update the agent runtime configuration and client construction so Responses
-   API calls authenticate through Resource Principal when enabled.
-4. Keep API key authentication as a local-development or compatibility fallback
-   until Resource Principal support for the OpenAI-compatible Responses API
-   surface is fully validated.
+3. Validate `OCI_AUTH_MODE=resource_principal` end to end on a Hosted
+   Application in the target tenancy and region.
+4. Update Agent Factory deployment flows so hosted deployments can choose
+   Resource Principal mode without requiring `OPENAI_API_KEY`.
 
 Example policy:
 

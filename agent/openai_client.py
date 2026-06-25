@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-25
 License: MIT
 Description: OpenAI-compatible client creation for OCI Enterprise AI.
 """
@@ -13,9 +13,12 @@ import json
 import os
 from typing import Any
 
+import httpx
 from openai import OpenAI
 
 from agent.config import AgentSettings
+
+OPENAI_COMPATIBLE_IAM_API_KEY_PLACEHOLDER = "not-used"
 
 
 def create_openai_client(settings: AgentSettings) -> Any:
@@ -29,14 +32,85 @@ def create_openai_client(settings: AgentSettings) -> Any:
     """
 
     client_class = _resolve_client_class(settings)
-    return client_class(
-        api_key=settings.openai_api_key,
-        base_url=settings.base_url,
-        project=settings.oci_project_id,
-        default_headers={
+    client_kwargs = _build_openai_client_kwargs(settings)
+    return client_class(**client_kwargs)
+
+
+def _build_openai_client_kwargs(settings: AgentSettings) -> dict[str, Any]:
+    """Build constructor arguments for the OpenAI-compatible client.
+
+    Args:
+        settings: Runtime settings used to configure authentication and base URL.
+
+    Returns:
+        dict[str, Any]: Keyword arguments for the OpenAI client constructor.
+    """
+
+    client_kwargs: dict[str, Any] = {
+        "api_key": _client_api_key(settings),
+        "base_url": settings.base_url,
+        "project": settings.oci_project_id,
+        "default_headers": {
             "extra_body": json.dumps({"compartmentId": settings.oci_compartment_id})
         },
-    )
+    }
+    if settings.oci_auth_mode != "openai_api_key":
+        client_kwargs["http_client"] = _build_oci_signed_http_client(settings)
+    return client_kwargs
+
+
+def _client_api_key(settings: AgentSettings) -> str:
+    """Return the API key value expected by the OpenAI SDK.
+
+    Args:
+        settings: Runtime settings containing the selected OCI auth mode.
+
+    Returns:
+        str: Real API key for OpenAI-compatible API key mode, otherwise a
+        placeholder required by the OpenAI SDK constructor.
+    """
+
+    if settings.oci_auth_mode == "openai_api_key":
+        return settings.openai_api_key
+    return OPENAI_COMPATIBLE_IAM_API_KEY_PLACEHOLDER
+
+
+def _build_oci_signed_http_client(settings: AgentSettings) -> httpx.Client:
+    """Build an HTTPX client that signs OCI Generative AI requests.
+
+    Args:
+        settings: Runtime settings containing the selected OCI auth mode.
+
+    Returns:
+        httpx.Client: HTTP client configured with OCI request signing auth.
+
+    Raises:
+        ValueError: If the OCI GenAI auth dependency is unavailable or the mode
+            is not supported.
+    """
+
+    try:
+        from oci_genai_auth import (  # pylint: disable=import-outside-toplevel
+            OciResourcePrincipalAuth,
+            OciUserPrincipalAuth,
+        )
+    except ImportError as exc:
+        raise ValueError(
+            "OCI_AUTH_MODE requires the oci-genai-auth package when set to "
+            "resource_principal or config_file."
+        ) from exc
+
+    if settings.oci_auth_mode == "resource_principal":
+        return httpx.Client(auth=OciResourcePrincipalAuth())
+    if settings.oci_auth_mode == "config_file":
+        return httpx.Client(
+            auth=OciUserPrincipalAuth(
+                config_file=os.environ.get("OCI_CONFIG_FILE", "~/.oci/config"),
+                profile_name=os.environ.get("OCI_PROFILE", "DEFAULT"),
+            )
+        )
+
+    raise ValueError(f"Unsupported OCI_AUTH_MODE: {settings.oci_auth_mode}")
 
 
 def _resolve_client_class(settings: AgentSettings) -> Any:

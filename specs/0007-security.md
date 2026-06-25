@@ -35,11 +35,18 @@ This document does not yet define:
 
 ## Current Security Model
 
-The MVP implementation uses the OpenAI-compatible security model exposed by OCI Enterprise AI.
+The default local implementation uses the OpenAI-compatible security model
+exposed by OCI Enterprise AI.
 
-The agent must authenticate to OCI Enterprise AI through an API key created inside the OCI Enterprise AI project.
+The agent may authenticate to OCI Enterprise AI through an API key created
+inside the OCI Enterprise AI project when `OCI_AUTH_MODE=openai_api_key`.
 
-The API key must be passed to the agent through the `OPENAI_API_KEY` environment variable.
+The API key must be passed to the agent through the `OPENAI_API_KEY`
+environment variable only in `openai_api_key` mode.
+
+For OCI-native deployments, the agent should use `OCI_AUTH_MODE=resource_principal`.
+In that mode, the agent must use OCI request signing through the
+`oci-genai-auth` package and must not require `OPENAI_API_KEY`.
 
 The agent must use the `openai` Python library and create an OpenAI-compatible client with:
 
@@ -50,6 +57,10 @@ OpenAI(
     project=OCI_PROJECT_ID,
 )
 ```
+
+When `OCI_AUTH_MODE=resource_principal`, the agent must pass an OCI-signed
+`httpx.Client` to the OpenAI SDK constructor and use a non-secret placeholder
+for the SDK `api_key` argument.
 
 The same client is used to access:
 
@@ -63,7 +74,8 @@ The following environment variables are relevant to the current security model:
 
 | Variable | Description |
 | --- | --- |
-| `OPENAI_API_KEY` | OpenAI-compatible API key created inside the OCI Enterprise AI project. |
+| `OCI_AUTH_MODE` | Authentication mode. Accepted values are `openai_api_key`, `resource_principal`, and `config_file`. |
+| `OPENAI_API_KEY` | OpenAI-compatible API key created inside the OCI Enterprise AI project. Required only when `OCI_AUTH_MODE=openai_api_key`. |
 | `OCI_PROJECT_ID` | OCI Enterprise AI project identifier associated with the API key and runtime resources. |
 | `OCI_REGION` | OCI region used to build the OpenAI-compatible endpoint. |
 | `OCI_MODEL_ID` | Model identifier selected from the supported model catalog. |
@@ -130,9 +142,11 @@ The OpenAI-compatible API key approach has the following disadvantages:
 The implementation and deployment must follow these rules:
 
 - `OPENAI_API_KEY` must never be committed to version control.
-- Local Docker Compose deployment must read `OPENAI_API_KEY` from the root `.env` file.
+- Local Docker Compose deployment must read `OPENAI_API_KEY` from the root
+  `.env` file only when `OCI_AUTH_MODE=openai_api_key`.
 - The root `.env` file must remain ignored by Git.
-- Hosted deployment must inject `OPENAI_API_KEY` through managed runtime configuration.
+- Hosted deployment must inject `OPENAI_API_KEY` through managed runtime
+  configuration only when `OCI_AUTH_MODE=openai_api_key`.
 - The agent must never log the API key.
 - Error responses must not include secrets, full environment dumps, or complete runtime configuration.
 - Runtime diagnostic responses may include non-secret environment values, but
@@ -140,13 +154,15 @@ The implementation and deployment must follow these rules:
   rules.
 - Documentation must refer to the variable name and must not include real API key values.
 
-## Future OCI-Native Security Model
+## OCI-Native Security Model
 
-A future release will add support for OCI-native security.
+The agent runtime supports OCI-native security through `OCI_AUTH_MODE`.
 
-With that approach, the agent should authenticate to OCI resources by using OCI Resource Principal instead of passing an API key value through environment variables.
+With `OCI_AUTH_MODE=resource_principal`, the agent authenticates to OCI
+resources by using OCI Resource Principal instead of passing an API key value
+through environment variables.
 
-The future Resource Principal model should:
+The Resource Principal model should:
 
 - Use the runtime identity of the hosted application or deployment.
 - Avoid passing a long-lived API key to the container.
@@ -158,8 +174,10 @@ The future Resource Principal model should:
 
 The following topics require later specifications or revisions:
 
-- Exact Resource Principal integration pattern for the OpenAI-compatible client.
-- Whether OCI Enterprise AI exposes first-class Resource Principal authentication for the OpenAI-compatible API surface.
+- Validated Dynamic Group matching rules for Hosted Applications and Hosted
+  Deployments in each supported deployment pattern.
+- End-to-end Hosted Application validation of Resource Principal mode in the
+  target tenancy and region.
 - OCI Vault secret management.
 - API key rotation.
 - End-user authentication and authorization.

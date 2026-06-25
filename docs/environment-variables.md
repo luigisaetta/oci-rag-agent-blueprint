@@ -24,6 +24,12 @@ For Hosted Application deployment in OCI Enterprise AI, the `.env` file is not u
 
 All environment variables and their real values must be defined in the Hosted Application runtime configuration.
 
+Note: the Agent Factory local Docker Compose stack also reads an `OCI_AUTH_MODE`
+environment variable for its own control-plane authentication and currently
+uses values such as `user_principal` and `session`. That setting belongs to the
+Factory process. The agent runtime setting documented below uses
+`openai_api_key`, `resource_principal`, and `config_file`.
+
 ## Variable Reference
 
 | Variable | Required | Example | Local Configuration | Hosted Application Configuration | Notes |
@@ -33,7 +39,10 @@ All environment variables and their real values must be defined in the Hosted Ap
 | `OCI_PROJECT_ID` | Yes | `ocid1.generativeaiproject.oc1..example` | Set in root `.env`. | Set as a runtime environment variable. | OCI Enterprise AI project identifier passed to the OpenAI-compatible client. |
 | `OCI_MODEL_ID` | Yes | `openai.gpt-5.4` | Set in root `.env`. | Set as a runtime environment variable. | Model identifier selected from the supported OCI Enterprise AI model catalog. |
 | `OCI_VECTOR_STORE_ID` | Yes | `vs_...` | Set in root `.env`. | Set as a runtime environment variable. | Vector store identifier used by the Responses API `file_search` tool. |
-| `OPENAI_API_KEY` | Yes | `sk-...` | Set in root `.env`. | Set as a runtime environment variable, preferably through the most protected configuration mechanism available. | OpenAI-compatible API key created inside the OCI Enterprise AI project. Never log or commit this value. |
+| `OCI_AUTH_MODE` | No | `openai_api_key` | Usually omitted for local API-key testing. Set only when testing OCI IAM auth. | Set to `resource_principal` for OCI-native Hosted Application deployments that should avoid OpenAI-compatible API keys. | Accepted agent runtime values: `openai_api_key`, `resource_principal`, `config_file`. Default: `openai_api_key`. |
+| `OPENAI_API_KEY` | Only when `OCI_AUTH_MODE=openai_api_key` | `sk-...` | Set in root `.env` for API-key mode. | Set only when using API-key mode, preferably through the most protected configuration mechanism available. | OpenAI-compatible API key created inside the OCI Enterprise AI project. Never log or commit this value. |
+| `OCI_CONFIG_FILE` | Only when `OCI_AUTH_MODE=config_file` | `~/.oci/config` | Set when local config-file auth should use a non-default OCI config path. | Usually not used for Hosted Applications. | Used by OCI IAM config-file auth for Responses API and document ingestion. |
+| `OCI_PROFILE` | Only when `OCI_AUTH_MODE=config_file` | `DEFAULT` | Set when local config-file auth should use a non-default profile. | Usually not used for Hosted Applications. | Used by OCI IAM config-file auth for Responses API and document ingestion. |
 | `FILE_SEARCH_MAX_NUM_RESULTS` | No | `10` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Maximum number of Vector Store file search results requested by the Responses API `file_search` tool. Accepted range: `1` to `50`. |
 | `RESPONSES_TIMEOUT_SECONDS` | No | `60` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Timeout in seconds for Responses API create and retrieve calls. Accepted range: `1` to `300`. |
 | `STREAM_FINALIZATION_MODE` | No | `never` | Set in root `.env` when a non-default value is needed. | Set as a runtime environment variable when a non-default value is needed. | Controls whether streaming responses perform a post-stream retrieve call to complete references and token usage. Accepted values: `never`, `auto`, `always`. |
@@ -82,7 +91,7 @@ The following values must refer to resources in the same OCI region:
 - `OCI_PROJECT_ID`
 - `OCI_MODEL_ID`
 - `OCI_VECTOR_STORE_ID`
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY`, only when `OCI_AUTH_MODE=openai_api_key`
 
 The Object Storage bucket used for knowledge base uploads and the Hosted Application deployment must also be created in the same region.
 
@@ -92,7 +101,13 @@ If one or more required variables are missing, the agent must fail request handl
 
 If variables point to resources in different regions, the most common outcomes are authentication failures, project lookup failures, vector store lookup failures, or Responses API request errors.
 
-If `OPENAI_API_KEY` is invalid or missing required API key permissions, the agent cannot call OCI Enterprise AI.
+If `OCI_AUTH_MODE=openai_api_key` and `OPENAI_API_KEY` is invalid or missing
+required API key permissions, the agent cannot call OCI Enterprise AI.
+
+If `OCI_AUTH_MODE=resource_principal`, the Hosted Application Resource Principal
+must have IAM permissions for the configured OCI Enterprise AI project, model,
+Vector Store, Object Storage bucket, and connector operations used by enabled
+features.
 
 If optional tuning variables are missing, the agent uses their defaults. If they
 are present but invalid, the agent fails request handling before calling the

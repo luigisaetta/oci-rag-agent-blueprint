@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-23
+Date last modified: 2026-06-25
 License: MIT
 Description: Runtime configuration loading for the OCI RAG agent.
 """
@@ -32,13 +32,15 @@ LANGFUSE_REQUIRED_ENV_VARS = (
     "LANGFUSE_SECRET_KEY",
 )
 
+OCI_AUTH_MODE_DEFAULT = "openai_api_key"
+OCI_AUTH_MODES = frozenset({"openai_api_key", "resource_principal", "config_file"})
+
 REQUIRED_ENV_VARS = (
     "OCI_REGION",
     "OCI_COMPARTMENT_ID",
     "OCI_PROJECT_ID",
     "OCI_MODEL_ID",
     "OCI_VECTOR_STORE_ID",
-    "OPENAI_API_KEY",
 )
 
 
@@ -60,6 +62,7 @@ class AgentSettings:
         langfuse_base_url: Langfuse instance URL.
         langfuse_public_key: Langfuse public key.
         langfuse_secret_key: Langfuse secret key.
+        oci_auth_mode: Authentication mode for OCI Enterprise AI Responses API.
     """
 
     oci_region: str
@@ -67,7 +70,7 @@ class AgentSettings:
     oci_project_id: str
     oci_model_id: str
     oci_vector_store_id: str
-    openai_api_key: str
+    openai_api_key: str = ""
     file_search_max_num_results: int = FILE_SEARCH_MAX_NUM_RESULTS_DEFAULT
     responses_timeout_seconds: int = RESPONSES_TIMEOUT_SECONDS_DEFAULT
     stream_finalization_mode: str = STREAM_FINALIZATION_MODE_DEFAULT
@@ -75,6 +78,7 @@ class AgentSettings:
     langfuse_base_url: str = ""
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
+    oci_auth_mode: str = OCI_AUTH_MODE_DEFAULT
 
     @property
     def base_url(self) -> str:
@@ -101,6 +105,13 @@ def load_settings() -> AgentSettings:
     """
 
     missing_vars = [name for name in REQUIRED_ENV_VARS if not environ.get(name)]
+    oci_auth_mode = load_optional_choice_env(
+        "OCI_AUTH_MODE",
+        OCI_AUTH_MODE_DEFAULT,
+        OCI_AUTH_MODES,
+    )
+    if oci_auth_mode == "openai_api_key" and not environ.get("OPENAI_API_KEY"):
+        missing_vars.append("OPENAI_API_KEY")
     if missing_vars:
         names = ", ".join(missing_vars)
         raise ValueError(f"Missing required environment variables: {names}")
@@ -117,20 +128,20 @@ def load_settings() -> AgentSettings:
         oci_project_id=environ["OCI_PROJECT_ID"],
         oci_model_id=environ["OCI_MODEL_ID"],
         oci_vector_store_id=environ["OCI_VECTOR_STORE_ID"],
-        openai_api_key=environ["OPENAI_API_KEY"],
-        file_search_max_num_results=_load_optional_int(
+        openai_api_key=environ.get("OPENAI_API_KEY", ""),
+        file_search_max_num_results=load_optional_int_env(
             "FILE_SEARCH_MAX_NUM_RESULTS",
             FILE_SEARCH_MAX_NUM_RESULTS_DEFAULT,
             FILE_SEARCH_MAX_NUM_RESULTS_MIN,
             FILE_SEARCH_MAX_NUM_RESULTS_MAX,
         ),
-        responses_timeout_seconds=_load_optional_int(
+        responses_timeout_seconds=load_optional_int_env(
             "RESPONSES_TIMEOUT_SECONDS",
             RESPONSES_TIMEOUT_SECONDS_DEFAULT,
             RESPONSES_TIMEOUT_SECONDS_MIN,
             RESPONSES_TIMEOUT_SECONDS_MAX,
         ),
-        stream_finalization_mode=_load_optional_choice(
+        stream_finalization_mode=load_optional_choice_env(
             "STREAM_FINALIZATION_MODE",
             STREAM_FINALIZATION_MODE_DEFAULT,
             STREAM_FINALIZATION_MODES,
@@ -139,6 +150,7 @@ def load_settings() -> AgentSettings:
         langfuse_base_url=langfuse_values["LANGFUSE_BASE_URL"],
         langfuse_public_key=langfuse_values["LANGFUSE_PUBLIC_KEY"],
         langfuse_secret_key=langfuse_values["LANGFUSE_SECRET_KEY"],
+        oci_auth_mode=oci_auth_mode,
     )
 
 
@@ -205,7 +217,7 @@ def _load_langfuse_values(langfuse_enabled: bool) -> dict[str, str]:
     return values
 
 
-def _load_optional_int(
+def load_optional_int_env(
     env_name: str,
     default_value: int,
     minimum_value: int,
@@ -280,7 +292,7 @@ def _format_int_validation_error(
     )
 
 
-def _load_optional_choice(
+def load_optional_choice_env(
     env_name: str,
     default_value: str,
     accepted_values: frozenset[str],

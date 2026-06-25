@@ -142,15 +142,35 @@ Grant access to vulnerability scan results:
 allow dynamic-group <dynamic-group-name> to read vulnerability-scanning-family in compartment <compartment-name>
 ```
 
-If the hosted agent must access other OCI resources directly, add the corresponding policies. For example, if it needs Object Storage access:
+If the hosted agent uses `OCI_AUTH_MODE=resource_principal`, add policies for
+the OCI resources it calls through its runtime identity.
+
+For Responses API calls through Resource Principal, grant access to OCI
+Generative AI resources:
 
 ```text
-allow dynamic-group <dynamic-group-name> to read object-family in compartment <compartment-name>
+allow dynamic-group <dynamic-group-name> to use generative-ai-family in compartment <compartment-name>
 ```
+
+If agent-managed connector ingestion is enabled, grant Object Storage and
+connector access as well. For example:
+
+```text
+allow dynamic-group <dynamic-group-name> to manage objects in compartment <compartment-name>
+allow dynamic-group <dynamic-group-name> to use generative-ai-family in compartment <compartment-name>
+```
+
+Use the narrowest policy that works for the target tenancy. The exact Dynamic
+Group matching rule for Hosted Applications and Hosted Deployments must be
+validated against the current OCI resource types exposed in the target region.
 
 ## Region Consistency
 
-The OCI Generative AI project, API key, vector store, Object Storage bucket, model endpoint, and hosted deployment must be created in the same OCI region.
+The OCI Generative AI project, vector store, Object Storage bucket, model
+endpoint, and hosted deployment must be created in the same OCI region.
+
+When using `OCI_AUTH_MODE=openai_api_key`, the OpenAI-compatible API key must
+also belong to the same region.
 
 This project builds the OpenAI-compatible OCI endpoint from `OCI_REGION`:
 
@@ -164,7 +184,7 @@ The following runtime values must therefore refer to resources in the same regio
 - `OCI_PROJECT_ID`
 - `OCI_MODEL_ID`
 - `OCI_VECTOR_STORE_ID`
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY`, only when `OCI_AUTH_MODE=openai_api_key`
 
 ## Deployment Steps
 
@@ -178,9 +198,17 @@ Record the project OCID. It will be used as:
 OCI_PROJECT_ID
 ```
 
-### 2. Create An API Key
+### 2. Choose Runtime Authentication
 
-Create an OCI Generative AI API key in the same region and compartment used by the project.
+For local validation and compatibility deployments, use the default API-key
+mode:
+
+```text
+OCI_AUTH_MODE=openai_api_key
+```
+
+Create an OCI Generative AI API key in the same region and compartment used by
+the project.
 
 After creating the key, add the required API key permission policy.
 
@@ -191,6 +219,16 @@ OPENAI_API_KEY
 ```
 
 Do not commit this value to source control.
+
+For OCI-native hosted deployments, use Resource Principal mode instead:
+
+```text
+OCI_AUTH_MODE=resource_principal
+```
+
+In Resource Principal mode, do not configure `OPENAI_API_KEY` for the agent
+runtime. Configure the Hosted Application runtime identity with a Dynamic Group
+and IAM policies that allow it to use the required OCI Generative AI resources.
 
 ### 3. Create A Vector Store
 
@@ -204,7 +242,8 @@ Record the vector store identifier. It will be used as:
 OCI_VECTOR_STORE_ID
 ```
 
-The project, API key, vector store, and Object Storage bucket are region-scoped and must belong to the same region used by the deployment.
+The project, vector store, Object Storage bucket, and optional API key are
+region-scoped and must belong to the same region used by the deployment.
 
 ### 4. Create An Object Storage Bucket
 
@@ -263,7 +302,9 @@ Create the file by copying the tracked sample:
 cp .env.sample .env
 ```
 
-Then edit `.env` and replace the sample values with the real values for the target OCI region, project, model, vector store, compartment, and API key.
+Then edit `.env` and replace the sample values with the real values for the
+target OCI region, project, model, vector store, compartment, and authentication
+mode.
 
 The `.env` file must not be committed to source control.
 
@@ -278,7 +319,8 @@ See [Environment Variables](environment-variables.md) for the complete runtime c
 | `OCI_PROJECT_ID` | OCI Generative AI project OCID. |
 | `OCI_MODEL_ID` | Model identifier selected from the supported model catalog. |
 | `OCI_VECTOR_STORE_ID` | Vector store identifier used by file search. |
-| `OPENAI_API_KEY` | OCI Generative AI OpenAI-compatible API key secret. |
+| `OCI_AUTH_MODE` | Optional authentication mode. Default: `openai_api_key`. Set `resource_principal` for OCI-native hosted runtime auth. |
+| `OPENAI_API_KEY` | OCI Generative AI OpenAI-compatible API key secret. Required only when `OCI_AUTH_MODE=openai_api_key`. |
 
 Optional runtime tuning variables include `FILE_SEARCH_MAX_NUM_RESULTS`,
 `RESPONSES_TIMEOUT_SECONDS`, and `STREAM_FINALIZATION_MODE`.
