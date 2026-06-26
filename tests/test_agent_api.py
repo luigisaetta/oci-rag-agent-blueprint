@@ -332,10 +332,10 @@ class FakeAudioSpeechClient:
             )
         )
 
-    def get_transcription_task(self, task_id: str) -> Any:
+    def get_transcription_task(self, transcription_job_id: str, task_id: str) -> Any:
         """Return a fake completed transcription task."""
 
-        del task_id
+        del transcription_job_id, task_id
         return SimpleNamespace(
             data=SimpleNamespace(
                 output_location=SimpleNamespace(
@@ -926,12 +926,14 @@ def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None
     assert "event: error" not in response.text
 
 
-def test_audio_response_accepts_webm_and_streams_fake_answer(
+def test_audio_response_accepts_webm_and_streams_agent_answer(
     monkeypatch: Any,
 ) -> None:
     """Test audio endpoint accepts browser audio and streams transcribed output."""
 
     object_storage_client, speech_client = _set_audio_env_and_clients(monkeypatch)
+    fake_client = FakeOpenAIClient()
+    _set_client_factory(fake_client)
     client = TestClient(app)
 
     response = client.post(
@@ -944,18 +946,22 @@ def test_audio_response_accepts_webm_and_streams_fake_answer(
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: transcript" in response.text
     assert "What is in the uploaded audio?" in response.text
-    assert (
-        'event: metadata\ndata: {"conversation_id": "conv-audio-new"}' in response.text
-    )
+    assert 'event: metadata\ndata: {"conversation_id": "conv-new"}' in response.text
     assert "event: token" in response.text
-    assert "Audio input was received successfully." in response.text
+    assert 'event: token\ndata: {"text": "Agent "}' in response.text
+    assert 'event: token\ndata: {"text": "answer"}' in response.text
     assert "event: references" in response.text
     assert "event: usage" in response.text
-    assert 'event: done\ndata: {"conversation_id": "conv-audio-new"}' in response.text
+    assert 'event: done\ndata: {"conversation_id": "conv-new"}' in response.text
     assert object_storage_client.put_calls
     assert object_storage_client.put_calls[0][0].startswith("speech-input/")
     assert object_storage_client.put_calls[0][1] == b"audio bytes"
     assert speech_client.created_details.model_details.model_type == "WHISPER_MEDIUM"
+    assert (
+        fake_client.responses.create_calls[0]["input"]
+        == "What is in the uploaded audio?"
+    )
+    assert fake_client.responses.create_calls[0]["stream"] is True
 
 
 def test_audio_response_preserves_existing_conversation_id(
@@ -964,6 +970,8 @@ def test_audio_response_preserves_existing_conversation_id(
     """Test audio endpoint uses the supplied conversation id for continuation."""
 
     _set_audio_env_and_clients(monkeypatch)
+    fake_client = FakeOpenAIClient()
+    _set_client_factory(fake_client)
     client = TestClient(app)
 
     response = client.post(
@@ -981,6 +989,25 @@ def test_audio_response_preserves_existing_conversation_id(
         'event: metadata\ndata: {"conversation_id": "conv-existing"}' in response.text
     )
     assert 'event: done\ndata: {"conversation_id": "conv-existing"}' in response.text
+    assert fake_client.responses.create_calls[0]["conversation"] == "conv-existing"
+
+
+def test_audio_response_maps_large_turbo_model(monkeypatch: Any) -> None:
+    """Test large turbo model setting maps to the OCI Speech model type."""
+
+    _, speech_client = _set_audio_env_and_clients(monkeypatch)
+    _set_client_factory(FakeOpenAIClient())
+    monkeypatch.setenv("OCI_SPEECH_MODEL", "whisper-large-v3-turbo")
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.webm", b"audio bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert speech_client.created_details.model_details.model_type == "WHISPER_LARGE_V3T"
 
 
 def test_audio_response_requires_file() -> None:
@@ -1311,8 +1338,8 @@ def _set_audio_env_and_clients(
 ) -> tuple[FakeAudioObjectStorageClient, FakeAudioSpeechClient]:
     """Set speech-to-text test environment and fake OCI clients."""
 
+    _set_required_env(monkeypatch)
     monkeypatch.delenv("SPEECH_TO_TEXT_ENABLED", raising=False)
-    monkeypatch.setenv("OCI_COMPARTMENT_ID", "ocid1.compartment.oc1..example")
     monkeypatch.setenv("OCI_SPEECH_STAGING_NAMESPACE", "namespace")
     monkeypatch.setenv("OCI_SPEECH_STAGING_BUCKET", "bucket")
     object_storage_client = object_storage_client or FakeAudioObjectStorageClient()

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Implemented.
 
 ## Purpose
 
@@ -287,7 +287,8 @@ Speech-to-text is enabled by default.
 `OCI_SPEECH_MODEL` defaults to `whisper-medium`. `whisper-large-v3-turbo` must be
 supported as a configurable option. If OCI uses a different exact identifier for
 Large V3 Turbo, the implementation must keep the public environment value stable
-and perform the mapping internally.
+and perform the mapping internally. The current OCI Speech API model type for
+Large V3 Turbo is `WHISPER_LARGE_V3T`.
 
 ## UI Requirements
 

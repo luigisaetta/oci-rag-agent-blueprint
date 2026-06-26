@@ -11,8 +11,7 @@ when `DOCUMENT_INGESTION_ENABLED=true`.
 Voice request intake also exposes `/responses/audio` when
 `SPEECH_TO_TEXT_ENABLED=true`. The implementation accepts and validates audio
 uploads, transcribes them with OCI Speech, emits the transcript event, and
-streams a fixed fake answer. The next implementation step will connect the
-transcript to the real RAG agent response path.
+streams the RAG agent answer generated from the transcribed text.
 
 ## Endpoints
 
@@ -189,8 +188,8 @@ already been delivered.
 ## Audio Request
 
 Use `POST /responses/audio` to submit a recorded voice question. The endpoint
-currently transcribes multipart audio input with OCI Speech and returns a fake
-assistant response.
+transcribes multipart audio input with OCI Speech and sends the transcript to
+the normal streaming RAG agent response path.
 
 ```bash
 curl -N \
@@ -212,7 +211,7 @@ event: metadata
 data: {"conversation_id": "conv-audio-new"}
 
 event: token
-data: {"text": "Audio input was received successfully. Server-side transcription will be connected in the next implementation step."}
+data: {"text": "<streamed assistant token>"}
 ```
 
 Supported upload extensions are aligned with OCI Speech supported formats:

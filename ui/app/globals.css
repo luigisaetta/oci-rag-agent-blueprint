@@ -722,6 +722,21 @@ button {
   background: color-mix(in srgb, var(--danger), transparent 88%);
 }
 
+.transcriptionBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  margin: 0 28px 14px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px;
@@ -861,9 +876,15 @@ button {
 
   .topBar,
   .messages,
-  .composer {
+  .composer,
+  .transcriptionBar {
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  .transcriptionBar {
+    margin-left: 18px;
+    margin-right: 18px;
   }
 
   .composer {

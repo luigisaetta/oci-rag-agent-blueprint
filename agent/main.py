@@ -22,7 +22,7 @@ from agent.audio import (
     RawAudioRequest,
     build_oci_audio_transcription_clients,
     load_audio_request_settings,
-    stream_fake_audio_response,
+    stream_transcript_then_agent_response,
     transcribe_audio,
     validate_audio_request,
 )
@@ -181,6 +181,7 @@ async def create_response(request: Request) -> Response:
 
 @app.post("/responses/audio")
 # pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=too-many-locals,too-many-return-statements
 async def create_audio_response(
     request: Request,
     file: UploadFile | None = File(None),
@@ -191,7 +192,7 @@ async def create_audio_response(
     user_role: str = Form(""),
     language_code: str = Form(""),
 ) -> Response:
-    """Receive an audio request and return a temporary fake streaming answer.
+    """Receive an audio request, transcribe it, and stream the agent answer.
 
     Args:
         request: FastAPI request object.
@@ -204,10 +205,10 @@ async def create_audio_response(
         language_code: Reserved transcription language override.
 
     Returns:
-        Response: SSE fake response or structured error payload.
+        Response: SSE agent response or structured error payload.
     """
 
-    del user_id, user_role, language_code
+    del language_code
 
     if file is None:
         return _error_response("Audio file is required.", status_code=400)
@@ -268,8 +269,38 @@ async def create_audio_response(
         audio_request.content_type,
         audio_request.size_bytes,
     )
+    agent_payload = {
+        "new_conversation": audio_request.new_conversation,
+        "user_request": transcript,
+        "stream": True,
+    }
+    if audio_request.conversation_id:
+        agent_payload["conversation_id"] = audio_request.conversation_id
+    if user_id.strip():
+        agent_payload["user_id"] = user_id.strip()
+    if user_role.strip():
+        agent_payload["user_role"] = user_role.strip()
+
+    try:
+        validated_agent_payload = validate_agent_request(agent_payload)
+        agent_settings = load_settings()
+    except (SchemaValidationError, ValueError) as exc:
+        LOGGER.info(
+            "Audio-derived agent request validation failed request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return _error_response(str(exc), status_code=500)
+
     return StreamingResponse(
-        stream_fake_audio_response(audio_request, transcript),
+        stream_transcript_then_agent_response(
+            transcript,
+            stream_agent_request(
+                validated_agent_payload,
+                agent_settings,
+                request.app.state.openai_client_factory,
+            ),
+        ),
         media_type="text/event-stream",
     )
 

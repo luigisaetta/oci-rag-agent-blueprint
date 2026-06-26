@@ -8,6 +8,14 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-26
 
+- Connected transcribed voice input to the normal streaming RAG agent response
+  path so `/responses/audio` now emits the transcript event and then streams the
+  generated assistant answer.
+- Fixed the OCI Speech Large V3 Turbo model mapping to use the service model
+  type `WHISPER_LARGE_V3T` and return a structured 502 error when Speech job
+  creation fails.
+- Added a visible reference UI transcription progress indicator while recorded
+  audio is being processed before the transcript event arrives.
 - Connected voice request intake to OCI Speech transcription using Object
   Storage staging, configurable Whisper model selection, transcript extraction,
   and mocked backend tests while keeping the agent answer fake for local UI

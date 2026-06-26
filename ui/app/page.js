@@ -43,6 +43,10 @@ const EMPTY_AUDIO_RECORDING = {
   durationMilliseconds: 0,
   error: ""
 };
+const EMPTY_AUDIO_REQUEST = {
+  status: "idle",
+  message: ""
+};
 
 function createMessage(role, content, status = "complete") {
   return {
@@ -108,6 +112,7 @@ export default function Home() {
   const [agentRuntime, setAgentRuntime] = useState(EMPTY_AGENT_RUNTIME);
   const [isLoadingAgentRuntime, setIsLoadingAgentRuntime] = useState(false);
   const [audioRecording, setAudioRecording] = useState(EMPTY_AUDIO_RECORDING);
+  const [audioRequest, setAudioRequest] = useState(EMPTY_AUDIO_REQUEST);
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -180,6 +185,7 @@ export default function Home() {
     setErrorMessage("");
     setIsSending(false);
     discardRecording();
+    setAudioRequest(EMPTY_AUDIO_REQUEST);
   }
 
   function updateIdcsConfig(fieldName, value) {
@@ -484,6 +490,10 @@ export default function Home() {
     let transcriptReceived = false;
 
     setErrorMessage("");
+    setAudioRequest({
+      status: "transcribing",
+      message: "Transcribing audio"
+    });
     setIsSending(true);
 
     const formData = new FormData();
@@ -526,6 +536,7 @@ export default function Home() {
           }
 
           transcriptReceived = true;
+          setAudioRequest(EMPTY_AUDIO_REQUEST);
           setMessages((currentMessages) => [
             ...currentMessages,
             createMessage("user", transcript || "Voice question"),
@@ -536,6 +547,7 @@ export default function Home() {
       discardRecording();
     } catch (error) {
       if (error.name !== "AbortError") {
+        setAudioRequest(EMPTY_AUDIO_REQUEST);
         setErrorMessage(error.message || "Unable to send the audio request.");
         if (!transcriptReceived) {
           setMessages((currentMessages) => [
@@ -555,6 +567,7 @@ export default function Home() {
         }
       }
     } finally {
+      setAudioRequest(EMPTY_AUDIO_REQUEST);
       completeAssistantMessage(assistantMessage.id);
       setIsSending(false);
       abortControllerRef.current = null;
@@ -909,6 +922,12 @@ export default function Home() {
         </div>
 
         {errorMessage ? <div className="errorBar">{errorMessage}</div> : null}
+        {audioRequest.status === "transcribing" ? (
+          <div className="transcriptionBar" role="status" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>{audioRequest.message}</span>
+          </div>
+        ) : null}
 
         <form className="composer" onSubmit={sendQuestion}>
           <div className="voiceComposer" aria-label="Voice question recorder">

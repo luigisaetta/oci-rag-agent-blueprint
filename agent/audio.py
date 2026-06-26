@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from os import environ
 from pathlib import Path
-from typing import Any, AsyncIterator, BinaryIO
+from typing import Any, AsyncIterator, BinaryIO, Iterator
 from uuid import uuid4
 
 from agent.config import load_optional_choice_env
@@ -37,15 +37,11 @@ OCI_SPEECH_MODEL_DEFAULT = "whisper-medium"
 OCI_SPEECH_MODELS = frozenset({"whisper-medium", "whisper-large-v3-turbo"})
 OCI_SPEECH_MODEL_TYPE_MAP = {
     "whisper-medium": "WHISPER_MEDIUM",
-    "whisper-large-v3-turbo": "WHISPER_LARGE_V3_TURBO",
+    "whisper-large-v3-turbo": "WHISPER_LARGE_V3T",
 }
 OCI_SPEECH_LANGUAGE_CODE_DEFAULT = "auto"
 OCI_SPEECH_INPUT_PREFIX_DEFAULT = "speech-input"
 OCI_SPEECH_OUTPUT_PREFIX_DEFAULT = "speech-output"
-FAKE_AGENT_RESPONSE = (
-    "Audio input was received successfully. Server-side transcription will be "
-    "connected to the RAG agent in the next implementation step."
-)
 
 SUPPORTED_AUDIO_TYPES = {
     ".aac": frozenset({"audio/aac", "audio/x-aac"}),
@@ -312,25 +308,19 @@ def validate_audio_request(
     )
 
 
-async def stream_fake_audio_response(
-    audio_request: AudioRequest,
+async def stream_transcript_then_agent_response(
     transcript: str,
+    agent_events: Iterator[str],
 ) -> AsyncIterator[str]:
-    """Stream a transcript and fake assistant answer for audio intake.
+    """Stream a transcript event before forwarding agent response events.
 
     Args:
-        audio_request: Validated audio request metadata.
         transcript: Transcribed user request.
+        agent_events: Existing agent SSE event stream.
 
     Yields:
         str: Server-Sent Events chunks.
     """
-
-    conversation_id = (
-        "conv-audio-new"
-        if audio_request.new_conversation
-        else audio_request.conversation_id
-    )
 
     yield _format_sse(
         "transcript",
@@ -339,21 +329,8 @@ async def stream_fake_audio_response(
             "transcript": transcript,
         },
     )
-    yield _format_sse("metadata", {"conversation_id": conversation_id})
-    yield _format_sse("token", {"text": FAKE_AGENT_RESPONSE})
-    yield _format_sse("references", {"references": []})
-    yield _format_sse(
-        "usage",
-        {
-            "usage": {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-                "reasoning_tokens": 0,
-            }
-        },
-    )
-    yield _format_sse("done", {"conversation_id": conversation_id})
+    for event in agent_events:
+        yield event
 
 
 def build_oci_audio_transcription_clients() -> AudioTranscriptionClients:
@@ -424,13 +401,18 @@ def transcribe_audio(
         object_name=audio_object_name,
         put_object_body=audio_body,
     )
-    job = _create_transcription_job(
-        audio_object_name,
-        output_prefix,
-        settings,
-        clients.speech_client,
-        clients.speech_models,
-    )
+    try:
+        job = _create_transcription_job(
+            audio_object_name,
+            output_prefix,
+            settings,
+            clients.speech_client,
+            clients.speech_models,
+        )
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise RuntimeError(
+            f"OCI Speech transcription job creation failed: {exc}"
+        ) from exc
     job_id = str(getattr(job, "id", ""))
     if not job_id:
         raise RuntimeError("OCI Speech did not return a transcription job id.")
@@ -573,7 +555,7 @@ def _wait_for_transcription_output(
         if last_state.upper() == "SUCCEEDED":
             task_id = str(getattr(task, "id", ""))
             if task_id:
-                task_response = speech_client.get_transcription_task(task_id)
+                task_response = speech_client.get_transcription_task(job_id, task_id)
                 full_task = task_response.data
             else:
                 full_task = task
