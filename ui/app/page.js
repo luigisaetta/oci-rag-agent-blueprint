@@ -10,6 +10,12 @@ import {
   buildTokenState,
   isAccessTokenUsable
 } from "./auth.mjs";
+import {
+  buildAudioResponsesUrl,
+  formatAudioDuration,
+  formatAudioSize,
+  selectSupportedAudioType
+} from "./audio.mjs";
 import { parseSseFrame } from "./sse.mjs";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
@@ -27,6 +33,15 @@ const EMPTY_AGENT_RUNTIME = {
   status: "idle",
   message: "Not loaded",
   values: {}
+};
+const EMPTY_AUDIO_RECORDING = {
+  status: "idle",
+  blob: null,
+  url: "",
+  mimeType: "",
+  startedAt: 0,
+  durationMilliseconds: 0,
+  error: ""
 };
 
 function createMessage(role, content, status = "complete") {
@@ -92,6 +107,7 @@ export default function Home() {
   const [healthStatus, setHealthStatus] = useState(null);
   const [agentRuntime, setAgentRuntime] = useState(EMPTY_AGENT_RUNTIME);
   const [isLoadingAgentRuntime, setIsLoadingAgentRuntime] = useState(false);
+  const [audioRecording, setAudioRecording] = useState(EMPTY_AUDIO_RECORDING);
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") {
       return "dark";
@@ -107,12 +123,23 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState("");
   const abortControllerRef = useRef(null);
   const chatEndRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioTimerRef = useRef(null);
 
   const hasConversation = Boolean(conversationId);
   const canSend =
     question.trim().length > 0 &&
     !isSending &&
+    audioRecording.status !== "recording" &&
     (!jwtEnabled || hasIdcsConfig(idcsConfig));
+  const canStartRecording =
+    !isSending &&
+    audioRecording.status !== "recording" &&
+    (!jwtEnabled || hasIdcsConfig(idcsConfig));
+  const canStopRecording = audioRecording.status === "recording";
+  const hasRecordedAudio = audioRecording.status === "recorded" && audioRecording.blob;
   const canTestHealth = !isTestingHealth && (!jwtEnabled || hasIdcsConfig(idcsConfig));
   const canLoadAgentRuntime =
     !isLoadingAgentRuntime && (!jwtEnabled || hasIdcsConfig(idcsConfig));
@@ -133,6 +160,17 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  useEffect(
+    () => () => {
+      stopAudioTracks();
+      clearAudioTimer();
+      if (audioRecording.url) {
+        URL.revokeObjectURL(audioRecording.url);
+      }
+    },
+    [audioRecording.url]
+  );
+
   function resetConversation() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -141,6 +179,7 @@ export default function Home() {
     setTokenTotals(EMPTY_TOKEN_TOTALS);
     setErrorMessage("");
     setIsSending(false);
+    discardRecording();
   }
 
   function updateIdcsConfig(fieldName, value) {
@@ -305,6 +344,223 @@ export default function Home() {
     );
   }
 
+  function clearAudioTimer() {
+    if (audioTimerRef.current) {
+      window.clearInterval(audioTimerRef.current);
+      audioTimerRef.current = null;
+    }
+  }
+
+  function stopAudioTracks() {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }
+
+  function discardRecording() {
+    clearAudioTimer();
+    stopAudioTracks();
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    setAudioRecording((currentRecording) => {
+      if (currentRecording.url) {
+        URL.revokeObjectURL(currentRecording.url);
+      }
+      return EMPTY_AUDIO_RECORDING;
+    });
+  }
+
+  async function startRecording() {
+    if (!canStartRecording) {
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) {
+      setAudioRecording({
+        ...EMPTY_AUDIO_RECORDING,
+        status: "failed",
+        error: "Audio recording is not available in this browser."
+      });
+      return;
+    }
+
+    try {
+      discardRecording();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = selectSupportedAudioType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      const startedAt = Date.now();
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data?.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      });
+
+      recorder.addEventListener("stop", () => {
+        clearAudioTimer();
+        stopAudioTracks();
+        const recordedMimeType = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: recordedMimeType });
+        const durationMilliseconds = Date.now() - startedAt;
+
+        if (blob.size === 0) {
+          setAudioRecording({
+            ...EMPTY_AUDIO_RECORDING,
+            status: "failed",
+            error: "No audio was captured."
+          });
+          return;
+        }
+
+        setAudioRecording((currentRecording) => {
+          if (currentRecording.url) {
+            URL.revokeObjectURL(currentRecording.url);
+          }
+
+          return {
+            status: "recorded",
+            blob,
+            url: URL.createObjectURL(blob),
+            mimeType: recordedMimeType,
+            startedAt: 0,
+            durationMilliseconds,
+            error: ""
+          };
+        });
+      });
+
+      recorder.start();
+      setErrorMessage("");
+      setAudioRecording({
+        status: "recording",
+        blob: null,
+        url: "",
+        mimeType: recorder.mimeType || mimeType || "browser default",
+        startedAt,
+        durationMilliseconds: 0,
+        error: ""
+      });
+      audioTimerRef.current = window.setInterval(() => {
+        setAudioRecording((currentRecording) =>
+          currentRecording.status === "recording"
+            ? {
+                ...currentRecording,
+                durationMilliseconds: Date.now() - startedAt
+              }
+            : currentRecording
+        );
+      }, 250);
+    } catch (error) {
+      clearAudioTimer();
+      stopAudioTracks();
+      setAudioRecording({
+        ...EMPTY_AUDIO_RECORDING,
+        status: "failed",
+        error: error.message || "Microphone permission was denied."
+      });
+    }
+  }
+
+  function stopRecording() {
+    if (!canStopRecording) {
+      return;
+    }
+
+    mediaRecorderRef.current?.stop();
+  }
+
+  async function sendRecordedAudio() {
+    if (!hasRecordedAudio) {
+      return;
+    }
+
+    const assistantMessage = createMessage("assistant", "", "streaming");
+    let transcriptReceived = false;
+
+    setErrorMessage("");
+    setIsSending(true);
+
+    const formData = new FormData();
+    const extension = audioRecording.mimeType.includes("wav") ? "wav" : "webm";
+    formData.append("file", audioRecording.blob, `voice-question.${extension}`);
+    formData.append("new_conversation", hasConversation ? "false" : "true");
+    formData.append("stream", "true");
+
+    if (hasConversation) {
+      formData.append("conversation_id", conversationId);
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      const bearerToken = await getBearerToken();
+      const requestHeaders = { Accept: "text/event-stream" };
+
+      if (bearerToken) {
+        requestHeaders.Authorization = `Bearer ${bearerToken}`;
+      }
+
+      const response = await fetch(buildAudioResponsesUrl(backendUrl), {
+        method: "POST",
+        headers: requestHeaders,
+        body: formData,
+        signal: abortController.signal
+      });
+
+      if (!response.ok || !response.body) {
+        const responseText = await response.text();
+        throw new Error(responseText || `Backend returned HTTP ${response.status}`);
+      }
+
+      await readEventStream(response.body, assistantMessage.id, {
+        onTranscript(transcript) {
+          if (transcriptReceived) {
+            return;
+          }
+
+          transcriptReceived = true;
+          setMessages((currentMessages) => [
+            ...currentMessages,
+            createMessage("user", transcript || "Voice question"),
+            assistantMessage
+          ]);
+        }
+      });
+      discardRecording();
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setErrorMessage(error.message || "Unable to send the audio request.");
+        if (!transcriptReceived) {
+          setMessages((currentMessages) => [
+            ...currentMessages,
+            createMessage("user", "Voice question"),
+            {
+              ...assistantMessage,
+              content: "\n\nUnable to complete the request.",
+              status: "complete"
+            }
+          ]);
+        } else {
+          appendAssistantToken(
+            assistantMessage.id,
+            "\n\nUnable to complete the request."
+          );
+        }
+      }
+    } finally {
+      completeAssistantMessage(assistantMessage.id);
+      setIsSending(false);
+      abortControllerRef.current = null;
+    }
+  }
+
   async function sendQuestion(event) {
     event.preventDefault();
     const trimmedQuestion = question.trim();
@@ -374,7 +630,7 @@ export default function Home() {
     }
   }
 
-  async function readEventStream(stream, assistantMessageId) {
+  async function readEventStream(stream, assistantMessageId, options = {}) {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -399,6 +655,12 @@ export default function Home() {
         if (parsedFrame.eventName === "metadata") {
           setConversationId(parsedFrame.data.conversation_id ?? "");
           metadataSeen = true;
+        }
+
+        if (parsedFrame.eventName === "transcript") {
+          options.onTranscript?.(
+            parsedFrame.data.transcript ?? parsedFrame.data.text ?? ""
+          );
         }
 
         if (parsedFrame.eventName === "token") {
@@ -649,6 +911,58 @@ export default function Home() {
         {errorMessage ? <div className="errorBar">{errorMessage}</div> : null}
 
         <form className="composer" onSubmit={sendQuestion}>
+          <div className="voiceComposer" aria-label="Voice question recorder">
+            <button
+              className={
+                audioRecording.status === "recording"
+                  ? "voiceButton recording"
+                  : "voiceButton"
+              }
+              type="button"
+              disabled={!canStartRecording && audioRecording.status !== "recording"}
+              onClick={audioRecording.status === "recording" ? stopRecording : startRecording}
+              title={
+                audioRecording.status === "recording"
+                  ? "Stop recording"
+                  : "Record voice question"
+              }
+            >
+              <span aria-hidden="true">
+                {audioRecording.status === "recording" ? "■" : "●"}
+              </span>
+            </button>
+
+            <div className="voiceStatus">
+              {audioRecording.status === "recording" ? (
+                <span>
+                  Recording {formatAudioDuration(audioRecording.durationMilliseconds)}
+                </span>
+              ) : null}
+              {audioRecording.status === "recorded" ? (
+                <span>
+                  Recorded {formatAudioDuration(audioRecording.durationMilliseconds)} ·{" "}
+                  {formatAudioSize(audioRecording.blob?.size ?? 0)}
+                </span>
+              ) : null}
+              {audioRecording.status === "failed" ? (
+                <span className="failed">{audioRecording.error}</span>
+              ) : null}
+              {audioRecording.status === "idle" ? <span>Voice input</span> : null}
+              <small>{audioRecording.mimeType || "webm/opus when available"}</small>
+            </div>
+
+            {hasRecordedAudio ? (
+              <div className="voicePreview">
+                <audio controls src={audioRecording.url} />
+                <button type="button" onClick={sendRecordedAudio}>
+                  Use audio
+                </button>
+                <button type="button" onClick={discardRecording}>
+                  Discard
+                </button>
+              </div>
+            ) : null}
+          </div>
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}

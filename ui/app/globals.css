@@ -731,6 +731,100 @@ button {
   background: color-mix(in srgb, var(--background), var(--surface) 50%);
 }
 
+.voiceComposer {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.voiceButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--border) 45%);
+  border-radius: 50%;
+  background: var(--surface-muted);
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.voiceButton:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+}
+
+.voiceButton.recording {
+  border-color: color-mix(in srgb, var(--danger), var(--accent) 20%);
+  color: var(--danger);
+}
+
+.voiceButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.voiceStatus {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.voiceStatus span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voiceStatus span.failed {
+  color: var(--danger);
+}
+
+.voiceStatus small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voicePreview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.voicePreview audio {
+  width: 220px;
+  max-width: 32vw;
+  height: 34px;
+}
+
+.voicePreview button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.voicePreview button:hover {
+  border-color: var(--accent);
+}
+
 .composer textarea {
   min-height: 54px;
   max-height: 180px;
@@ -774,5 +868,19 @@ button {
 
   .composer {
     grid-template-columns: 1fr;
+  }
+
+  .voiceComposer {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .voicePreview {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .voicePreview audio {
+    width: 100%;
+    max-width: 100%;
   }
 }

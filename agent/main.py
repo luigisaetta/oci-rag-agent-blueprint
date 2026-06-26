@@ -1,6 +1,6 @@
 """
 Author: L. Saetta
-Date last modified: 2026-06-25
+Date last modified: 2026-06-26
 License: MIT
 Description: FastAPI entrypoint for the OCI RAG agent.
 """
@@ -17,6 +17,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from agent.agent import process_agent_request, stream_agent_request
+from agent.audio import (
+    AudioRequestError,
+    RawAudioRequest,
+    build_oci_audio_transcription_clients,
+    load_audio_request_settings,
+    stream_fake_audio_response,
+    transcribe_audio,
+    validate_audio_request,
+)
 from agent.config import load_settings
 from agent.document_ingestion import (
     ConnectorIngestionRequest,
@@ -51,6 +60,7 @@ app.add_middleware(
 app.state.openai_client_factory = create_openai_client
 app.state.document_ingestion_client_factory = build_oci_document_ingestion_clients
 app.state.file_sync_details_factory = load_file_sync_details_class
+app.state.audio_transcription_client_factory = build_oci_audio_transcription_clients
 
 LOGGER.info("OCI RAG agent application initialized")
 
@@ -167,6 +177,101 @@ async def create_response(request: Request) -> Response:
             _request_id(request),
         )
         return _error_response(f"Responses API failure: {exc}", status_code=502)
+
+
+@app.post("/responses/audio")
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+async def create_audio_response(
+    request: Request,
+    file: UploadFile | None = File(None),
+    new_conversation: str = Form("true"),
+    conversation_id: str = Form(""),
+    stream: str = Form("true"),
+    user_id: str = Form(""),
+    user_role: str = Form(""),
+    language_code: str = Form(""),
+) -> Response:
+    """Receive an audio request and return a temporary fake streaming answer.
+
+    Args:
+        request: FastAPI request object.
+        file: Uploaded audio file.
+        new_conversation: Whether to create a new conversation.
+        conversation_id: Existing conversation id when continuing a conversation.
+        stream: Whether streaming is requested. Only true is supported for audio.
+        user_id: Reserved user identifier.
+        user_role: Reserved user role.
+        language_code: Reserved transcription language override.
+
+    Returns:
+        Response: SSE fake response or structured error payload.
+    """
+
+    del user_id, user_role, language_code
+
+    if file is None:
+        return _error_response("Audio file is required.", status_code=400)
+
+    try:
+        settings = load_audio_request_settings()
+        audio_request = validate_audio_request(
+            RawAudioRequest(
+                filename=file.filename or "",
+                content_type=file.content_type or "",
+                size_bytes=_uploaded_file_size(file),
+                new_conversation=new_conversation,
+                conversation_id=conversation_id,
+                stream=stream,
+            ),
+            settings=settings,
+        )
+        transcription_clients = request.app.state.audio_transcription_client_factory()
+        transcript = transcribe_audio(
+            audio_request,
+            file.file,
+            settings,
+            transcription_clients,
+        )
+    except ValueError as exc:
+        LOGGER.info(
+            "Audio request configuration error request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return _error_response(str(exc), status_code=500)
+    except AudioRequestError as exc:
+        LOGGER.info(
+            "Audio request validation failed request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return _error_response(str(exc), status_code=exc.status_code)
+    except TimeoutError as exc:
+        LOGGER.info(
+            "Audio transcription timed out request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return _error_response(str(exc), status_code=504)
+    except RuntimeError as exc:
+        LOGGER.info(
+            "Audio transcription failed request_id=%s error=%s",
+            _request_id(request),
+            exc,
+        )
+        return _error_response(str(exc), status_code=502)
+
+    LOGGER.info(
+        "Audio request accepted request_id=%s filename=%s content_type=%s size_bytes=%s",
+        _request_id(request),
+        audio_request.filename,
+        audio_request.content_type,
+        audio_request.size_bytes,
+    )
+    return StreamingResponse(
+        stream_fake_audio_response(audio_request, transcript),
+        media_type="text/event-stream",
+    )
 
 
 @app.post("/documents/ingestions")

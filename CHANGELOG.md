@@ -8,6 +8,16 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-26
 
+- Connected voice request intake to OCI Speech transcription using Object
+  Storage staging, configurable Whisper model selection, transcript extraction,
+  and mocked backend tests while keeping the agent answer fake for local UI
+  validation.
+- Added the first server-side voice request intake endpoint, including
+  multipart audio validation, transcript-first fake SSE output, audio UI
+  submission to `/responses/audio`, and backend tests.
+- Added the first reference UI voice-input step with browser microphone
+  recording, local audio preview, recording metadata, transcript SSE parsing
+  support, and UI helper tests before server-side transcription is implemented.
 - Specified voice agent requests with server-side OCI Speech transcription,
   supported audio formats, transcript-first SSE responses, configurable Whisper
   model selection, local config-file authentication, and reference UI microphone

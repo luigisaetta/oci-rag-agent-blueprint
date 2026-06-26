@@ -15,11 +15,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from json import JSONDecodeError
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from agent.agent import AGENT_INSTRUCTIONS, OUTPUT_TEXT_DELTA_EVENT_TYPE
+from agent.audio import AudioTranscriptionClients
 from agent.main import app
 
 REQUIRED_ENV = {
@@ -262,6 +264,98 @@ class FakeOpenAIClient:
             stream_references=stream_references,
             stream_usage=stream_usage,
         )
+
+
+class FakeAudioObjectStorageClient:
+    """Fake Object Storage client for audio transcription tests."""
+
+    def __init__(self, transcript_payload: bytes | None = None) -> None:
+        """Initialize fake Object Storage state."""
+
+        self.transcript_payload = transcript_payload or (
+            b'{"transcription": "What is in the uploaded audio?"}'
+        )
+        self.put_calls: list[tuple[str, bytes]] = []
+
+    def put_object(
+        self,
+        namespace_name: str,
+        bucket_name: str,
+        object_name: str,
+        put_object_body: Any,
+    ) -> None:
+        """Record uploaded audio bytes."""
+
+        del namespace_name, bucket_name
+        self.put_calls.append((object_name, put_object_body.read()))
+
+    def get_object(
+        self,
+        namespace_name: str,
+        bucket_name: str,
+        object_name: str,
+    ) -> Any:
+        """Return fake transcript JSON."""
+
+        del namespace_name, bucket_name, object_name
+        return SimpleNamespace(data=SimpleNamespace(content=self.transcript_payload))
+
+
+class FakeAudioSpeechClient:
+    """Fake OCI Speech client for audio transcription tests."""
+
+    def __init__(self, lifecycle_state: str = "SUCCEEDED") -> None:
+        """Initialize fake Speech state."""
+
+        self.lifecycle_state = lifecycle_state
+        self.created_details: Any | None = None
+
+    def create_transcription_job(self, details: Any) -> Any:
+        """Record created transcription job details."""
+
+        self.created_details = details
+        return SimpleNamespace(data=SimpleNamespace(id="job-123"))
+
+    def list_transcription_tasks(self, transcription_job_id: str) -> Any:
+        """Return one fake transcription task."""
+
+        del transcription_job_id
+        return SimpleNamespace(
+            data=SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        id="task-123",
+                        lifecycle_state=self.lifecycle_state,
+                        lifecycle_details="speech failed",
+                    )
+                ]
+            )
+        )
+
+    def get_transcription_task(self, task_id: str) -> Any:
+        """Return a fake completed transcription task."""
+
+        del task_id
+        return SimpleNamespace(
+            data=SimpleNamespace(
+                output_location=SimpleNamespace(
+                    namespace_name="namespace",
+                    bucket_name="bucket",
+                    object_names=["speech-output/job-123/transcript.json"],
+                )
+            )
+        )
+
+
+class FakeAudioModels:
+    """Fake OCI Speech models module."""
+
+    CreateTranscriptionJobDetails = SimpleNamespace
+    ObjectListInlineInputLocation = SimpleNamespace
+    ObjectLocation = SimpleNamespace
+    OutputLocation = SimpleNamespace
+    TranscriptionModelDetails = SimpleNamespace
+    TranscriptionSettings = SimpleNamespace
 
 
 def test_health_endpoint() -> None:
@@ -832,6 +926,166 @@ def test_stream_parser_failure_after_token_ends_stream(monkeypatch: Any) -> None
     assert "event: error" not in response.text
 
 
+def test_audio_response_accepts_webm_and_streams_fake_answer(
+    monkeypatch: Any,
+) -> None:
+    """Test audio endpoint accepts browser audio and streams transcribed output."""
+
+    object_storage_client, speech_client = _set_audio_env_and_clients(monkeypatch)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.webm", b"audio bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: transcript" in response.text
+    assert "What is in the uploaded audio?" in response.text
+    assert (
+        'event: metadata\ndata: {"conversation_id": "conv-audio-new"}' in response.text
+    )
+    assert "event: token" in response.text
+    assert "Audio input was received successfully." in response.text
+    assert "event: references" in response.text
+    assert "event: usage" in response.text
+    assert 'event: done\ndata: {"conversation_id": "conv-audio-new"}' in response.text
+    assert object_storage_client.put_calls
+    assert object_storage_client.put_calls[0][0].startswith("speech-input/")
+    assert object_storage_client.put_calls[0][1] == b"audio bytes"
+    assert speech_client.created_details.model_details.model_type == "WHISPER_MEDIUM"
+
+
+def test_audio_response_preserves_existing_conversation_id(
+    monkeypatch: Any,
+) -> None:
+    """Test audio endpoint uses the supplied conversation id for continuation."""
+
+    _set_audio_env_and_clients(monkeypatch)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={
+            "new_conversation": "false",
+            "conversation_id": "conv-existing",
+            "stream": "true",
+        },
+        files={"file": ("question.wav", b"audio bytes", "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    assert (
+        'event: metadata\ndata: {"conversation_id": "conv-existing"}' in response.text
+    )
+    assert 'event: done\ndata: {"conversation_id": "conv-existing"}' in response.text
+
+
+def test_audio_response_requires_file() -> None:
+    """Test audio endpoint rejects missing files."""
+
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "Audio file is required."
+
+
+def test_audio_response_rejects_unsupported_format(monkeypatch: Any) -> None:
+    """Test audio endpoint rejects unsupported audio extensions."""
+
+    _set_audio_env_and_clients(monkeypatch)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.txt", b"audio bytes", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported audio extension" in response.json()["error"]
+
+
+def test_audio_response_requires_conversation_id_for_existing_conversation(
+    monkeypatch: Any,
+) -> None:
+    """Test audio endpoint validates conversation continuation fields."""
+
+    _set_audio_env_and_clients(monkeypatch)
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "false", "stream": "true"},
+        files={"file": ("question.webm", b"audio bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["error"]
+        == "conversation_id is required when new_conversation=false."
+    )
+
+
+def test_audio_response_can_be_disabled(monkeypatch: Any) -> None:
+    """Test audio endpoint returns 404 when speech-to-text is disabled."""
+
+    monkeypatch.setenv("SPEECH_TO_TEXT_ENABLED", "false")
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.webm", b"audio bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "Speech-to-text is not enabled."
+
+
+def test_audio_response_rejects_oversized_upload(monkeypatch: Any) -> None:
+    """Test audio endpoint enforces configured upload size limits."""
+
+    _set_audio_env_and_clients(monkeypatch)
+    monkeypatch.setenv("AUDIO_UPLOAD_MAX_SIZE_MB", "1")
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.webm", b"x" * (1024 * 1024 + 1), "audio/webm")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"] == "Audio file is larger than the configured limit."
+
+
+def test_audio_response_reports_transcription_failure(monkeypatch: Any) -> None:
+    """Test audio endpoint maps OCI Speech failures to a gateway error."""
+
+    _set_audio_env_and_clients(
+        monkeypatch,
+        speech_client=FakeAudioSpeechClient(lifecycle_state="FAILED"),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/responses/audio",
+        data={"new_conversation": "true", "stream": "true"},
+        files={"file": ("question.webm", b"audio bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 502
+    assert "OCI Speech transcription failed" in response.json()["error"]
+
+
 def _stream_with_json_decode_error() -> Iterator[dict[str, Any]]:
     """Build a fake stream that fails after one valid token event.
 
@@ -1048,3 +1302,24 @@ def _set_client_factory(fake_client: FakeOpenAIClient) -> None:
     """
 
     app.state.openai_client_factory = lambda _settings: fake_client
+
+
+def _set_audio_env_and_clients(
+    monkeypatch: Any,
+    object_storage_client: FakeAudioObjectStorageClient | None = None,
+    speech_client: FakeAudioSpeechClient | None = None,
+) -> tuple[FakeAudioObjectStorageClient, FakeAudioSpeechClient]:
+    """Set speech-to-text test environment and fake OCI clients."""
+
+    monkeypatch.delenv("SPEECH_TO_TEXT_ENABLED", raising=False)
+    monkeypatch.setenv("OCI_COMPARTMENT_ID", "ocid1.compartment.oc1..example")
+    monkeypatch.setenv("OCI_SPEECH_STAGING_NAMESPACE", "namespace")
+    monkeypatch.setenv("OCI_SPEECH_STAGING_BUCKET", "bucket")
+    object_storage_client = object_storage_client or FakeAudioObjectStorageClient()
+    speech_client = speech_client or FakeAudioSpeechClient()
+    app.state.audio_transcription_client_factory = lambda: AudioTranscriptionClients(
+        object_storage_client=object_storage_client,
+        speech_client=speech_client,
+        speech_models=FakeAudioModels,
+    )
+    return object_storage_client, speech_client

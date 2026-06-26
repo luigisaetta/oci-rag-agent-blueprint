@@ -21,6 +21,10 @@ test("parseSseFrame infers hosted gateway event names from data frames", () => {
     eventName: "token",
     data: { text: "ok" }
   });
+  assert.deepEqual(parseSseFrame('data: {"transcript": "hello"}', true), {
+    eventName: "transcript",
+    data: { transcript: "hello" }
+  });
   assert.deepEqual(parseSseFrame('data: {"references": []}', true), {
     eventName: "references",
     data: { references: [] }

@@ -8,6 +8,12 @@ The same `/responses` API supports both non-streaming and streaming requests.
 Agent-managed document ingestion also exposes `/documents/ingestions` endpoints
 when `DOCUMENT_INGESTION_ENABLED=true`.
 
+Voice request intake also exposes `/responses/audio` when
+`SPEECH_TO_TEXT_ENABLED=true`. The implementation accepts and validates audio
+uploads, transcribes them with OCI Speech, emits the transcript event, and
+streams a fixed fake answer. The next implementation step will connect the
+transcript to the real RAG agent response path.
+
 ## Endpoints
 
 For a local backend, use:
@@ -48,6 +54,16 @@ http://localhost:8080/documents/ingestions/<job-id>
 ```text
 https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/documents/ingestions
 https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/documents/ingestions/<job-id>
+```
+
+The voice request endpoint uses the same base path:
+
+```text
+http://localhost:8080/responses/audio
+```
+
+```text
+https://inference.generativeai.<region>.oci.oraclecloud.com/20251112/hostedApplications/<hosted-application-ocid>/actions/invoke/responses/audio
 ```
 
 ## New Conversation
@@ -159,6 +175,7 @@ data: {"conversation_id": "conv_fra_example"}
 In that hosted shape, infer the event type from the JSON payload:
 
 - `conversation_id` before metadata has been shown: `metadata`.
+- `transcript`: `transcript`.
 - `text`: `token`.
 - `references`: `references`.
 - `usage`: `usage`.
@@ -168,6 +185,46 @@ In that hosted shape, infer the event type from the JSON payload:
 Clients should stop reading the stream after `done` or `error`, because hosted
 gateways may keep the HTTP connection open after the useful response frames have
 already been delivered.
+
+## Audio Request
+
+Use `POST /responses/audio` to submit a recorded voice question. The endpoint
+currently transcribes multipart audio input with OCI Speech and returns a fake
+assistant response.
+
+```bash
+curl -N \
+  -H "Accept: text/event-stream" \
+  -F "new_conversation=true" \
+  -F "stream=true" \
+  -F "file=@./question.webm;type=audio/webm" \
+  "http://localhost:8080/responses/audio"
+```
+
+The stream starts with a real transcript event and then follows the normal
+streaming response event sequence:
+
+```text
+event: transcript
+data: {"text": "<transcribed user request>", "transcript": "<transcribed user request>"}
+
+event: metadata
+data: {"conversation_id": "conv-audio-new"}
+
+event: token
+data: {"text": "Audio input was received successfully. Server-side transcription will be connected in the next implementation step."}
+```
+
+Supported upload extensions are aligned with OCI Speech supported formats:
+`.aac`, `.ac3`, `.amr`, `.au`, `.flac`, `.m4a`, `.mkv`, `.mp3`, `.mp4`, `.oga`,
+`.ogg`, `.opus`, `.wav`, and `.webm`.
+
+Local Docker Compose testing requires `OCI_AUTH_MODE=config_file`, a mounted OCI
+config directory, and `OCI_SPEECH_STAGING_NAMESPACE` /
+`OCI_SPEECH_STAGING_BUCKET` values pointing to an Object Storage bucket that the
+configured OCI profile can use. Hosted deployments should use
+`OCI_AUTH_MODE=resource_principal` with policies for Object Storage and OCI
+Speech.
 
 ## Python CLI
 

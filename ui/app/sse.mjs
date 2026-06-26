@@ -31,6 +31,7 @@ export function normalizeSseEventName(eventName, data, metadataSeen = false) {
   }
 
   const payloadKeyEvents = {
+    transcript: "transcript",
     text: "token",
     references: "references",
     usage: "usage",
