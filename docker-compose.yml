@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    volumes:
+      - ${HOME}/.oci:${HOME}/.oci:ro
     ports:
       - "8080:8080"
     healthcheck:

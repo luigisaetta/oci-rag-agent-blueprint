@@ -6,8 +6,22 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-26
+
+- Specified voice agent requests with server-side OCI Speech transcription,
+  supported audio formats, transcript-first SSE responses, configurable Whisper
+  model selection, local config-file authentication, and reference UI microphone
+  requirements.
+- Clarified that voice transcription requires a configured Object Storage
+  staging namespace and bucket plus IAM policies for both Object Storage and
+  OCI Speech operations.
+
 ## 2026-06-25
 
+- Fixed the local Docker Compose backend image and runtime wiring for
+  config-file OCI authentication by copying the shared management package,
+  mounting the local OCI configuration directory read-only, and documenting
+  local document ingestion environment variables.
 - Added a document ingestion CLI for submitting remote agent-managed connector
   ingestion jobs, reading job status, optional polling, multipart uploads, IDCS
   token reuse, documentation, and unit tests.

@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY agent ./agent
+COPY management ./management
 COPY schemas ./schemas
 
 EXPOSE 8080
