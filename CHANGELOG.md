@@ -28,6 +28,9 @@ changes, or documentation updates are introduced.
   models that do not support temperature.
 - Simplified the golden dataset JSONL schema by keeping only the deterministic
   ID, source PDF name, page number, question, and expected answer.
+- Strengthened the golden dataset question-generation prompt with
+  domain-specific guidance, few-shot examples, and validation against generic
+  "the text" style questions.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 

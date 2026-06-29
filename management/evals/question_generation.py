@@ -20,9 +20,19 @@ FORBIDDEN_QUESTION_PATTERNS = (
     r"\bsection\b",
     r"\bpdf\b",
     r"\bfile\b",
+    r"\btext\b",
+    r"\bsource\b",
     r"\bon this page\b",
     r"\bin this document\b",
     r"\bin this section\b",
+    r"\bin the text\b",
+    r"\bthe text\b",
+    r"\bthis text\b",
+    r"\bwhat type of information\b",
+    r"\bwhat information\b",
+    r"\bwhat contributor categories\b",
+    r"\bprimarily present",
+    r"\bprimarily presented",
 )
 
 
@@ -77,8 +87,21 @@ def build_generation_instructions() -> str:
     return (
         "You generate evaluation examples for a RAG system. Return only valid "
         "JSON with keys question and expected_answer. Use only the provided "
-        "page text. Do not mention page numbers, PDF names, documents, files, "
-        "or sections."
+        "source material. The question must be self-contained and domain "
+        "specific: it must include enough concrete context that a human can "
+        "understand what topic is being asked about without seeing the source. "
+        "Do not mention page numbers, PDF names, documents, files, sections, "
+        "the source, or the text. Avoid generic template questions such as "
+        "'What type of information is presented?', 'What contributor categories "
+        "are identified?', or questions that could apply to many unrelated "
+        "sources. Prefer questions about named concepts, mechanisms, risks, "
+        "conditions, constraints, recommendations, or relationships explicitly "
+        "described in the source. If the source is medical, name the medicine "
+        "or clinical situation. If the source is about AI, name the AI concept, "
+        "benchmark, mechanism, or claim. If the source is about management or "
+        "learning, name the specific practice or organizational context. "
+        "Do not create a near-duplicate of another obvious question from the "
+        "same source; choose a distinct fact or relationship."
     )
 
 
@@ -93,9 +116,28 @@ def build_generation_input(page_text: str) -> str:
     """
 
     return (
-        "Create one conceptual question and one concise expected answer that "
-        "can be answered using only this source text.\n\n"
-        f"Source text:\n{page_text}"
+        "Create one high-quality golden evaluation example from the source "
+        "below.\n\n"
+        "Bad question examples to avoid:\n"
+        "- What type of information is primarily presented in the text?\n"
+        "- What contributor categories are identified in the text?\n"
+        "- Why should leaders actively participate in the same learning they "
+        "ask employees to complete?\n"
+        "- What alternative explanation is proposed for apparent emergent "
+        "abilities in large language models?\n\n"
+        "Why they are bad: they are generic, refer to 'the text', lack enough "
+        "domain context, or are likely to duplicate questions from nearby "
+        "source material.\n\n"
+        "Better question style examples:\n"
+        "- In a corporate AI upskilling program, why does visible leadership "
+        "participation matter for employee adoption?\n"
+        "- According to the discussion of apparent emergent abilities in large "
+        "language models, how can metric choice make performance look sudden "
+        "rather than gradual?\n"
+        "- When using paracetamol for pain or fever, which patient conditions "
+        "require medical caution before treatment?\n\n"
+        "Return only JSON with keys question and expected_answer.\n\n"
+        f"Source material:\n{page_text}"
     )
 
 

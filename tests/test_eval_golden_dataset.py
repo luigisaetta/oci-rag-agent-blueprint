@@ -38,6 +38,8 @@ from management.evals.page_selection import (
 )
 from management.evals.question_generation import (
     QuestionGenerationRequest,
+    build_generation_input,
+    build_generation_instructions,
     generate_question_answer,
     parse_generated_payload,
     validate_question,
@@ -337,7 +339,7 @@ def test_merge_records_overwrites_by_source_key() -> None:
 
 
 def test_generated_payload_validation_rejects_source_location_references() -> None:
-    """Generated questions must not refer to page, document, file, or section."""
+    """Generated questions must not refer to source location or generic text."""
 
     with pytest.raises(ValueError, match="forbidden reference"):
         validate_question("What does this page say about retrieval?")
@@ -352,6 +354,26 @@ def test_generated_payload_validation_rejects_source_location_references() -> No
             )
         )
 
+    generic_questions = [
+        "What type of information is primarily presented in the text?",
+        "What contributor categories are identified in the text?",
+        "What type of information does the source primarily present?",
+    ]
+    for question in generic_questions:
+        with pytest.raises(ValueError, match="forbidden reference"):
+            validate_question(question)
+
+
+def test_generation_prompt_discourages_generic_questions() -> None:
+    """Prompt guidance includes examples that discourage generic questions."""
+
+    instructions = build_generation_instructions()
+    generation_input = build_generation_input("Locus coordinates tool use.")
+
+    assert "self-contained and domain specific" in instructions
+    assert "What type of information is primarily presented" in generation_input
+    assert "Better question style examples" in generation_input
+
 
 def test_generate_question_answer_retries_invalid_output() -> None:
     """Invalid LLM output is retried before returning a valid example."""
@@ -361,7 +383,10 @@ def test_generate_question_answer_retries_invalid_output() -> None:
             "not-json",
             json.dumps(
                 {
-                    "question": "How does retrieval grounding help answers?",
+                    "question": (
+                        "How does retrieval grounding help RAG answers stay "
+                        "aligned with retrieved context?"
+                    ),
                     "expected_answer": "It ties answers to retrieved context.",
                 }
             ),
@@ -372,19 +397,22 @@ def test_generate_question_answer_retries_invalid_output() -> None:
         client,
         QuestionGenerationRequest(
             model="model",
-            page_text="page text",
+            page_text="retrieval grounding aligns answers with retrieved context",
             compartment_id="ocid1.compartment.oc1..example",
         ),
     )
 
-    assert generated.question == "How does retrieval grounding help answers?"
+    assert generated.question == (
+        "How does retrieval grounding help RAG answers stay aligned with "
+        "retrieved context?"
+    )
     assert client.responses.calls == 2
     assert client.responses.last_kwargs["extra_body"] == {
         "compartmentId": "ocid1.compartment.oc1..example"
     }
     assert "temperature" not in client.responses.last_kwargs
     assert client.responses.last_kwargs["input"].startswith(
-        "Create one conceptual question"
+        "Create one high-quality golden evaluation example"
     )
 
 
@@ -395,7 +423,10 @@ def test_generate_question_answer_passes_positive_temperature() -> None:
         [
             json.dumps(
                 {
-                    "question": "How does retrieval grounding help answers?",
+                    "question": (
+                        "How does retrieval grounding help RAG answers stay "
+                        "aligned with retrieved context?"
+                    ),
                     "expected_answer": "It ties answers to retrieved context.",
                 }
             ),
@@ -406,7 +437,7 @@ def test_generate_question_answer_passes_positive_temperature() -> None:
         client,
         QuestionGenerationRequest(
             model="model",
-            page_text="page text",
+            page_text="retrieval grounding aligns answers with retrieved context",
             compartment_id="ocid1.compartment.oc1..example",
             temperature=0.2,
         ),

@@ -259,7 +259,22 @@ The generated question must not mention:
 - The Object Storage object name.
 - The page number.
 - Phrases such as "in this document", "on this page", or "in this section".
+- Phrases such as "the text", "this text", "the source", or "this source".
 - Section numbers or headings as the only basis for the question.
+
+The generated question must be self-contained and domain-specific. It must
+include enough context for a human reviewer to understand the topic without
+seeing the source page. The prompt must discourage generic template questions
+such as:
+
+- "What type of information is primarily presented in the text?"
+- "What contributor categories are identified in the text?"
+- "What type of information does the text primarily present?"
+
+The prompt should include few-shot guidance that contrasts weak generic
+questions with better questions that name the relevant concept, medicine,
+mechanism, benchmark, organizational practice, risk, constraint, or relationship
+described in the source.
 
 The generated answer must:
 
@@ -424,7 +439,7 @@ Unit tests must cover:
 - Overwrite behavior using the logical source key.
 - LLM structured output parsing.
 - Rejection of generated questions that reference file name, page number, page,
-  document, or section.
+  document, section, text, source, or generic template phrasing.
 - Retry behavior for invalid model output.
 - Dry-run behavior.
 - CLI validation errors.
