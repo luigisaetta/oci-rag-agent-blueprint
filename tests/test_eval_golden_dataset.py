@@ -25,6 +25,8 @@ from management.evals.dataset_io import (
 )
 from management.evals.generate_golden_dataset import (
     GoldenDatasetConfig,
+    SourcePdfObject,
+    _with_progress,
     discover_pdf_objects,
     generate_dataset,
     parse_args,
@@ -353,6 +355,33 @@ def test_parse_args_uses_eval_environment(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert config.eval_model_id == "eval-model"
     assert config.output == Path("evals/datasets/golden.jsonl")
+
+
+def test_parse_args_supports_no_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI can disable interactive progress output."""
+
+    monkeypatch.setenv("EVAL_SOURCE_NAMESPACE", "ns")
+    monkeypatch.setenv("EVAL_SOURCE_BUCKET", "bucket")
+    monkeypatch.setenv("EVAL_GOLDEN_DATASET_PATH", "evals/datasets/golden.jsonl")
+    monkeypatch.setenv("EVAL_OCI_REGION", "region")
+    monkeypatch.setenv("EVAL_OCI_COMPARTMENT_ID", "compartment")
+    monkeypatch.setenv("EVAL_OCI_PROJECT_ID", "project")
+    monkeypatch.setenv("EVAL_OCI_MODEL_ID", "eval-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+
+    config = parse_args(["--no-progress"])
+
+    assert not config.progress
+
+
+def test_progress_wrapper_returns_plain_objects_when_disabled() -> None:
+    """Progress wrapping is bypassed when explicitly disabled."""
+
+    source_objects = [SourcePdfObject(name="doc.pdf", size=1)]
+
+    wrapped = _with_progress(source_objects, enabled=False, description="Test")
+
+    assert wrapped is source_objects
 
 
 def test_validate_config_requires_eval_model_not_runtime_model(

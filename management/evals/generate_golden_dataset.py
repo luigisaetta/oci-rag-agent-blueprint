@@ -129,6 +129,7 @@ class GoldenDatasetConfig:
         oci_auth_mode: OCI auth mode for LLM access.
         openai_api_key: OpenAI-compatible API key for API-key mode.
         generation_temperature: LLM generation temperature.
+        progress: Whether to show a progress bar when processing PDFs.
     """
 
     namespace: str
@@ -148,6 +149,7 @@ class GoldenDatasetConfig:
     oci_auth_mode: str = OCI_AUTH_MODE_DEFAULT
     openai_api_key: str = ""
     generation_temperature: float = DEFAULT_EVAL_TEMPERATURE
+    progress: bool = True
 
 
 @dataclass
@@ -203,6 +205,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the interactive progress bar.",
+    )
+    parser.add_argument(
         "--generation-temperature",
         type=float,
         default=_optional_float_env(
@@ -247,6 +254,7 @@ def parse_args(argv: list[str] | None = None) -> GoldenDatasetConfig:
         oci_auth_mode=os.environ.get("OCI_AUTH_MODE", OCI_AUTH_MODE_DEFAULT),
         openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
         generation_temperature=args.generation_temperature,
+        progress=not args.no_progress,
     )
 
 
@@ -367,7 +375,11 @@ def generate_dataset(
     summary.pdfs_discovered = len(source_objects)
     generated_records: list[GoldenRecord] = []
 
-    for source_object in source_objects:
+    for source_object in _with_progress(
+        source_objects,
+        enabled=config.progress,
+        description="Generating golden dataset",
+    ):
         try:
             temp_path = download_pdf_to_tempfile(
                 object_storage_client,
@@ -516,6 +528,38 @@ def print_summary(summary: GoldenDatasetSummary) -> None:
         print("------")
         for error in summary.errors:
             print(f"- {error}")
+
+
+def _with_progress(
+    source_objects: list[SourcePdfObject],
+    enabled: bool,
+    description: str,
+) -> list[SourcePdfObject] | Any:
+    """Wrap source objects in a tqdm progress bar when appropriate.
+
+    Args:
+        source_objects: Source PDF objects to process.
+        enabled: Whether progress reporting is allowed.
+        description: Progress bar description.
+
+    Returns:
+        list[SourcePdfObject] | Any: Plain source objects or a tqdm iterator.
+    """
+
+    if not enabled or not sys.stdout.isatty():
+        return source_objects
+
+    try:
+        from tqdm import tqdm  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        return source_objects
+
+    return tqdm(
+        source_objects,
+        total=len(source_objects),
+        desc=description,
+        unit="pdf",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -7,4 +7,5 @@ oci-genai-auth>=1.0.0,<2
 openai==2.41.0
 pypdf>=5,<7
 python-multipart==0.0.20
+tqdm>=4,<5
 uvicorn==0.49.0

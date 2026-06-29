@@ -19,6 +19,8 @@ changes, or documentation updates are introduced.
   extraction, significant page scoring, LLM JSON output validation,
   deterministic JSONL records, incremental merge behavior, dry-run support, and
   unit tests.
+- Added an interactive `tqdm` progress bar for golden dataset PDF processing,
+  with `--no-progress` for scripted runs.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 

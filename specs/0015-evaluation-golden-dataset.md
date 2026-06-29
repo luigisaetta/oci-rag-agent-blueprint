@@ -149,6 +149,7 @@ The implementation must support these command-line arguments:
   output file.
 - `--dry-run`: discover PDFs and selected pages without calling the LLM or
   writing the output file.
+- `--no-progress`: disable the interactive progress bar.
 - `--profile`: OCI configuration profile when config-file authentication is
   used.
 - `--config-file`: OCI configuration file path when config-file authentication
@@ -412,6 +413,11 @@ The command must print a final summary containing:
 - Examples skipped because generation or validation failed.
 - Output JSONL path.
 
+During interactive execution, the command should display a `tqdm` progress bar
+showing processed PDFs out of the discovered total. Progress output must be
+disabled automatically when stdout is not a terminal and must also be disabled
+when `--no-progress` is provided.
+
 ## Test Expectations
 
 Unit tests must cover:
@@ -454,3 +460,5 @@ OCI resources, real PDFs from Object Storage, or real model calls.
   validation behavior using mocks.
 - Evaluation Python code lives under `management/evals/`.
 - Generated datasets and reports live under `evals/`.
+- The generator shows a progress bar for interactive runs and supports
+  `--no-progress` for scripted runs.
