@@ -13,12 +13,11 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from agent.config import OCI_AUTH_MODE_DEFAULT, OCI_AUTH_MODES
-from agent.openai_client import create_openai_client
 from management.load_documents import DEFAULT_OCI_PROFILE, load_oci_config
 from management.evals.dataset_io import (
     GoldenRecord,
@@ -326,8 +325,9 @@ def discover_pdf_objects(
         list_response = response.data
         for item in getattr(list_response, "objects", []):
             name = getattr(item, "name", "")
-            size = int(getattr(item, "size", 0) or 0)
-            if name.lower().endswith(".pdf") and size > 0:
+            raw_size = getattr(item, "size", None)
+            size = int(raw_size or 0)
+            if name.lower().endswith(".pdf") and raw_size != 0:
                 objects.append(
                     SourcePdfObject(
                         name=name,
@@ -428,7 +428,7 @@ def generate_dataset(
                             source_size_bytes=source_object.size,
                             page_content_hash=page_hash,
                             generation_model=config.eval_model_id,
-                            generated_at=datetime.now(UTC).isoformat(),
+                            generated_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
                     summary.examples_generated += 1
@@ -576,11 +576,7 @@ def main(argv: list[str] | None = None) -> int:
         config = parse_args(argv)
         validate_config(config)
         object_storage_client = build_object_storage_client(config)
-        llm_client = (
-            None
-            if config.dry_run
-            else create_openai_client(build_eval_settings(config))
-        )
+        llm_client = None if config.dry_run else _create_eval_openai_client(config)
         summary = generate_dataset(config, object_storage_client, llm_client)
         print_summary(summary)
         if summary.pdfs_discovered and summary.pdfs_processed:
@@ -589,6 +585,23 @@ def main(argv: list[str] | None = None) -> int:
     except (RuntimeError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+
+
+def _create_eval_openai_client(config: GoldenDatasetConfig) -> Any:
+    """Create the OpenAI-compatible client for eval generation.
+
+    Args:
+        config: Golden dataset configuration.
+
+    Returns:
+        Any: OpenAI-compatible client.
+    """
+
+    from agent.openai_client import (  # pylint: disable=import-outside-toplevel
+        create_openai_client,
+    )
+
+    return create_openai_client(build_eval_settings(config))
 
 
 def _optional_int_env(env_name: str, default_value: int) -> int:

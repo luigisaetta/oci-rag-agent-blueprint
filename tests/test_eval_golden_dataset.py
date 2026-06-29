@@ -177,13 +177,18 @@ def test_discover_pdf_objects_filters_and_orders_eligible_pdfs() -> None:
             SimpleNamespace(name="docs/b.PDF", size=20, etag="b"),
             SimpleNamespace(name="other/a.pdf", size=30, etag="other"),
             SimpleNamespace(name="docs/empty.pdf", size=0, etag="empty"),
+            SimpleNamespace(name="docs/unknown-size.pdf", size=None, etag="unknown"),
             SimpleNamespace(name="docs/a.pdf", size=10, etag="a"),
         ]
     )
 
     discovered = discover_pdf_objects(client, "ns", "bucket", "docs/")
 
-    assert [item.name for item in discovered] == ["docs/a.pdf", "docs/b.PDF"]
+    assert [item.name for item in discovered] == [
+        "docs/a.pdf",
+        "docs/b.PDF",
+        "docs/unknown-size.pdf",
+    ]
     assert discovered[0].etag == "a"
 
 
