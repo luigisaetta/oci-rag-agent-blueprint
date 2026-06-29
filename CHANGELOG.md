@@ -34,6 +34,8 @@ changes, or documentation updates are introduced.
 - Reordered golden dataset JSONL records to start with `id`, `question`, and
   `answer`, and renamed the public answer field from `expected_answer` to
   `answer`.
+- Expanded the evaluations README with golden dataset generation prerequisites,
+  commands, JSONL schema, language behavior, and troubleshooting notes.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 
