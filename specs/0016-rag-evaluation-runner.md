@@ -405,6 +405,11 @@ The runner must also print a concise console summary table at the end. The table
 must include at least total records, completed records, pass count, review count,
 fail count, error count, agent error count, and judge error count.
 
+The console output must also print a concise metrics table with the most useful
+derived rates, including pass rate, review rate, answer correctness rate,
+acceptable answer rate, grounded rate, low hallucination risk rate, expected PDF
+match rate, expected page match rate, and exact evidence match rate.
+
 ## Error Handling
 
 The runner must continue by default when individual records fail.

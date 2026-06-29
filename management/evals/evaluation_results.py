@@ -286,7 +286,7 @@ def write_summary_json(path: Path, summary: dict[str, Any]) -> None:
 
 
 def format_summary_table(summary: dict[str, Any]) -> str:
-    """Format a concise console summary table.
+    """Format concise console summary tables.
 
     Args:
         summary: Summary payload.
@@ -295,7 +295,7 @@ def format_summary_table(summary: dict[str, Any]) -> str:
         str: Human-readable table.
     """
 
-    rows = [
+    count_rows = [
         ("total", summary["total_records"]),
         ("completed", summary["completed_records"]),
         ("pass", summary["overall"].get("pass", 0)),
@@ -305,14 +305,81 @@ def format_summary_table(summary: dict[str, Any]) -> str:
         ("agent_errors", summary["agent_errors"]),
         ("judge_errors", summary["judge_errors"]),
     ]
+    metric_rows = _format_console_metric_rows(summary.get("metrics", {}))
+
+    output = ["Evaluation summary"]
+    output.extend(_format_table_rows(count_rows))
+    if metric_rows:
+        output.append("")
+        output.append("Evaluation metrics")
+        output.extend(_format_table_rows(metric_rows))
+    return "\n".join(output)
+
+
+def _format_console_metric_rows(metrics: dict[str, Any]) -> list[tuple[str, str]]:
+    """Format the most useful derived metrics for terminal output.
+
+    Args:
+        metrics: Summary metrics object.
+
+    Returns:
+        list[tuple[str, str]]: Display labels and percentage values.
+    """
+
+    if not metrics:
+        return []
+
+    metric_names = [
+        "pass_rate",
+        "review_rate",
+        "answer_correct_rate",
+        "answer_acceptable_rate",
+        "grounded_rate",
+        "low_hallucination_risk_rate",
+        "expected_pdf_match_rate",
+        "expected_page_match_rate",
+        "exact_evidence_match_rate",
+    ]
+    return [
+        (metric_name, _format_percent(metrics[metric_name]))
+        for metric_name in metric_names
+        if metric_name in metrics
+    ]
+
+
+def _format_table_rows(rows: list[tuple[str, Any]]) -> list[str]:
+    """Format label-value pairs as an ASCII table.
+
+    Args:
+        rows: Label-value pairs.
+
+    Returns:
+        list[str]: Table lines.
+    """
+
     label_width = max(len(label) for label, _value in rows)
     value_width = max(len(str(value)) for _label, value in rows)
     line = f"+-{'-' * label_width}-+-{'-' * value_width}-+"
-    output = ["Evaluation summary", line]
+    output = [line]
     for label, value in rows:
         output.append(f"| {label:<{label_width}} | {value:>{value_width}} |")
     output.append(line)
-    return "\n".join(output)
+    return output
+
+
+def _format_percent(value: Any) -> str:
+    """Format a numeric rate as a percentage.
+
+    Args:
+        value: Numeric rate in the 0..1 range.
+
+    Returns:
+        str: Percentage string.
+    """
+
+    if not isinstance(value, (float, int)):
+        return "n/a"
+    return f"{value * 100:.1f}%"
 
 
 def _rate(count: int, total: int) -> float:

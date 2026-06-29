@@ -349,7 +349,11 @@ def test_results_and_summary_are_written(tmp_path: Path) -> None:
     assert written_summary["metrics"]["exact_evidence_match_rate"] == 1.0
     assert "overall" in written_summary["criteria"]
     assert "retrieval" in written_summary["criteria"]
-    assert "pass" in format_summary_table(summary)
+    summary_table = format_summary_table(summary)
+    assert "pass" in summary_table
+    assert "Evaluation metrics" in summary_table
+    assert "answer_correct_rate" in summary_table
+    assert "50.0%" in summary_table
 
 
 def test_run_evaluation_handles_agent_error(monkeypatch: pytest.MonkeyPatch) -> None:

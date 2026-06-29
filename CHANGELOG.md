@@ -21,6 +21,8 @@ changes, or documentation updates are introduced.
 - Expanded the RAG evaluation summary report with explicit derived metrics and
   embedded criteria for retrieval evidence, correctness, grounding,
   hallucination risk, and overall classification.
+- Added the most useful RAG evaluation rates to the console summary output so
+  terminal runs show both counts and derived metrics.
 - Specified evaluation golden dataset generation from Object Storage PDFs,
   including significant page selection, LLM-generated grounded question-answer
   pairs, JSONL schema, incremental updates, and test expectations.
