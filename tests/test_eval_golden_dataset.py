@@ -327,6 +327,7 @@ def test_generation_prompt_discourages_generic_questions() -> None:
     generation_input = build_generation_input("Locus coordinates tool use.")
 
     assert "self-contained and domain specific" in instructions
+    assert "same language as the source material" in instructions
     assert "What type of information is primarily presented" in generation_input
     assert "Better question style examples" in generation_input
 

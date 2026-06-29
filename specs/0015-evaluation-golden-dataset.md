@@ -276,6 +276,10 @@ questions with better questions that name the relevant concept, medicine,
 mechanism, benchmark, organizational practice, risk, constraint, or relationship
 described in the source.
 
+The generated question and answer must use the same language as the source
+material. If the source material mixes languages, the generator must use the
+dominant language of the substantive content.
+
 The generated answer must:
 
 - Be directly supported by the selected page text.
