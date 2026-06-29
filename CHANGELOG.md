@@ -18,6 +18,9 @@ changes, or documentation updates are introduced.
 - Aligned the RAG evaluation runner agent invocation with the reference UI by
   using the streaming `/responses` SSE contract by default and parsing stream
   metadata, tokens, references, usage, completion, and error events.
+- Expanded the RAG evaluation summary report with explicit derived metrics and
+  embedded criteria for retrieval evidence, correctness, grounding,
+  hallucination risk, and overall classification.
 - Specified evaluation golden dataset generation from Object Storage PDFs,
   including significant page selection, LLM-generated grounded question-answer
   pairs, JSONL schema, incremental updates, and test expectations.

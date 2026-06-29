@@ -342,7 +342,13 @@ def test_results_and_summary_are_written(tmp_path: Path) -> None:
     write_summary_json(summary_path, summary)
 
     assert len(results_path.read_text(encoding="utf-8").splitlines()) == 2
-    assert json.loads(summary_path.read_text(encoding="utf-8"))["total_records"] == 2
+    written_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert written_summary["total_records"] == 2
+    assert written_summary["metrics"]["pass_rate"] == 0.5
+    assert written_summary["metrics"]["answer_correct_rate"] == 0.5
+    assert written_summary["metrics"]["exact_evidence_match_rate"] == 1.0
+    assert "overall" in written_summary["criteria"]
+    assert "retrieval" in written_summary["criteria"]
     assert "pass" in format_summary_table(summary)
 
 

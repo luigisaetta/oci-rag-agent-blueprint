@@ -392,6 +392,13 @@ The runner must write a summary JSON file with:
 - Counts by `overall`.
 - Counts by `reference_match_status`.
 - Pass, review, fail, and error rates.
+- A `metrics` object with derived rates for completion, agent success, judge
+  success, pass/review/fail/error, answer correctness, acceptable answers,
+  grounding, low hallucination risk, expected PDF match, expected page match,
+  and exact evidence match.
+- A `criteria` object documenting the retrieval, answer correctness, grounding,
+  hallucination risk, and overall classification rules used to interpret the
+  run.
 - Output file paths.
 
 The runner must also print a concise console summary table at the end. The table
