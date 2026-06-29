@@ -32,7 +32,10 @@ from management.evals.page_selection import (
     select_significant_pages,
 )
 from management.evals.pdf_pages import download_pdf_to_tempfile, extract_pdf_pages
-from management.evals.question_generation import generate_question_answer
+from management.evals.question_generation import (
+    QuestionGenerationRequest,
+    generate_question_answer,
+)
 
 DEFAULT_MAX_PAGES_PER_PDF = 10
 DEFAULT_EVAL_TEMPERATURE = 0.0
@@ -403,9 +406,12 @@ def generate_dataset(
                 try:
                     generated = generate_question_answer(
                         llm_client,
-                        config.eval_model_id,
-                        scored_page.page.text,
-                        config.generation_temperature,
+                        QuestionGenerationRequest(
+                            model=config.eval_model_id,
+                            page_text=scored_page.page.text,
+                            compartment_id=config.eval_compartment_id,
+                            temperature=config.generation_temperature,
+                        ),
                     )
                     page_hash = hash_text(scored_page.page.text)
                     generated_records.append(

@@ -26,18 +26,15 @@ FORBIDDEN_QUESTION_PATTERNS = (
 )
 
 
-class ChatCompletionClientProtocol(Protocol):
-    """Protocol for the OpenAI-compatible chat completion client."""
+class ResponsesClientProtocol(Protocol):
+    """Protocol for the OpenAI-compatible Responses API client."""
 
-    class chat:  # pylint: disable=too-few-public-methods,invalid-name
-        """OpenAI-compatible chat namespace."""
+    class responses:  # pylint: disable=too-few-public-methods,invalid-name
+        """OpenAI-compatible Responses API namespace."""
 
-        class completions:  # pylint: disable=too-few-public-methods,invalid-name
-            """OpenAI-compatible chat completions namespace."""
-
-            @staticmethod
-            def create(**kwargs: Any) -> Any:
-                """Create a chat completion."""
+        @staticmethod
+        def create(**kwargs: Any) -> Any:
+            """Create a response."""
 
 
 @dataclass(frozen=True)
@@ -53,35 +50,53 @@ class GeneratedQuestionAnswer:
     expected_answer: str
 
 
-def build_generation_messages(page_text: str) -> list[dict[str, str]]:
-    """Build LLM messages for Q&A generation.
+@dataclass(frozen=True)
+class QuestionGenerationRequest:
+    """Inputs required to generate one golden question-answer pair.
+
+    Attributes:
+        model: Evaluation model identifier.
+        page_text: Source page text.
+        compartment_id: OCI compartment OCID required by OCI Enterprise AI.
+        temperature: Generation temperature.
+    """
+
+    model: str
+    page_text: str
+    compartment_id: str
+    temperature: float = 0.0
+
+
+def build_generation_instructions() -> str:
+    """Build Responses API instructions for Q&A generation.
+
+    Returns:
+        str: Instructions for structured golden example generation.
+    """
+
+    return (
+        "You generate evaluation examples for a RAG system. Return only valid "
+        "JSON with keys question and expected_answer. Use only the provided "
+        "page text. Do not mention page numbers, PDF names, documents, files, "
+        "or sections."
+    )
+
+
+def build_generation_input(page_text: str) -> str:
+    """Build Responses API input for Q&A generation.
 
     Args:
         page_text: Extracted page text.
 
     Returns:
-        list[dict[str, str]]: Chat completion messages.
+        str: User input for the Responses API request.
     """
 
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You generate evaluation examples for a RAG system. Return only "
-                "valid JSON with keys question and expected_answer. Use only the "
-                "provided page text. Do not mention page numbers, PDF names, "
-                "documents, files, or sections."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                "Create one conceptual question and one concise expected answer "
-                "that can be answered using only this source text.\n\n"
-                f"Source text:\n{page_text}"
-            ),
-        },
-    ]
+    return (
+        "Create one conceptual question and one concise expected answer that "
+        "can be answered using only this source text.\n\n"
+        f"Source text:\n{page_text}"
+    )
 
 
 def parse_generated_payload(raw_content: str) -> GeneratedQuestionAnswer:
@@ -130,18 +145,14 @@ def validate_question(question: str) -> None:
 
 def generate_question_answer(
     client: Any,
-    model: str,
-    page_text: str,
-    temperature: float = 0.0,
+    request: QuestionGenerationRequest,
     max_retries: int = 2,
 ) -> GeneratedQuestionAnswer:
     """Generate and validate one grounded question-answer pair.
 
     Args:
         client: OpenAI-compatible client.
-        model: Evaluation model identifier.
-        page_text: Source page text.
-        temperature: Generation temperature.
+        request: Question generation request.
         max_retries: Number of retries after invalid model output.
 
     Returns:
@@ -153,16 +164,42 @@ def generate_question_answer(
 
     last_error: ValueError | None = None
     for _ in range(max_retries + 1):
-        response = client.chat.completions.create(
-            model=model,
-            messages=build_generation_messages(page_text),
-            temperature=temperature,
-            response_format={"type": "json_object"},
-        )
-        raw_content = response.choices[0].message.content
+        create_kwargs: dict[str, Any] = {
+            "model": request.model,
+            "instructions": build_generation_instructions(),
+            "input": build_generation_input(request.page_text),
+            "extra_body": {"compartmentId": request.compartment_id},
+        }
+        if request.temperature > 0:
+            create_kwargs["temperature"] = request.temperature
+        response = client.responses.create(**create_kwargs)
+        raw_content = extract_response_output_text(response)
         try:
             return parse_generated_payload(raw_content)
         except ValueError as exc:
             last_error = exc
 
     raise ValueError(f"Unable to generate valid question-answer pair: {last_error}")
+
+
+def extract_response_output_text(response: Any) -> str:
+    """Extract text from an OpenAI-compatible Responses API response.
+
+    Args:
+        response: Responses API response object.
+
+    Returns:
+        str: Extracted response text.
+    """
+
+    output_text = getattr(response, "output_text", None)
+    if output_text:
+        return str(output_text)
+
+    text_parts: list[str] = []
+    for output_item in getattr(response, "output", []) or []:
+        for content_item in getattr(output_item, "content", []) or []:
+            text_value = getattr(content_item, "text", None)
+            if text_value:
+                text_parts.append(str(text_value))
+    return "".join(text_parts)

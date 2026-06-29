@@ -134,7 +134,9 @@ Optional configuration:
 - Maximum PDF count for a single run.
 - Dry-run mode.
 - Overwrite mode for replacing existing examples from changed source pages.
-- LLM temperature for dataset generation. Default: low and deterministic.
+- LLM temperature for dataset generation. Default: `0`. The implementation
+  must omit the `temperature` request parameter when the configured value is
+  `0`, because some OCI Responses API models do not support that parameter.
 - Random seed for deterministic tie-breaking when page scores are equal.
 
 The implementation must support these command-line arguments:
@@ -245,7 +247,8 @@ scoring pages and keep the final output ordered by source page number.
 
 ## Question And Answer Generation
 
-For each selected page, the generator must call the configured LLM and request:
+For each selected page, the generator must call the configured LLM through the
+OpenAI-compatible Responses API and request:
 
 - One question that can be answered using only the content of that page.
 - One plausible expected answer grounded only in that page.
@@ -264,6 +267,10 @@ The generated answer must:
 - Avoid unsupported facts from the model's prior knowledge.
 - Be concise enough for future automated evaluation.
 - Preserve important terminology from the source page when useful.
+
+The Responses API request must pass the evaluation model identifier and the
+evaluation compartment OCID. The generator must use the Responses API for
+project consistency and must not use Chat Completions.
 
 The LLM prompt must require structured JSON output with at least:
 

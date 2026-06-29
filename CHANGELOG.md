@@ -21,6 +21,11 @@ changes, or documentation updates are introduced.
   unit tests.
 - Added an interactive `tqdm` progress bar for golden dataset PDF processing,
   with `--no-progress` for scripted runs.
+- Switched golden dataset question-answer generation to the
+  OpenAI-compatible Responses API and pass the evaluation compartment explicitly.
+- Omitted the Responses API `temperature` parameter for golden dataset
+  generation when the configured value is `0`, preserving compatibility with
+  models that do not support temperature.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 

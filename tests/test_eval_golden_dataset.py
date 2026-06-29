@@ -38,6 +38,7 @@ from management.evals.page_selection import (
     select_significant_pages,
 )
 from management.evals.question_generation import (
+    QuestionGenerationRequest,
     generate_question_answer,
     parse_generated_payload,
     validate_question,
@@ -105,30 +106,31 @@ class FakeObjectStorageClient:
         return SimpleNamespace(data=SimpleNamespace(raw=stream))
 
 
-class FakeChatCompletions:
-    """Fake chat completions API returning queued contents."""
+class FakeResponses:
+    """Fake Responses API returning queued contents."""
 
     def __init__(self, contents: list[str]) -> None:
-        """Initialize the fake completions API.
+        """Initialize the fake Responses API.
 
         Args:
-            contents: Raw message contents returned by create calls.
+            contents: Raw response contents returned by create calls.
         """
 
         self.contents = contents
         self.calls = 0
+        self.last_kwargs: dict[str, object] = {}
 
-    def create(self, **_kwargs: object) -> SimpleNamespace:
+    def create(self, **kwargs: object) -> SimpleNamespace:
         """Return the next fake completion.
 
         Returns:
             SimpleNamespace: OpenAI-like response.
         """
 
+        self.last_kwargs = kwargs
         content = self.contents[min(self.calls, len(self.contents) - 1)]
         self.calls += 1
-        message = SimpleNamespace(content=content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+        return SimpleNamespace(output_text=content)
 
 
 class FakeLlmClient:
@@ -141,7 +143,7 @@ class FakeLlmClient:
             contents: Completion contents returned in order.
         """
 
-        self.chat = SimpleNamespace(completions=FakeChatCompletions(contents))
+        self.responses = FakeResponses(contents)
 
 
 def make_config(output: Path, dry_run: bool = False) -> GoldenDatasetConfig:
@@ -338,10 +340,51 @@ def test_generate_question_answer_retries_invalid_output() -> None:
         ]
     )
 
-    generated = generate_question_answer(client, "model", "page text")
+    generated = generate_question_answer(
+        client,
+        QuestionGenerationRequest(
+            model="model",
+            page_text="page text",
+            compartment_id="ocid1.compartment.oc1..example",
+        ),
+    )
 
     assert generated.question == "How does retrieval grounding help answers?"
-    assert client.chat.completions.calls == 2
+    assert client.responses.calls == 2
+    assert client.responses.last_kwargs["extra_body"] == {
+        "compartmentId": "ocid1.compartment.oc1..example"
+    }
+    assert "temperature" not in client.responses.last_kwargs
+    assert client.responses.last_kwargs["input"].startswith(
+        "Create one conceptual question"
+    )
+
+
+def test_generate_question_answer_passes_positive_temperature() -> None:
+    """Positive generation temperature is passed when explicitly configured."""
+
+    client = FakeLlmClient(
+        [
+            json.dumps(
+                {
+                    "question": "How does retrieval grounding help answers?",
+                    "expected_answer": "It ties answers to retrieved context.",
+                }
+            ),
+        ]
+    )
+
+    generate_question_answer(
+        client,
+        QuestionGenerationRequest(
+            model="model",
+            page_text="page text",
+            compartment_id="ocid1.compartment.oc1..example",
+            temperature=0.2,
+        ),
+    )
+
+    assert client.responses.last_kwargs["temperature"] == 0.2
 
 
 def test_parse_args_uses_eval_environment(monkeypatch: pytest.MonkeyPatch) -> None:
