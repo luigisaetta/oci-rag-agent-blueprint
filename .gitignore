@@ -9,3 +9,6 @@ ui/node_modules/
 ui/.next/
 agent-factory/ui/node_modules/
 agent-factory/ui/.next/
+evals/datasets/*.jsonl
+evals/reports/*
+!evals/reports/.gitkeep

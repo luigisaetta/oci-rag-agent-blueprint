@@ -6,6 +6,22 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-06-29
+
+- Specified evaluation golden dataset generation from Object Storage PDFs,
+  including significant page selection, LLM-generated grounded question-answer
+  pairs, JSONL schema, incremental updates, and test expectations.
+- Added evaluation-specific sample environment variables so golden dataset
+  generation can use a separate model, project, compartment, or region from the
+  runtime RAG agent.
+- Implemented the first golden dataset generation utilities under
+  `management/evals`, including Object Storage PDF discovery, PDF page
+  extraction, significant page scoring, LLM JSON output validation,
+  deterministic JSONL records, incremental merge behavior, dry-run support, and
+  unit tests.
+- Added the `evals/` artifact area with gitignored generated dataset and report
+  outputs.
+
 ## 2026-06-26
 
 - Connected transcribed voice input to the normal streaming RAG agent response

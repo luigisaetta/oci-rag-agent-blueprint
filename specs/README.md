@@ -20,3 +20,4 @@ Specifications are the source of truth for the implementation. New features must
 | [0012 - Langfuse Observability](0012-langfuse-observability.md) | Optional Langfuse observability for Responses API calls, including runtime configuration, client selection, spans, sessions, deployment behavior, and tests. |
 | [0013 - Agent-Managed Connector Ingestion](0013-agent-managed-connector-ingestion.md) | Server-side agent endpoints for uploading documents to Object Storage, triggering asynchronous Vector Store Data Sync Connector jobs, and reading job status. |
 | [0014 - Voice Agent Requests](0014-voice-agent-requests.md) | Server-side speech-to-text request handling with OCI Speech, transcript-first streaming, and reference UI microphone input. |
+| [0015 - Evaluation Golden Dataset](0015-evaluation-golden-dataset.md) | Offline golden dataset generation and incremental JSONL maintenance for future end-to-end RAG evaluations. |
