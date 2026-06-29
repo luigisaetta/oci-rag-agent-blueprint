@@ -8,6 +8,13 @@ changes, or documentation updates are introduced.
 
 ## 2026-06-29
 
+- Specified an end-to-end RAG evaluation runner that reads golden datasets,
+  invokes an agent endpoint, checks expected PDF and page references, and uses
+  the evaluation model as an LLM judge for correctness, grounding, and
+  hallucination risk.
+- Implemented the first RAG evaluation runner with agent invocation, reference
+  checks, LLM judge scoring, JSONL result output, summary JSON output, and a
+  concise console totals table.
 - Specified evaluation golden dataset generation from Object Storage PDFs,
   including significant page selection, LLM-generated grounded question-answer
   pairs, JSONL schema, incremental updates, and test expectations.

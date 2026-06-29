@@ -148,3 +148,40 @@ Responses API `temperature` parameter for model compatibility.
 If `python -m management.evals.generate_golden_dataset` fails with missing
 packages such as `httpx`, `oci`, `openai`, `pypdf`, or `tqdm`, activate the
 project Conda environment first.
+
+## RAG Evaluation Runner
+
+After generating a golden dataset, start the RAG agent and run an end-to-end
+evaluation against its `/responses` endpoint.
+
+Example against a local unsecured agent:
+
+```bash
+python -m management.evals.run_rag_evaluation \
+  --endpoint http://localhost:8080/responses \
+  --dataset evals/datasets/golden_dataset.jsonl
+```
+
+Smoke test with a small subset:
+
+```bash
+python -m management.evals.run_rag_evaluation \
+  --endpoint http://localhost:8080/responses \
+  --dataset evals/datasets/golden_dataset.jsonl \
+  --max-records 3 \
+  --no-progress
+```
+
+The runner writes:
+
+```text
+evals/reports/rag_eval_results.jsonl
+evals/reports/rag_eval_summary.json
+```
+
+It also prints a concise totals table to stdout with total, completed, pass,
+review, fail, error, agent error, and judge error counts.
+
+The runner uses the evaluation model configured by `EVAL_*` as an LLM judge. It
+does not use the runtime agent model. The first implementation targets unsecured
+agent endpoints; JWT support is intentionally out of scope.
