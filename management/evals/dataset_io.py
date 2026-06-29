@@ -10,10 +10,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Iterable
+
+JSONL_FIELD_ORDER = (
+    "id",
+    "question",
+    "answer",
+    "source_pdf_name",
+    "page_number",
+)
 
 
 @dataclass(frozen=True)
@@ -25,14 +33,14 @@ class GoldenRecord:
         source_pdf_name: PDF file name derived from the object name.
         page_number: One-based page number.
         question: Generated question grounded in the page.
-        expected_answer: Generated expected answer grounded in the page.
+        answer: Generated expected answer grounded in the page.
     """
 
     id: str
+    question: str
+    answer: str
     source_pdf_name: str
     page_number: int
-    question: str
-    expected_answer: str
 
     @property
     def source_key(self) -> tuple[str, int]:
@@ -83,32 +91,12 @@ def load_jsonl_records(path: Path) -> list[GoldenRecord]:
             if not stripped_line:
                 continue
             try:
-                payload = json.loads(stripped_line)
-                records.append(_golden_record_from_payload(payload))
+                records.append(GoldenRecord(**json.loads(stripped_line)))
             except (TypeError, json.JSONDecodeError) as exc:
                 raise ValueError(
                     f"Invalid JSONL record in {path} at line {line_number}: {exc}"
                 ) from exc
     return records
-
-
-def _golden_record_from_payload(payload: dict[str, object]) -> GoldenRecord:
-    """Build a golden record from current or older JSONL payloads.
-
-    Args:
-        payload: JSON object loaded from a JSONL line.
-
-    Returns:
-        GoldenRecord: Normalized golden record.
-    """
-
-    allowed_fields = {field.name for field in fields(GoldenRecord)}
-    normalized_payload = {
-        field_name: payload[field_name]
-        for field_name in allowed_fields
-        if field_name in payload
-    }
-    return GoldenRecord(**normalized_payload)
 
 
 def merge_records(
@@ -177,9 +165,11 @@ def write_jsonl_records_atomic(path: Path, records: Iterable[GoldenRecord]) -> N
     ) as temp_file:
         temp_path = Path(temp_file.name)
         for record in records:
-            temp_file.write(
-                json.dumps(asdict(record), ensure_ascii=False, sort_keys=True)
-            )
+            payload = {
+                field_name: getattr(record, field_name)
+                for field_name in JSONL_FIELD_ORDER
+            }
+            temp_file.write(json.dumps(payload, ensure_ascii=False))
             temp_file.write("\n")
 
     os.replace(temp_path, path)

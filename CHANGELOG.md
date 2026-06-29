@@ -31,6 +31,9 @@ changes, or documentation updates are introduced.
 - Strengthened the golden dataset question-generation prompt with
   domain-specific guidance, few-shot examples, and validation against generic
   "the text" style questions.
+- Reordered golden dataset JSONL records to start with `id`, `question`, and
+  `answer`, and renamed the public answer field from `expected_answer` to
+  `answer`.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 

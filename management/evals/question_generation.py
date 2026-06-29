@@ -53,11 +53,11 @@ class GeneratedQuestionAnswer:
 
     Attributes:
         question: Grounded generated question.
-        expected_answer: Grounded generated expected answer.
+        answer: Grounded generated answer.
     """
 
     question: str
-    expected_answer: str
+    answer: str
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,7 @@ def build_generation_instructions() -> str:
 
     return (
         "You generate evaluation examples for a RAG system. Return only valid "
-        "JSON with keys question and expected_answer. Use only the provided "
+        "JSON with keys question and answer. Use only the provided "
         "source material. The question must be self-contained and domain "
         "specific: it must include enough concrete context that a human can "
         "understand what topic is being asked about without seeing the source. "
@@ -136,7 +136,7 @@ def build_generation_input(page_text: str) -> str:
         "rather than gradual?\n"
         "- When using paracetamol for pain or fever, which patient conditions "
         "require medical caution before treatment?\n\n"
-        "Return only JSON with keys question and expected_answer.\n\n"
+        "Return only JSON with keys question and answer.\n\n"
         f"Source material:\n{page_text}"
     )
 
@@ -160,13 +160,13 @@ def parse_generated_payload(raw_content: str) -> GeneratedQuestionAnswer:
         raise ValueError(f"Model output is not valid JSON: {exc}") from exc
 
     question = str(payload.get("question", "")).strip()
-    expected_answer = str(payload.get("expected_answer", "")).strip()
+    answer = str(payload.get("answer", "")).strip()
     if not question:
         raise ValueError("Generated question is empty.")
-    if not expected_answer:
-        raise ValueError("Generated expected answer is empty.")
+    if not answer:
+        raise ValueError("Generated answer is empty.")
     validate_question(question)
-    return GeneratedQuestionAnswer(question=question, expected_answer=expected_answer)
+    return GeneratedQuestionAnswer(question=question, answer=answer)
 
 
 def validate_question(question: str) -> None:

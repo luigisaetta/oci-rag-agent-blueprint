@@ -292,7 +292,7 @@ The LLM prompt must require structured JSON output with at least:
 ```json
 {
   "question": "string",
-  "expected_answer": "string"
+  "answer": "string"
 }
 ```
 
@@ -307,10 +307,10 @@ Each JSONL record must contain these required fields:
 ```json
 {
   "id": "string",
-  "source_pdf_name": "string",
-  "page_number": 1,
   "question": "string",
-  "expected_answer": "string"
+  "answer": "string",
+  "source_pdf_name": "string",
+  "page_number": 1
 }
 ```
 
@@ -318,10 +318,10 @@ Field definitions:
 
 - `id`: deterministic identifier derived from the source PDF name and page
   number.
+- `question`: generated conceptual question.
+- `answer`: generated grounded answer.
 - `source_pdf_name`: PDF file name derived from the object name.
 - `page_number`: one-based PDF page number.
-- `question`: generated conceptual question.
-- `expected_answer`: generated grounded answer.
 
 The JSONL file must use UTF-8 encoding. Each line must be valid JSON and must
 not contain trailing commas.

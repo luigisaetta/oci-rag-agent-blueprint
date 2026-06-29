@@ -17,6 +17,7 @@ import pytest
 
 from management.evals.dataset_io import (
     GoldenRecord,
+    JSONL_FIELD_ORDER,
     build_record_id,
     load_jsonl_records,
     merge_records,
@@ -226,7 +227,7 @@ def test_record_id_and_jsonl_roundtrip(tmp_path: Path) -> None:
         source_pdf_name="doc.pdf",
         page_number=7,
         question="What does the page explain?",
-        expected_answer="It explains a concept.",
+        answer="It explains a concept.",
     )
     output = tmp_path / "golden.jsonl"
 
@@ -235,52 +236,7 @@ def test_record_id_and_jsonl_roundtrip(tmp_path: Path) -> None:
 
     assert loaded == [record]
     payload = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
-    assert set(payload) == {
-        "id",
-        "source_pdf_name",
-        "page_number",
-        "question",
-        "expected_answer",
-    }
-
-
-def test_load_jsonl_records_ignores_legacy_metadata(tmp_path: Path) -> None:
-    """Older verbose records are normalized to the compact schema."""
-
-    output = tmp_path / "golden.jsonl"
-    output.write_text(
-        json.dumps(
-            {
-                "id": "id-1",
-                "source_pdf_name": "doc.pdf",
-                "page_number": 1,
-                "question": "Question?",
-                "expected_answer": "Answer.",
-                "namespace": "legacy-namespace",
-                "bucket": "legacy-bucket",
-                "source_object_name": "legacy/path/doc.pdf",
-                "source_etag": "legacy-etag",
-                "source_size_bytes": 123,
-                "page_content_hash": "legacy-hash",
-                "generation_model": "legacy-model",
-                "generated_at": "2026-06-29T00:00:00Z",
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    loaded = load_jsonl_records(output)
-
-    assert loaded == [
-        GoldenRecord(
-            id="id-1",
-            source_pdf_name="doc.pdf",
-            page_number=1,
-            question="Question?",
-            expected_answer="Answer.",
-        )
-    ]
+    assert tuple(payload) == JSONL_FIELD_ORDER
 
 
 def test_merge_records_appends_without_duplicates() -> None:
@@ -291,14 +247,14 @@ def test_merge_records_appends_without_duplicates() -> None:
         source_pdf_name="doc.pdf",
         page_number=1,
         question="Question?",
-        expected_answer="Answer.",
+        answer="Answer.",
     )
     new_record = GoldenRecord(
         id="id-2",
         source_pdf_name="doc.pdf",
         page_number=2,
         question="Second question?",
-        expected_answer="Second answer.",
+        answer="Second answer.",
     )
 
     merged, kept, added, replaced = merge_records(
@@ -318,14 +274,14 @@ def test_merge_records_overwrites_by_source_key() -> None:
         source_pdf_name="doc.pdf",
         page_number=1,
         question="Old?",
-        expected_answer="Old.",
+        answer="Old.",
     )
     replacement = GoldenRecord(
         id="new-id",
         source_pdf_name="doc.pdf",
         page_number=1,
         question="New?",
-        expected_answer="New.",
+        answer="New.",
     )
 
     merged, kept, added, replaced = merge_records(
@@ -349,7 +305,7 @@ def test_generated_payload_validation_rejects_source_location_references() -> No
             json.dumps(
                 {
                     "question": "What is explained in this document?",
-                    "expected_answer": "A concept is explained.",
+                    "answer": "A concept is explained.",
                 }
             )
         )
@@ -387,7 +343,7 @@ def test_generate_question_answer_retries_invalid_output() -> None:
                         "How does retrieval grounding help RAG answers stay "
                         "aligned with retrieved context?"
                     ),
-                    "expected_answer": "It ties answers to retrieved context.",
+                    "answer": "It ties answers to retrieved context.",
                 }
             ),
         ]
@@ -427,7 +383,7 @@ def test_generate_question_answer_passes_positive_temperature() -> None:
                         "How does retrieval grounding help RAG answers stay "
                         "aligned with retrieved context?"
                     ),
-                    "expected_answer": "It ties answers to retrieved context.",
+                    "answer": "It ties answers to retrieved context.",
                 }
             ),
         ]

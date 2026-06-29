@@ -421,7 +421,7 @@ def generate_dataset(
                             source_pdf_name=source_pdf_name,
                             page_number=scored_page.page.page_number,
                             question=generated.question,
-                            expected_answer=generated.expected_answer,
+                            answer=generated.answer,
                         )
                     )
                     summary.examples_generated += 1
