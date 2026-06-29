@@ -10,19 +10,17 @@ from __future__ import annotations
 # pylint: disable=too-many-instance-attributes
 
 import argparse
-import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
+import os
 
 from agent.config import OCI_AUTH_MODE_DEFAULT, OCI_AUTH_MODES
 from management.load_documents import DEFAULT_OCI_PROFILE, load_oci_config
 from management.evals.dataset_io import (
     GoldenRecord,
     build_record_id,
-    hash_text,
     load_jsonl_records,
     merge_records,
     write_jsonl_records_atomic,
@@ -413,28 +411,17 @@ def generate_dataset(
                             temperature=config.generation_temperature,
                         ),
                     )
-                    page_hash = hash_text(scored_page.page.text)
+                    source_pdf_name = Path(source_object.name).name
                     generated_records.append(
                         GoldenRecord(
                             id=build_record_id(
-                                config.namespace,
-                                config.bucket,
-                                source_object.name,
+                                source_pdf_name,
                                 scored_page.page.page_number,
-                                page_hash,
                             ),
-                            namespace=config.namespace,
-                            bucket=config.bucket,
-                            source_object_name=source_object.name,
-                            source_pdf_name=Path(source_object.name).name,
+                            source_pdf_name=source_pdf_name,
                             page_number=scored_page.page.page_number,
                             question=generated.question,
                             expected_answer=generated.expected_answer,
-                            source_etag=source_object.etag,
-                            source_size_bytes=source_object.size,
-                            page_content_hash=page_hash,
-                            generation_model=config.eval_model_id,
-                            generated_at=datetime.now(timezone.utc).isoformat(),
                         )
                     )
                     summary.examples_generated += 1

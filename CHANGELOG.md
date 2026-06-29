@@ -26,6 +26,8 @@ changes, or documentation updates are introduced.
 - Omitted the Responses API `temperature` parameter for golden dataset
   generation when the configured value is `0`, preserving compatibility with
   models that do not support temperature.
+- Simplified the golden dataset JSONL schema by keeping only the deterministic
+  ID, source PDF name, page number, question, and expected answer.
 - Added the `evals/` artifact area with gitignored generated dataset and report
   outputs.
 

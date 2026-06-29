@@ -7,12 +7,10 @@ Description: JSONL golden dataset record helpers and atomic file operations.
 
 from __future__ import annotations
 
-# pylint: disable=too-many-instance-attributes
-
 import hashlib
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Iterable
@@ -24,87 +22,41 @@ class GoldenRecord:
 
     Attributes:
         id: Deterministic record identifier.
-        source_object_name: Full Object Storage object name.
         source_pdf_name: PDF file name derived from the object name.
         page_number: One-based page number.
         question: Generated question grounded in the page.
         expected_answer: Generated expected answer grounded in the page.
-        namespace: Object Storage namespace.
-        bucket: Object Storage bucket.
-        source_etag: Source object etag, when available.
-        source_size_bytes: Source object size, when available.
-        page_content_hash: Hash of extracted source page text.
-        generation_model: Model used to generate the example.
-        generated_at: UTC timestamp in ISO-8601 format.
     """
 
     id: str
-    source_object_name: str
     source_pdf_name: str
     page_number: int
     question: str
     expected_answer: str
-    namespace: str = ""
-    bucket: str = ""
-    source_etag: str = ""
-    source_size_bytes: int = 0
-    page_content_hash: str = ""
-    generation_model: str = ""
-    generated_at: str = ""
 
     @property
-    def source_key(self) -> tuple[str, str, str, int]:
+    def source_key(self) -> tuple[str, int]:
         """Return the logical source key used for overwrite matching.
 
         Returns:
-            tuple[str, str, str, int]: Namespace, bucket, object name, and page.
+            tuple[str, int]: Source PDF name and page.
         """
 
-        return (
-            self.namespace,
-            self.bucket,
-            self.source_object_name,
-            self.page_number,
-        )
+        return (self.source_pdf_name, self.page_number)
 
 
-def hash_text(text: str) -> str:
-    """Hash normalized text content with SHA-256.
-
-    Args:
-        text: Text to hash.
-
-    Returns:
-        str: Hexadecimal SHA-256 digest.
-    """
-
-    normalized_text = " ".join(text.split())
-    return hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
-
-
-def build_record_id(
-    namespace: str,
-    bucket: str,
-    source_object_name: str,
-    page_number: int,
-    page_content_hash: str,
-) -> str:
+def build_record_id(source_pdf_name: str, page_number: int) -> str:
     """Build a deterministic golden dataset record identifier.
 
     Args:
-        namespace: Object Storage namespace.
-        bucket: Object Storage bucket.
-        source_object_name: Object name for the source PDF.
+        source_pdf_name: PDF file name.
         page_number: One-based page number.
-        page_content_hash: SHA-256 hash of the extracted page text.
 
     Returns:
         str: Stable record identifier.
     """
 
-    raw_key = "\n".join(
-        [namespace, bucket, source_object_name, str(page_number), page_content_hash]
-    )
+    raw_key = "\n".join([source_pdf_name, str(page_number)])
     return f"golden_{hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:24]}"
 
 
@@ -132,12 +84,31 @@ def load_jsonl_records(path: Path) -> list[GoldenRecord]:
                 continue
             try:
                 payload = json.loads(stripped_line)
-                records.append(GoldenRecord(**payload))
+                records.append(_golden_record_from_payload(payload))
             except (TypeError, json.JSONDecodeError) as exc:
                 raise ValueError(
                     f"Invalid JSONL record in {path} at line {line_number}: {exc}"
                 ) from exc
     return records
+
+
+def _golden_record_from_payload(payload: dict[str, object]) -> GoldenRecord:
+    """Build a golden record from current or older JSONL payloads.
+
+    Args:
+        payload: JSON object loaded from a JSONL line.
+
+    Returns:
+        GoldenRecord: Normalized golden record.
+    """
+
+    allowed_fields = {field.name for field in fields(GoldenRecord)}
+    normalized_payload = {
+        field_name: payload[field_name]
+        for field_name in allowed_fields
+        if field_name in payload
+    }
+    return GoldenRecord(**normalized_payload)
 
 
 def merge_records(

@@ -19,8 +19,8 @@ This specification covers:
 - Generating one grounded question and one plausible expected answer per
   selected page by using the LLM configured through the existing environment.
 - Writing and incrementally updating a JSONL golden dataset.
-- Recording enough source metadata to later evaluate retrieval and answer
-  grounding.
+- Recording the minimal source metadata needed to later evaluate retrieval and
+  answer grounding while keeping the dataset easy to read.
 - Configuration, authentication, error handling, and unit test expectations for
   the dataset generation workflow.
 
@@ -292,7 +292,6 @@ Each JSONL record must contain these required fields:
 ```json
 {
   "id": "string",
-  "source_object_name": "string",
   "source_pdf_name": "string",
   "page_number": 1,
   "question": "string",
@@ -302,34 +301,20 @@ Each JSONL record must contain these required fields:
 
 Field definitions:
 
-- `id`: deterministic identifier derived from namespace, bucket, object name,
-  page number, and a source page content hash.
-- `source_object_name`: full Object Storage object name of the PDF.
+- `id`: deterministic identifier derived from the source PDF name and page
+  number.
 - `source_pdf_name`: PDF file name derived from the object name.
 - `page_number`: one-based PDF page number.
 - `question`: generated conceptual question.
 - `expected_answer`: generated grounded answer.
 
-The implementation should also include these metadata fields when available:
-
-```json
-{
-  "namespace": "string",
-  "bucket": "string",
-  "source_etag": "string",
-  "source_size_bytes": 123,
-  "page_content_hash": "string",
-  "generation_model": "string",
-  "generated_at": "2026-06-29T00:00:00Z"
-}
-```
-
 The JSONL file must use UTF-8 encoding. Each line must be valid JSON and must
 not contain trailing commas.
 
-The dataset must not store full page text by default, because the source PDFs
-remain the system of record and page text may be large or sensitive. A future
-debug mode may store short evidence snippets if needed for evaluation analysis.
+The dataset must not store full page text, Object Storage namespace, bucket,
+object name, object etag, object size, page text hash, generation model, or
+generation timestamp by default. The source PDFs remain the system of record and
+the golden dataset must remain compact enough for human review.
 
 ## Incremental Update Behavior
 
@@ -351,10 +336,8 @@ When `--overwrite` is provided:
 - Replace existing records with the same logical source key.
 - Keep records from unrelated PDFs unchanged.
 
-The logical source key for overwrite matching must include namespace, bucket,
-object name, and page number. The content hash is intentionally excluded from
-the overwrite key so changed page content can replace an older generated
-example.
+The logical source key for overwrite matching must include the source PDF name
+and page number.
 
 The command must write updates atomically by writing a temporary file in the
 same directory and then replacing the target JSONL file.
@@ -456,8 +439,8 @@ OCI resources, real PDFs from Object Storage, or real model calls.
 - The generator can select up to ten significant pages per PDF.
 - The generator can create one grounded question and expected answer per
   selected page.
-- The generator writes a UTF-8 JSONL file with deterministic IDs and source
-  metadata.
+- The generator writes a UTF-8 JSONL file with deterministic IDs and minimal
+  source metadata.
 - Re-running the generator appends new examples without duplicating existing
   records.
 - `--overwrite` can replace examples for changed source pages.

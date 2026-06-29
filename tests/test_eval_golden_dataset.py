@@ -18,7 +18,6 @@ import pytest
 from management.evals.dataset_io import (
     GoldenRecord,
     build_record_id,
-    hash_text,
     load_jsonl_records,
     merge_records,
     write_jsonl_records_atomic,
@@ -220,17 +219,12 @@ def test_score_page_penalizes_boilerplate_and_selects_useful_pages() -> None:
 def test_record_id_and_jsonl_roundtrip(tmp_path: Path) -> None:
     """Golden records can be written atomically and loaded from JSONL."""
 
-    page_hash = hash_text("Some extracted page text")
     record = GoldenRecord(
-        id=build_record_id("ns", "bucket", "doc.pdf", 7, page_hash),
-        namespace="ns",
-        bucket="bucket",
-        source_object_name="doc.pdf",
+        id=build_record_id("doc.pdf", 7),
         source_pdf_name="doc.pdf",
         page_number=7,
         question="What does the page explain?",
         expected_answer="It explains a concept.",
-        page_content_hash=page_hash,
     )
     output = tmp_path / "golden.jsonl"
 
@@ -238,7 +232,53 @@ def test_record_id_and_jsonl_roundtrip(tmp_path: Path) -> None:
     loaded = load_jsonl_records(output)
 
     assert loaded == [record]
-    assert json.loads(output.read_text(encoding="utf-8").splitlines()[0])["id"]
+    payload = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    assert set(payload) == {
+        "id",
+        "source_pdf_name",
+        "page_number",
+        "question",
+        "expected_answer",
+    }
+
+
+def test_load_jsonl_records_ignores_legacy_metadata(tmp_path: Path) -> None:
+    """Older verbose records are normalized to the compact schema."""
+
+    output = tmp_path / "golden.jsonl"
+    output.write_text(
+        json.dumps(
+            {
+                "id": "id-1",
+                "source_pdf_name": "doc.pdf",
+                "page_number": 1,
+                "question": "Question?",
+                "expected_answer": "Answer.",
+                "namespace": "legacy-namespace",
+                "bucket": "legacy-bucket",
+                "source_object_name": "legacy/path/doc.pdf",
+                "source_etag": "legacy-etag",
+                "source_size_bytes": 123,
+                "page_content_hash": "legacy-hash",
+                "generation_model": "legacy-model",
+                "generated_at": "2026-06-29T00:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_jsonl_records(output)
+
+    assert loaded == [
+        GoldenRecord(
+            id="id-1",
+            source_pdf_name="doc.pdf",
+            page_number=1,
+            question="Question?",
+            expected_answer="Answer.",
+        )
+    ]
 
 
 def test_merge_records_appends_without_duplicates() -> None:
@@ -246,9 +286,6 @@ def test_merge_records_appends_without_duplicates() -> None:
 
     existing = GoldenRecord(
         id="id-1",
-        namespace="ns",
-        bucket="bucket",
-        source_object_name="doc.pdf",
         source_pdf_name="doc.pdf",
         page_number=1,
         question="Question?",
@@ -256,9 +293,6 @@ def test_merge_records_appends_without_duplicates() -> None:
     )
     new_record = GoldenRecord(
         id="id-2",
-        namespace="ns",
-        bucket="bucket",
-        source_object_name="doc.pdf",
         source_pdf_name="doc.pdf",
         page_number=2,
         question="Second question?",
@@ -279,9 +313,6 @@ def test_merge_records_overwrites_by_source_key() -> None:
 
     existing = GoldenRecord(
         id="old-id",
-        namespace="ns",
-        bucket="bucket",
-        source_object_name="doc.pdf",
         source_pdf_name="doc.pdf",
         page_number=1,
         question="Old?",
@@ -289,9 +320,6 @@ def test_merge_records_overwrites_by_source_key() -> None:
     )
     replacement = GoldenRecord(
         id="new-id",
-        namespace="ns",
-        bucket="bucket",
-        source_object_name="doc.pdf",
         source_pdf_name="doc.pdf",
         page_number=1,
         question="New?",
