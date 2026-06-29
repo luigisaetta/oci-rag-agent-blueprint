@@ -71,6 +71,20 @@ class FakeHttpClient:
         return self.response
 
 
+def build_streaming_http_client(frames: list[str]) -> httpx.Client:
+    """Build an HTTPX client that returns a synthetic SSE stream."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content="".join(frames).encode("utf-8"),
+            request=request,
+            headers={"Content-Type": "text/event-stream"},
+        )
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
 class FakeResponses:
     """Fake Responses API."""
 
@@ -138,17 +152,41 @@ def make_result(overall: str = "pass") -> EvaluationResult:
     )
 
 
-def test_build_agent_request_uses_non_streaming_new_conversation() -> None:
-    """Agent request payload is non-streaming and starts a new conversation."""
+def test_build_agent_request_uses_streaming_new_conversation_by_default() -> None:
+    """Agent request payload is streaming and starts a new conversation."""
 
     assert build_agent_request("hello") == {
         "new_conversation": True,
         "user_request": "hello",
-        "stream": False,
+        "stream": True,
     }
 
 
-def test_invoke_agent_parses_success_response() -> None:
+def test_invoke_agent_parses_success_stream() -> None:
+    """Agent client normalizes a successful SSE response."""
+
+    frames = [
+        'event: metadata\ndata: {"conversation_id": "conv"}\n\n',
+        'event: token\ndata: {"text": "ans"}\n\n',
+        'event: token\ndata: {"text": "wer"}\n\n',
+        'event: references\ndata: {"references": [{"title": "doc.pdf", "page": 1}]}\n\n',
+        'event: usage\ndata: {"usage": {"total_tokens": 10}}\n\n',
+        'event: done\ndata: {"conversation_id": "conv", "response_id": "resp"}\n\n',
+    ]
+    client = build_streaming_http_client(frames)
+
+    result = invoke_agent("http://agent/responses", "question", http_client=client)
+
+    assert result.conversation_id == "conv"
+    assert result.response_id == "resp"
+    assert result.answer == "answer"
+    assert result.references == [{"title": "doc.pdf", "page": 1}]
+    assert result.usage == {"total_tokens": 10}
+    assert result.error is None
+    client.close()
+
+
+def test_invoke_agent_parses_success_json_response() -> None:
     """Agent client normalizes a successful JSON response."""
 
     response = httpx.Response(
@@ -165,9 +203,14 @@ def test_invoke_agent_parses_success_response() -> None:
     )
     fake_client = FakeHttpClient(response)
 
-    result = invoke_agent("http://agent/responses", "question", http_client=fake_client)
+    result = invoke_agent(
+        "http://agent/responses",
+        "question",
+        http_client=fake_client,
+        stream=False,
+    )
 
-    assert fake_client.last_json == build_agent_request("question")
+    assert fake_client.last_json == build_agent_request("question", stream=False)
     assert result.answer == "answer"
     assert result.references == [{"title": "doc.pdf", "page": 1}]
     assert result.error is None
@@ -186,6 +229,7 @@ def test_invoke_agent_preserves_http_error() -> None:
         "http://agent/responses",
         "question",
         http_client=FakeHttpClient(response),
+        stream=False,
     )
 
     assert result.error

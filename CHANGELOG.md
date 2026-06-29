@@ -15,6 +15,9 @@ changes, or documentation updates are introduced.
 - Implemented the first RAG evaluation runner with agent invocation, reference
   checks, LLM judge scoring, JSONL result output, summary JSON output, and a
   concise console totals table.
+- Aligned the RAG evaluation runner agent invocation with the reference UI by
+  using the streaming `/responses` SSE contract by default and parsing stream
+  metadata, tokens, references, usage, completion, and error events.
 - Specified evaluation golden dataset generation from Object Storage PDFs,
   including significant page selection, LLM-generated grounded question-answer
   pairs, JSONL schema, incremental updates, and test expectations.

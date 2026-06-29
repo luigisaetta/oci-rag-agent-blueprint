@@ -67,9 +67,10 @@ The runner performs this flow for each golden record:
 
 1. Read `question`, `answer`, `source_pdf_name`, and `page_number` from the
    dataset.
-2. Call the agent endpoint with a new non-streaming conversation.
-3. Store the returned `agent_response`, `references`, `usage`, `response_id`,
-   and errors.
+2. Call the agent endpoint with a new streaming conversation, matching the
+   reference UI behavior.
+3. Parse the SSE stream and store the returned answer text, `references`,
+   `usage`, `response_id`, and errors.
 4. Run deterministic reference checks against the expected PDF and page.
 5. Ask the evaluation model to judge the agent answer against the expected
    answer and retrieved references.
@@ -151,33 +152,37 @@ The judge must not use the agent runtime model settings such as `OCI_MODEL_ID`.
 
 ## Agent Request Contract
 
-The runner must call the agent with non-streaming JSON requests:
+The runner must call the agent with the same streaming contract used by the
+reference Next.js UI:
 
 ```json
 {
   "new_conversation": true,
   "user_request": "<golden question>",
-  "stream": false
+  "stream": true
 }
 ```
 
-The runner must expect the response shape documented in
-[Agent API Usage](../docs/agent-api-usage.md):
+The HTTP request must send `Accept: text/event-stream` and
+`Content-Type: application/json`.
 
-```json
-{
-  "conversation_id": "string",
-  "response_id": "string",
-  "agent_response": "string",
-  "references": [],
-  "usage": {},
-  "error": null
-}
-```
+The runner must parse the SSE events documented in
+[Agent API Usage](../docs/agent-api-usage.md), including:
 
-If the agent returns a non-2xx HTTP status, invalid JSON, or a JSON payload with
-`error` set, the result row must preserve the failure and skip judge scoring for
-that record.
+- `metadata`: conversation identifier.
+- `token`: incremental answer text.
+- `references`: retrieved references.
+- `usage`: token usage.
+- `done`: final conversation and response identifiers.
+- `error`: structured stream failure.
+
+Some hosted gateways may preserve `data:` frames but strip explicit `event:`
+lines. The runner must infer event names from payload keys where possible, using
+the same behavior as the reference CLI and UI parser.
+
+If the agent returns a non-2xx HTTP status, invalid SSE payloads, or an `error`
+event, the result row must preserve the failure and skip judge scoring for that
+record.
 
 ## Reference Matching
 
