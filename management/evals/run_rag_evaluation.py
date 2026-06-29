@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ DEFAULT_RESULTS_PATH = Path("evals/reports/rag_eval_results.jsonl")
 DEFAULT_SUMMARY_PATH = Path("evals/reports/rag_eval_summary.json")
 DEFAULT_AGENT_TIMEOUT_SECONDS = 120
 DEFAULT_JUDGE_TIMEOUT_SECONDS = 120
+DEFAULT_RANDOM_SEED = 42
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", default=str(DEFAULT_RESULTS_PATH))
     parser.add_argument("--summary-output", default=str(DEFAULT_SUMMARY_PATH))
     parser.add_argument("--max-records", type=int)
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=DEFAULT_RANDOM_SEED,
+        help="Seed used when shuffling records before --max-records.",
+    )
     parser.add_argument(
         "--request-timeout-seconds",
         type=int,
@@ -84,7 +92,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     try:
-        records = _load_limited_records(Path(args.dataset), args.max_records)
+        records = _load_limited_records(
+            Path(args.dataset),
+            args.max_records,
+            args.random_seed,
+        )
         if not records:
             raise ValueError("dataset does not contain any records.")
 
@@ -206,12 +218,17 @@ def run_evaluation(
     return results
 
 
-def _load_limited_records(path: Path, max_records: int | None) -> list[GoldenRecord]:
-    """Load and optionally limit golden records.
+def _load_limited_records(
+    path: Path,
+    max_records: int | None,
+    random_seed: int = DEFAULT_RANDOM_SEED,
+) -> list[GoldenRecord]:
+    """Load and optionally sample golden records.
 
     Args:
         path: Dataset path.
         max_records: Optional record limit.
+        random_seed: Seed used to shuffle records before limiting.
 
     Returns:
         list[GoldenRecord]: Loaded records.
@@ -221,7 +238,9 @@ def _load_limited_records(path: Path, max_records: int | None) -> list[GoldenRec
     if max_records is not None:
         if max_records < 1:
             raise ValueError("--max-records must be greater than zero.")
-        return records[:max_records]
+        shuffled_records = list(records)
+        random.Random(random_seed).shuffle(shuffled_records)
+        return shuffled_records[:max_records]
     return records
 
 

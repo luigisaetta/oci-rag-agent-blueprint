@@ -33,7 +33,7 @@ from management.evals.judge import (
     parse_judge_payload,
 )
 from management.evals.reference_checks import check_references
-from management.evals.run_rag_evaluation import run_evaluation
+from management.evals.run_rag_evaluation import _load_limited_records, run_evaluation
 
 
 class FakeHttpClient:
@@ -354,6 +354,38 @@ def test_results_and_summary_are_written(tmp_path: Path) -> None:
     assert "Evaluation metrics" in summary_table
     assert "answer_correct_rate" in summary_table
     assert "50.0%" in summary_table
+
+
+def test_load_limited_records_randomly_samples_records(tmp_path: Path) -> None:
+    """Record limiting shuffles records in memory before applying the limit."""
+
+    dataset_path = tmp_path / "golden.jsonl"
+    records = [
+        {
+            "id": f"golden_{index}",
+            "question": f"Question {index}?",
+            "answer": f"Answer {index}.",
+            "source_pdf_name": "doc.pdf",
+            "page_number": index + 1,
+        }
+        for index in range(8)
+    ]
+    dataset_path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    sampled_once = _load_limited_records(dataset_path, 3, random_seed=7)
+    sampled_twice = _load_limited_records(dataset_path, 3, random_seed=7)
+
+    assert [record.id for record in sampled_once] == [
+        record.id for record in sampled_twice
+    ]
+    assert [record.id for record in sampled_once] != [
+        "golden_0",
+        "golden_1",
+        "golden_2",
+    ]
 
 
 def test_run_evaluation_handles_agent_error(monkeypatch: pytest.MonkeyPatch) -> None:

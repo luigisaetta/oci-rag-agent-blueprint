@@ -123,7 +123,12 @@ Optional arguments:
   `evals/reports/rag_eval_results.jsonl`.
 - `--summary-output`: summary JSON path. Default:
   `evals/reports/rag_eval_summary.json`.
-- `--max-records`: limit records for smoke testing.
+- `--max-records`: randomly sample at most this many records for smoke testing.
+  The runner must shuffle records in memory before applying the limit; it must
+  not rewrite or reorder the JSONL file on disk.
+- `--random-seed`: seed used when shuffling records before `--max-records`.
+  Default: `42`, so limited runs are reproducible unless the caller overrides
+  the seed.
 - `--request-timeout-seconds`: timeout for each agent request. Default: `120`.
 - `--judge-timeout-seconds`: timeout for each judge request. Default: `120`.
 - `--no-progress`: disable interactive progress reporting.
@@ -439,6 +444,7 @@ versions may add optional bearer-token support.
 Unit tests must cover:
 
 - Golden dataset loading for the compact schema.
+- Random record selection when `--max-records` is used.
 - Agent request payload construction.
 - Agent success response parsing.
 - Agent HTTP failure handling.

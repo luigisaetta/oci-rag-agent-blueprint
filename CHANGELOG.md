@@ -23,6 +23,9 @@ changes, or documentation updates are introduced.
   hallucination risk, and overall classification.
 - Added the most useful RAG evaluation rates to the console summary output so
   terminal runs show both counts and derived metrics.
+- Changed limited RAG evaluation runs to shuffle golden dataset records in
+  memory before applying `--max-records`, with `--random-seed` for reproducible
+  sampling.
 - Specified evaluation golden dataset generation from Object Storage PDFs,
   including significant page selection, LLM-generated grounded question-answer
   pairs, JSONL schema, incremental updates, and test expectations.
