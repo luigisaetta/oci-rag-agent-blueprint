@@ -6,6 +6,13 @@ Entries are grouped by date. New entries should be added under the current date
 whenever significant features, fixes, refactorings, specifications, deployment
 changes, or documentation updates are introduced.
 
+## 2026-07-01
+
+- Updated the reference UI specification to require streaming reference
+  collection and sidebar rendering for the latest completed assistant response.
+- Added reference preservation and display to the Next.js reference UI so
+  streamed `references` events are shown after text or audio responses complete.
+
 ## 2026-06-29
 
 - Specified an end-to-end RAG evaluation runner that reads golden datasets,

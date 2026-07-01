@@ -16,6 +16,11 @@ import {
   formatAudioSize,
   selectSupportedAudioType
 } from "./audio.mjs";
+import {
+  formatMetadataSummary,
+  formatReferenceLabel,
+  normalizeReferences
+} from "./references.mjs";
 import { parseSseFrame } from "./sse.mjs";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8080/responses";
@@ -53,7 +58,8 @@ function createMessage(role, content, status = "complete") {
     id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
     role,
     content,
-    status
+    status,
+    references: []
   };
 }
 
@@ -83,6 +89,27 @@ function AssistantMessageContent({ message }) {
     <div className="markdown">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
     </div>
+  );
+}
+
+function ReferenceList({ references }) {
+  if (!references.length) {
+    return <p className="referenceEmpty">No references returned.</p>;
+  }
+
+  return (
+    <ol className="referenceList">
+      {references.map((reference, index) => {
+        const metadataSummary = formatMetadataSummary(reference.metadata);
+
+        return (
+          <li key={`${reference.fileName}-${reference.page ?? "page"}-${index}`}>
+            <span>{formatReferenceLabel(reference, index + 1)}</span>
+            {metadataSummary ? <small title={metadataSummary}>{metadataSummary}</small> : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -156,6 +183,15 @@ export default function Home() {
 
     return conversationId;
   }, [conversationId]);
+
+  const latestCompletedAssistantMessage = useMemo(
+    () =>
+      messages
+        .filter((message) => message.role === "assistant" && message.status === "complete")
+        .at(-1),
+    [messages]
+  );
+  const latestReferences = latestCompletedAssistantMessage?.references ?? [];
 
   useEffect(() => {
     window.localStorage.setItem("rag-ui-theme", theme);
@@ -346,6 +382,18 @@ export default function Home() {
     setMessages((currentMessages) =>
       currentMessages.map((message) =>
         message.id === messageId ? { ...message, status: "complete" } : message
+      )
+    );
+  }
+
+  function setAssistantReferences(messageId, references) {
+    const normalizedReferences = normalizeReferences(references);
+
+    setMessages((currentMessages) =>
+      currentMessages.map((message) =>
+        message.id === messageId
+          ? { ...message, references: normalizedReferences }
+          : message
       )
     );
   }
@@ -684,6 +732,13 @@ export default function Home() {
           addUsageToTokenTotals(parsedFrame.data.usage);
         }
 
+        if (parsedFrame.eventName === "references") {
+          setAssistantReferences(
+            assistantMessageId,
+            parsedFrame.data.references ?? []
+          );
+        }
+
         if (parsedFrame.eventName === "error") {
           const backendError = parsedFrame.data.error ?? "Backend stream error.";
           setErrorMessage(backendError);
@@ -876,6 +931,16 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {latestCompletedAssistantMessage ? (
+          <section className="referencesPanel" aria-label="Response references">
+            <div>
+              <span>Response references</span>
+              <small>{latestReferences.length.toLocaleString()} source(s)</small>
+            </div>
+            <ReferenceList references={latestReferences} />
+          </section>
+        ) : null}
 
         <div className="statusPanel">
           <span>Conversation</span>

@@ -456,6 +456,80 @@ button {
   white-space: nowrap;
 }
 
+.referencesPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.referencesPanel > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.referencesPanel span,
+.referencesPanel small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referencesPanel > div > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.referencesPanel > div > small {
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.referenceList {
+  display: grid;
+  gap: 8px;
+  max-height: 210px;
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.referenceList li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.referenceList li > span {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.referenceList li > small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.referenceEmpty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .statusPanel {
   display: grid;
   gap: 8px;

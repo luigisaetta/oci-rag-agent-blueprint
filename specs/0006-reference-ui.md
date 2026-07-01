@@ -18,13 +18,14 @@ This document covers:
 - Agent runtime summary display from the backend diagnostic endpoint.
 - Conversation reset behavior.
 - Streaming response rendering.
+- Streaming reference collection and rendering.
 - Waiting indicator while the assistant response has not produced tokens yet.
 - Markdown rendering for assistant responses.
 - Light and dark visual themes.
 - Local Docker Compose deployment.
 
 This document does not define production reference UI hosting in OCI Enterprise
-AI or advanced citation rendering.
+AI or advanced inline citation rendering.
 
 ## Related Specifications
 
@@ -60,6 +61,7 @@ The sidebar must include:
 - A button that clears the visible chat and starts a new conversation on the next user request.
 - An editable text field for the backend URL.
 - A compact agent runtime summary loaded from the backend diagnostic endpoint.
+- A compact response references panel for the latest completed assistant response.
 - A light/dark theme control.
 
 The backend URL field must default to the local Docker Compose backend endpoint:
@@ -230,6 +232,27 @@ assistant message bubble.
 
 The spinner must be accessible through a text label for screen readers and must
 not resize or shift the surrounding chat layout when tokens start arriving.
+
+## Reference Rendering
+
+When the UI receives a streaming `references` event, it must store the
+normalized references on the assistant message currently being streamed.
+
+The UI must preserve references until the conversation is reset.
+
+After the assistant stream completes, the sidebar must show a compact list of
+references for the latest completed assistant response. Each reference item must
+show:
+
+- Source file name.
+- Page number, when available.
+- A compact metadata summary when useful non-secret metadata is available.
+
+The references panel must remain readable when no references are returned by the
+backend. An empty reference list must not be treated as a stream error.
+
+Reference rendering must support the same streaming behavior as text questions
+and transcribed audio questions.
 
 ## Theme Behavior
 
